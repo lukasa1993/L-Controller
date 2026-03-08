@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Completed 02-wi-fi-supervision-03-PLAN.md
-last_updated: "2026-03-08T20:04:34.400Z"
-last_activity: 2026-03-08 — Completed 02-03 build-first validation flow and approved hardware supervision sign-off
+status: executing
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-03-08T20:55:59Z"
+last_activity: 2026-03-09 — Completed 03-01 recovery watchdog supervision implementation
 progress:
   total_phases: 8
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
-  percent: 100
+  total_plans: 8
+  completed_plans: 7
+  percent: 88
 ---
 
 # Project State
@@ -25,18 +25,18 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 
 ## Current Position
 
-Phase: 2 of 8 (Wi-Fi Supervision) — complete
-Plan: 3 of 3 in current phase
-Status: Ready for next phase planning
-Last activity: 2026-03-08 — Completed 02-03 build-first validation flow and approved hardware supervision sign-off
+Phase: 3 of 8 (Recovery & Watchdog) — in progress
+Plan: 2 of 2 in current phase
+Status: Ready to execute next plan
+Last activity: 2026-03-09 — Completed 03-01 recovery watchdog supervision implementation
 
-Progress: [██████████] 100%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 7.5 min
+- Total plans completed: 7
+- Average duration: 7.1 min
 - Total execution time: 0.8 hours
 
 **By Phase:**
@@ -48,13 +48,14 @@ Progress: [██████████] 100%
 | Phase 01-foundation-refactor P03 | 7 min | 4 tasks | 4 files |
 
 **Recent Trend:**
-- Last 5 plans: Phase 01 plan 02 (6 min), Phase 01 plan 03 (7 min), Phase 02 plan 01 (4 min), Phase 02 plan 02 (16 min), Phase 02 plan 03 (9 min)
-- Trend: Still slightly slower during supervision work after the larger 02-02 recovery changes
+- Last 5 plans: Phase 01 plan 03 (7 min), Phase 02 plan 01 (4 min), Phase 02 plan 02 (16 min), Phase 02 plan 03 (9 min), Phase 03 plan 01 (5 min)
+- Trend: Recovery implementation stayed in the expected range after the larger 02-02 supervision work
 
 *Updated after each plan completion*
 | Phase 02-wi-fi-supervision P01 | 4 min | 3 tasks | 7 files |
 | Phase 02-wi-fi-supervision P02 | 16 min | 3 tasks | 9 files |
 | Phase 02-wi-fi-supervision P03 | 9 min | 3 tasks | 3 files |
+| Phase 03-recovery-watchdog P01 | 5 min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,9 @@ Recent decisions affecting current work:
 - [Phase 02-wi-fi-supervision]: Keep ./scripts/validate.sh as the single automated entrypoint and make real-device supervision checks a blocking manual gate.
 - [Phase 02-wi-fi-supervision]: Phase 2 approval requires four explicit scenarios: healthy boot, degraded-retrying, LAN-up upstream-degraded, and recovery back to healthy without reboot.
 - [Phase 02-wi-fi-supervision]: Hardware sign-off records recovery plus durable last_failure visibility so later phases inherit the operator-facing contract.
+- [Phase 03-recovery-watchdog]: Keep watchdog ownership inside recovery_manager and feed it only after evaluating boot/runtime liveness windows.
+- [Phase 03-recovery-watchdog]: Treat LAN-up upstream degradation as acceptable runtime stability while requiring patience windows before confirmed stuck escalation.
+- [Phase 03-recovery-watchdog]: Persist only the latest recovery breadcrumb via .noinit plus hwinfo reset-cause data instead of introducing a broader persistence layer.
 
 ### Pending Todos
 
@@ -98,6 +102,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-08T19:59:18.874Z
-Stopped at: Completed 02-wi-fi-supervision-03-PLAN.md
+Last session: 2026-03-08T20:54:52.519Z
+Stopped at: Completed 03-01-PLAN.md
 Resume file: None

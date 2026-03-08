@@ -64,7 +64,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: Implement task-level supervision and escalation policy boundaries
+- [x] 03-01: Implement task-level supervision and escalation policy boundaries
 - [ ] 03-02: Validate stuck-state detection, escalation thresholds, and reset semantics
 
 ### Phase 4: Persistent Configuration
@@ -155,7 +155,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 |-------|----------------|--------|-----------|
 | 1. Foundation Refactor | 3/3 | Complete | 2026-03-08 |
 | 2. Wi-Fi Supervision | 3/3 | Complete | 2026-03-08 |
-| 3. Recovery & Watchdog | 0/2 | Not started | - |
+| 3. Recovery & Watchdog | 1/2 | In Progress | - |
 | 4. Persistent Configuration | 0/3 | Not started | - |
 | 5. Local Control Panel | 0/3 | Not started | - |
 | 6. Action Engine & Relay Control | 0/3 | Not started | - |
