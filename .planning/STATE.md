@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 2 context gathered
-last_updated: "2026-03-08T18:47:43.146Z"
-last_activity: 2026-03-08 — Completed 01-03 build-first validation and approved hardware smoke sign-off
+status: ready_to_execute
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-03-08T19:24:57.663Z"
+last_activity: 2026-03-08 — Completed 02-01 supervisor boundary, connectivity contract, and lifecycle event handoff
 progress:
   total_phases: 8
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 100
+  total_plans: 6
+  completed_plans: 4
+  percent: 67
 ---
 
 # Project State
@@ -25,18 +25,18 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 
 ## Current Position
 
-Phase: 1 of 8 (Foundation Refactor) — complete
-Plan: 3 of 3 in current phase
-Status: Ready for next phase planning
-Last activity: 2026-03-08 — Completed 01-03 build-first validation and approved hardware smoke sign-off
+Phase: 2 of 8 (Wi-Fi Supervision) — in progress
+Plan: 2 of 3 in current phase
+Status: Ready to execute
+Last activity: 2026-03-08 — Completed 02-01 supervisor boundary, connectivity contract, and lifecycle event handoff
 
-Progress: [██████████] 100%
+Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 5.3 min
+- Total plans completed: 4
+- Average duration: 5.0 min
 - Total execution time: 0.3 hours
 
 **By Phase:**
@@ -48,10 +48,11 @@ Progress: [██████████] 100%
 | Phase 01-foundation-refactor P03 | 7 min | 4 tasks | 4 files |
 
 **Recent Trend:**
-- Last 5 plans: Phase 01 plan 01 (3 min), Phase 01 plan 02 (6 min), Phase 01 plan 03 (7 min)
+- Last 5 plans: Phase 01 plan 01 (3 min), Phase 01 plan 02 (6 min), Phase 01 plan 03 (7 min), Phase 02 plan 01 (4 min)
 - Trend: Stable
 
 *Updated after each plan completion*
+| Phase 02-wi-fi-supervision P01 | 4 min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,9 @@ Recent decisions affecting current work:
 - [Phase 01-foundation-refactor]: Phase 1 validation now runs build-first through ./scripts/validate.sh, which delegates to ./scripts/build.sh as the canonical automated signal.
 - [Phase 01-foundation-refactor]: Final Phase 1 sign-off stays a blocking hardware smoke gate using ./scripts/flash.sh and ./scripts/console.sh rather than part of the default refactor loop.
 - [Phase 01-foundation-refactor]: Phase 1 completed after a human-approved hardware smoke confirmed Wi-Fi connected, DHCP IPv4 address, Reachability check passed, and APP_READY on device.
+- [Phase 02-wi-fi-supervision]: Network policy now starts at network_supervisor_*() while wifi_lifecycle.* stays limited to low-level callbacks and connect primitives.
+- [Phase 02-wi-fi-supervision]: Connectivity reporting uses a named enum plus structured last_failure so future panel and recovery code can read one operator-meaningful contract.
+- [Phase 02-wi-fi-supervision]: DHCP-stop and IPv4-address removal callbacks only clear raw link state; the supervisor derives degraded status above them.
 
 ### Pending Todos
 
@@ -86,6 +90,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-08T18:47:43.143Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-wi-fi-supervision/02-CONTEXT.md
+Last session: 2026-03-08T19:24:57.661Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: .planning/phases/02-wi-fi-supervision/02-02-PLAN.md
