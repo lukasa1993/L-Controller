@@ -12,7 +12,7 @@ LNH Nordic moves from a single-file Wi-Fi bring-up firmware into a mission-criti
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation Refactor** - Split the monolithic firmware into explicit subsystem boundaries and keep the existing boot path working
+- [x] **Phase 1: Foundation Refactor** - Split the monolithic firmware into explicit subsystem boundaries and keep the existing boot path working
 - [ ] **Phase 2: Wi-Fi Supervision** - Introduce a dedicated network supervisor with robust reconnect and visibility into connectivity state
 - [ ] **Phase 3: Recovery & Watchdog** - Add conservative fault supervision and reset escalation for true stuck states
 - [ ] **Phase 4: Persistent Configuration** - Establish durable, validated storage for auth, actions, relay state rules, and schedules
@@ -31,12 +31,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. Firmware builds with subsystem-specific source/header layout and `main.c` reduced to composition/bootstrap responsibilities.
   2. Shared application interfaces use explicit typed state/config structures instead of hidden cross-module globals.
   3. Existing baseline startup still reaches the current ready state through the new bootstrap structure.
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans executed
 
 Plans:
 - [x] 01-01: Define module layout, common interfaces, and shared app context boundaries
 - [x] 01-02: Extract bootstrap and existing runtime flow out of `main.c` into subsystem entry points
-- [ ] 01-03: Add basic validation scaffolding so the refactor does not regress the current bring-up path
+- [x] 01-03: Add basic validation scaffolding so the refactor does not regress the current bring-up path
 
 ### Phase 2: Wi-Fi Supervision
 **Goal**: Move Wi-Fi lifecycle ownership into a dedicated supervisor that can reconnect robustly and publish precise connectivity state.
