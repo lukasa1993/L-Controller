@@ -1,0 +1,29 @@
+source "Kconfig.zephyr"
+
+menu "LNH Nordic"
+
+config APP_WIFI_SSID
+	string "Wi-Fi SSID"
+	default ""
+
+config APP_WIFI_PSK
+	string "Wi-Fi password"
+	default ""
+
+config APP_WIFI_SECURITY
+	string "Wi-Fi security mode"
+	default "psk"
+	help
+	  Supported values: none, psk, psk-sha256, sae.
+
+config APP_WIFI_TIMEOUT_MS
+	int "Overall Wi-Fi timeout in milliseconds"
+	default 90000
+	range 1000 600000
+
+config APP_REACHABILITY_HOST
+	string "Hostname used for post-connect reachability check"
+	default "example.com"
+
+endmenu
+

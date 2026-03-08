@@ -1,0 +1,6 @@
+.DS_Store
+.ncs/
+.tools/
+.venv/
+build/
+app/wifi.secrets.conf
