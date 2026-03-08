@@ -1,0 +1,23 @@
+#pragma once
+
+#include <stdint.h>
+
+#include <zephyr/net/wifi_mgmt.h>
+
+struct app_wifi_config {
+	const char *ssid;
+	const char *psk;
+	enum wifi_security_type security;
+	int32_t timeout_ms;
+};
+
+struct app_reachability_config {
+	const char *host;
+	uint16_t port;
+};
+
+struct app_config {
+	const char *board_name;
+	struct app_wifi_config wifi;
+	struct app_reachability_config reachability;
+};
