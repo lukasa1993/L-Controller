@@ -20,7 +20,8 @@
 LOG_MODULE_DECLARE(app, CONFIG_LOG_DEFAULT_LEVEL);
 
 #define WIFI_EVENTS (NET_EVENT_WIFI_CONNECT_RESULT | NET_EVENT_WIFI_DISCONNECT_RESULT)
-#define IPV4_EVENTS (NET_EVENT_IPV4_DHCP_BOUND)
+#define IPV4_EVENTS \
+	(NET_EVENT_IPV4_DHCP_BOUND | NET_EVENT_IPV4_DHCP_STOP | NET_EVENT_IPV4_ADDR_DEL)
 
 static struct network_runtime_state *wifi_ready_state;
 
@@ -73,6 +74,15 @@ static void log_iface_status(const struct network_runtime_state *network_state)
 		status.ssid);
 }
 
+static void clear_ipv4_state(struct network_runtime_state *network_state)
+{
+	network_state->ipv4_bound = false;
+	network_state->reachability_checked = false;
+	network_state->reachability_ok = false;
+	network_state->last_reachability_status = -EAGAIN;
+	memset(&network_state->leased_ipv4, 0, sizeof(network_state->leased_ipv4));
+}
+
 static void handle_wifi_connect_result(struct network_runtime_state *network_state,
 				       struct net_mgmt_event_callback *cb)
 {
@@ -82,6 +92,8 @@ static void handle_wifi_connect_result(struct network_runtime_state *network_sta
 	network_state->wifi_connected = (status->status == 0);
 
 	if (network_state->wifi_connected) {
+		network_state->disconnect_seen = false;
+		network_state->ipv4_lease_lost = false;
 		LOG_INF("Wi-Fi connected");
 	} else {
 		LOG_ERR("Wi-Fi connection failed: %d", status->status);
@@ -96,9 +108,10 @@ static void handle_wifi_disconnect_result(struct network_runtime_state *network_
 	const struct wifi_status *status = cb->info;
 
 	network_state->last_disconnect_status = status->status;
+	network_state->connect_status = status->status ? status->status : -ECONNRESET;
 	network_state->wifi_connected = false;
-	network_state->ipv4_bound = false;
-	memset(&network_state->leased_ipv4, 0, sizeof(network_state->leased_ipv4));
+	network_state->disconnect_seen = true;
+	clear_ipv4_state(network_state);
 
 	LOG_WRN("Wi-Fi disconnected: %d", status->status);
 	log_iface_status(network_state);
@@ -112,9 +125,24 @@ static void handle_ipv4_dhcp_bound(struct network_runtime_state *network_state,
 
 	network_state->leased_ipv4 = dhcpv4->requested_ip;
 	network_state->ipv4_bound = true;
+	network_state->ipv4_lease_lost = false;
 	net_addr_ntop(AF_INET, &network_state->leased_ipv4, ip_buf, sizeof(ip_buf));
 	LOG_INF("DHCP IPv4 address: %s", ip_buf);
 	k_sem_give(&network_state->ipv4_sem);
+}
+
+static void handle_ipv4_dhcp_stop(struct network_runtime_state *network_state)
+{
+	network_state->ipv4_lease_lost = true;
+	clear_ipv4_state(network_state);
+	LOG_WRN("DHCP IPv4 lease lost");
+}
+
+static void handle_ipv4_addr_del(struct network_runtime_state *network_state)
+{
+	network_state->ipv4_lease_lost = true;
+	clear_ipv4_state(network_state);
+	LOG_WRN("IPv4 address removed");
 }
 
 static void wifi_event_handler(struct net_mgmt_event_callback *cb, uint64_t mgmt_event,
@@ -145,8 +173,18 @@ static void ipv4_event_handler(struct net_mgmt_event_callback *cb, uint64_t mgmt
 
 	ARG_UNUSED(iface);
 
-	if (mgmt_event == NET_EVENT_IPV4_DHCP_BOUND) {
+	switch (mgmt_event) {
+	case NET_EVENT_IPV4_DHCP_BOUND:
 		handle_ipv4_dhcp_bound(network_state, cb);
+		break;
+	case NET_EVENT_IPV4_DHCP_STOP:
+		handle_ipv4_dhcp_stop(network_state);
+		break;
+	case NET_EVENT_IPV4_ADDR_DEL:
+		handle_ipv4_addr_del(network_state);
+		break;
+	default:
+		break;
 	}
 }
 
@@ -166,6 +204,7 @@ void wifi_lifecycle_init(struct network_runtime_state *network_state, struct net
 	*network_state = (struct network_runtime_state){
 		.wifi_iface = wifi_iface,
 		.connect_status = -EAGAIN,
+		.last_reachability_status = -EAGAIN,
 	};
 
 	k_sem_init(&network_state->wifi_ready_sem, 0, 1);
@@ -274,8 +313,9 @@ int wifi_lifecycle_connect_once(struct network_runtime_state *network_state,
 
 	network_state->connect_status = -EINPROGRESS;
 	network_state->wifi_connected = false;
-	network_state->ipv4_bound = false;
-	memset(&network_state->leased_ipv4, 0, sizeof(network_state->leased_ipv4));
+	network_state->disconnect_seen = false;
+	network_state->ipv4_lease_lost = false;
+	clear_ipv4_state(network_state);
 	k_sem_reset(&network_state->connect_sem);
 	k_sem_reset(&network_state->ipv4_sem);
 
@@ -322,4 +362,13 @@ int wifi_lifecycle_wait_for_connection_and_ipv4(struct network_runtime_state *ne
 	}
 
 	return 0;
+}
+
+bool wifi_lifecycle_has_link_loss(const struct network_runtime_state *network_state)
+{
+	if (network_state == NULL) {
+		return false;
+	}
+
+	return network_state->disconnect_seen || network_state->ipv4_lease_lost;
 }

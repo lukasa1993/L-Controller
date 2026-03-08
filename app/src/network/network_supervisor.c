@@ -33,7 +33,12 @@ static void network_supervisor_update_connectivity_state(struct network_runtime_
 		return;
 	}
 
-	network_state->connectivity_state = NETWORK_CONNECTIVITY_DEGRADED_RETRYING;
+	if (wifi_lifecycle_has_link_loss(network_state) || network_state->last_failure.recorded) {
+		network_state->connectivity_state = NETWORK_CONNECTIVITY_DEGRADED_RETRYING;
+		return;
+	}
+
+	network_state->connectivity_state = NETWORK_CONNECTIVITY_CONNECTING;
 }
 
 static void network_supervisor_record_failure(struct network_runtime_state *network_state,

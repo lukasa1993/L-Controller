@@ -14,3 +14,4 @@ int wifi_lifecycle_connect_once(struct network_runtime_state *network_state,
 				const struct app_wifi_config *wifi_config);
 int wifi_lifecycle_wait_for_connection_and_ipv4(struct network_runtime_state *network_state,
 					     int32_t timeout_ms);
+bool wifi_lifecycle_has_link_loss(const struct network_runtime_state *network_state);
