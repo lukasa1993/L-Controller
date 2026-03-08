@@ -8,6 +8,11 @@
 
 LOG_MODULE_DECLARE(app, CONFIG_LOG_DEFAULT_LEVEL);
 
+const char *reachability_result_text(int status)
+{
+	return status == 0 ? "healthy" : "upstream-degraded";
+}
+
 int reachability_check_host(const struct app_reachability_config *reachability_config)
 {
 	struct addrinfo hints = {0};
@@ -16,6 +21,12 @@ int reachability_check_host(const struct app_reachability_config *reachability_c
 	char port_text[6];
 	int err;
 	int sock = -1;
+
+	if (reachability_config == NULL || reachability_config->host == NULL ||
+	    reachability_config->host[0] == '\0') {
+		LOG_ERR("Reachability target is not configured");
+		return -EINVAL;
+	}
 
 	err = snprintf(port_text, sizeof(port_text), "%u", reachability_config->port);
 	if (err < 0 || err >= sizeof(port_text)) {
@@ -57,10 +68,11 @@ int reachability_check_host(const struct app_reachability_config *reachability_c
 	freeaddrinfo(result);
 
 	if (err != 0) {
-		LOG_ERR("Reachability check failed: %d", err);
+		LOG_WRN("Reachability result=%s reason=%d",
+			reachability_result_text(err), err);
 		return err;
 	}
 
-	LOG_INF("Reachability check passed");
+	LOG_INF("Reachability result=%s", reachability_result_text(0));
 	return 0;
 }

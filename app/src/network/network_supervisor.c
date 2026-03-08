@@ -24,6 +24,8 @@ static void network_supervisor_set_connectivity_state(
 	struct network_runtime_state *network_state,
 	enum network_connectivity_state next_state)
 {
+	enum network_connectivity_state previous_state = network_state->connectivity_state;
+
 	if (network_state->connectivity_state == next_state) {
 		return;
 	}
@@ -31,6 +33,15 @@ static void network_supervisor_set_connectivity_state(
 	network_state->connectivity_state = next_state;
 	LOG_INF("Network supervisor state=%s",
 		network_supervisor_connectivity_state_text(next_state));
+
+	if (next_state == NETWORK_CONNECTIVITY_HEALTHY &&
+	    previous_state != NETWORK_CONNECTIVITY_HEALTHY &&
+	    network_state->last_failure.recorded) {
+		LOG_INF("Network recovered to healthy; last failure=%s reason=%d",
+			network_supervisor_failure_stage_text(
+				network_state->last_failure.failure_stage),
+			network_state->last_failure.reason);
+	}
 }
 
 static void network_supervisor_update_connectivity_state(struct network_runtime_state *network_state)
@@ -415,6 +426,7 @@ int network_supervisor_get_status(struct network_runtime_state *network_state,
 		.wifi_connected = network_state->wifi_connected,
 		.ipv4_bound = network_state->ipv4_bound,
 		.reachability_ok = network_state->reachability_ok,
+		.last_reachability_status = network_state->last_reachability_status,
 		.leased_ipv4 = network_state->leased_ipv4,
 		.last_failure = network_state->last_failure,
 	};

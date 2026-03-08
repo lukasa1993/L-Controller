@@ -11,6 +11,7 @@ struct network_supervisor_status {
 	bool wifi_connected;
 	bool ipv4_bound;
 	bool reachability_ok;
+	int last_reachability_status;
 	struct in_addr leased_ipv4;
 	struct network_failure_record last_failure;
 };
