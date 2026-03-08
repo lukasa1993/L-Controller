@@ -63,7 +63,7 @@ Each task was committed atomically:
 
 1. **Task 1: Update validation guidance for supervisor states and failure scenarios** - `ec5a9ff` (feat)
 2. **Task 2: Stage the device checklist and preserve the automated build path** - `7f915b5` (feat)
-3. **Task 3: Confirm the supervisor behavior on real hardware** - `TO_FILL_TASK3` (docs)
+3. **Task 3: Confirm the supervisor behavior on real hardware** - `c766f4c` (docs)
 
 ## Files Created/Modified
 
@@ -97,9 +97,10 @@ None - no external service configuration required.
 - Phase 2 now has both automated and human-approved validation coverage, so Phase 3 can build watchdog and escalation behavior on top of the documented supervisor states.
 - Future cleanup can remove the unused `wifi_config` local and revisit the existing MBEDTLS warnings without blocking this plan.
 
-## Self-Check: PENDING
+## Self-Check: PASSED
 
-- Summary file creation and commit verification will be completed after Task 3 is committed and planning state files are updated.
+- Verified `.planning/phases/02-wi-fi-supervision/02-03-SUMMARY.md` exists on disk.
+- Verified task commit hashes `ec5a9ff`, `7f915b5`, and `c766f4c` exist in `git log`.
 
 ---
 *Phase: 02-wi-fi-supervision*

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_to_execute
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-03-08T19:44:00.928Z"
-last_activity: 2026-03-08 — Completed 02-02 bounded startup, steady retry supervision, and reachability-aware degraded reporting
+status: Ready for next phase
+stopped_at: Completed 02-wi-fi-supervision-03-PLAN.md
+last_updated: "2026-03-08T20:00:30.000Z"
+last_activity: 2026-03-08 — Completed 02-03 build-first validation flow and approved hardware supervision sign-off
 progress:
   total_phases: 8
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 5
-  percent: 83
+  completed_plans: 6
+  percent: 100
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Core value:** The device must reliably and safely execute configured local control actions—even through Wi-Fi disruption or subsystem faults—without unnecessary operator intervention.
-**Current focus:** Wi-Fi Supervision
+**Current focus:** Recovery & Watchdog
 
 ## Current Position
 
-Phase: 2 of 8 (Wi-Fi Supervision) — in progress
+Phase: 2 of 8 (Wi-Fi Supervision) — complete
 Plan: 3 of 3 in current phase
-Status: Ready to execute
-Last activity: 2026-03-08 — Completed 02-02 bounded startup, steady retry supervision, and reachability-aware degraded reporting
+Status: Ready for next phase planning
+Last activity: 2026-03-08 — Completed 02-03 build-first validation flow and approved hardware supervision sign-off
 
-Progress: [████████░░] 83%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: 7.2 min
-- Total execution time: 0.6 hours
+- Total plans completed: 6
+- Average duration: 7.5 min
+- Total execution time: 0.8 hours
 
 **By Phase:**
 
@@ -48,12 +48,13 @@ Progress: [████████░░] 83%
 | Phase 01-foundation-refactor P03 | 7 min | 4 tasks | 4 files |
 
 **Recent Trend:**
-- Last 5 plans: Phase 01 plan 01 (3 min), Phase 01 plan 02 (6 min), Phase 01 plan 03 (7 min), Phase 02 plan 01 (4 min), Phase 02 plan 02 (16 min)
-- Trend: Slightly slower during supervision work
+- Last 5 plans: Phase 01 plan 02 (6 min), Phase 01 plan 03 (7 min), Phase 02 plan 01 (4 min), Phase 02 plan 02 (16 min), Phase 02 plan 03 (9 min)
+- Trend: Still slightly slower during supervision work after the larger 02-02 recovery changes
 
 *Updated after each plan completion*
 | Phase 02-wi-fi-supervision P01 | 4 min | 3 tasks | 7 files |
 | Phase 02-wi-fi-supervision P02 | 16 min | 3 tasks | 9 files |
+| Phase 02-wi-fi-supervision P03 | 9 min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,9 @@ Recent decisions affecting current work:
 - [Phase 02-wi-fi-supervision]: Reuse CONFIG_APP_WIFI_TIMEOUT_MS as the bounded startup window while retries run on CONFIG_APP_WIFI_RETRY_INTERVAL_MS.
 - [Phase 02-wi-fi-supervision]: Boot now continues once the supervisor reaches healthy, upstream-degraded, or degraded-retrying startup outcome instead of blocking forever on full health.
 - [Phase 02-wi-fi-supervision]: Supervisor status snapshots preserve the most recent failure across recovery and expose the latest reachability result for downstream consumers.
+- [Phase 02-wi-fi-supervision]: Keep ./scripts/validate.sh as the single automated entrypoint and make real-device supervision checks a blocking manual gate.
+- [Phase 02-wi-fi-supervision]: Phase 2 approval requires four explicit scenarios: healthy boot, degraded-retrying, LAN-up upstream-degraded, and recovery back to healthy without reboot.
+- [Phase 02-wi-fi-supervision]: Hardware sign-off records recovery plus durable last_failure visibility so later phases inherit the operator-facing contract.
 
 ### Pending Todos
 
@@ -94,6 +98,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-08T19:44:00.926Z
-Stopped at: Completed 02-02-PLAN.md
-Resume file: .planning/phases/02-wi-fi-supervision/02-03-PLAN.md
+Last session: 2026-03-08T19:59:18.874Z
+Stopped at: Completed 02-wi-fi-supervision-03-PLAN.md
+Resume file: None
