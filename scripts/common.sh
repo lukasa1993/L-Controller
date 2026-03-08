@@ -43,6 +43,14 @@ print_ready_state_markers() {
 		'APP_READY'
 }
 
+print_supervisor_state_markers() {
+	printf '%s\n' \
+		'Network supervisor state=healthy' \
+		'Network supervisor state=degraded-retrying' \
+		'Network supervisor state=lan-up-upstream-degraded' \
+		'Network recovered to healthy; last failure=... reason=...'
+}
+
 maybe_add_jlink_to_path() {
 	local candidate
 	for candidate in \
