@@ -25,5 +25,12 @@ config APP_REACHABILITY_HOST
 	string "Hostname used for post-connect reachability check"
 	default "example.com"
 
-endmenu
+config APP_ADMIN_USERNAME
+	string "Admin username"
+	default ""
 
+config APP_ADMIN_PASSWORD
+	string "Admin password"
+	default ""
+
+endmenu
