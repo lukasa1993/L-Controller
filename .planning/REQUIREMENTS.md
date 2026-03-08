@@ -10,7 +10,7 @@ Requirements for the initial release. Each maps to roadmap phases.
 ### Platform Foundation
 
 - [x] **PLAT-01**: Firmware is organized into separate modules for bootstrap, networking, recovery, HTTP/auth, actions, scheduling, persistence, OTA, and relay control
-- [ ] **PLAT-02**: `main.c` acts only as startup orchestration and does not contain subsystem business logic
+- [x] **PLAT-02**: `main.c` acts only as startup orchestration and does not contain subsystem business logic
 - [x] **PLAT-03**: Shared subsystem interfaces use explicit data structures and avoid hidden global state
 
 ### Networking & Recovery
@@ -98,7 +98,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | PLAT-01 | Phase 1 | Complete |
-| PLAT-02 | Phase 1 | Pending |
+| PLAT-02 | Phase 1 | Complete |
 | PLAT-03 | Phase 1 | Complete |
 | NET-01 | Phase 2 | Pending |
 | NET-02 | Phase 2 | Pending |

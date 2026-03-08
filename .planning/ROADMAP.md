@@ -31,11 +31,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. Firmware builds with subsystem-specific source/header layout and `main.c` reduced to composition/bootstrap responsibilities.
   2. Shared application interfaces use explicit typed state/config structures instead of hidden cross-module globals.
   3. Existing baseline startup still reaches the current ready state through the new bootstrap structure.
-**Plans**: 1/3 plans executed
+**Plans**: 2/3 plans executed
 
 Plans:
 - [x] 01-01: Define module layout, common interfaces, and shared app context boundaries
-- [ ] 01-02: Extract bootstrap and existing runtime flow out of `main.c` into subsystem entry points
+- [x] 01-02: Extract bootstrap and existing runtime flow out of `main.c` into subsystem entry points
 - [ ] 01-03: Add basic validation scaffolding so the refactor does not regress the current bring-up path
 
 ### Phase 2: Wi-Fi Supervision

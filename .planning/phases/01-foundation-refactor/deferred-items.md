@@ -2,4 +2,4 @@
 
 ## 2026-03-08
 
-- `./scripts/build.sh` currently aborts during Kconfig validation because `app/wifi.secrets.conf` assigns `APP_ADMIN_USERNAME` and `APP_ADMIN_PASSWORD`, but `app/Kconfig` does not define those symbols. This plan did not modify either file, so the blocker remains out of scope for `01-01`.
+- Resolved in `01-02`: `./scripts/build.sh` no longer aborts on `APP_ADMIN_USERNAME` and `APP_ADMIN_PASSWORD` because `app/Kconfig` now defines placeholder symbols for the existing local secrets overlay. The mismatch was discovered in `01-01` and fixed as a build-unblocking deviation while verifying `01-02`.
