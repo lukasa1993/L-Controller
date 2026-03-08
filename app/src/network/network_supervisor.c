@@ -186,6 +186,38 @@ static void network_supervisor_schedule_retry(struct network_runtime_state *netw
 	k_work_reschedule(&network_state->supervisor_retry_work, delay);
 }
 
+static void network_supervisor_schedule_recovery(struct network_runtime_state *network_state)
+{
+	network_supervisor_arm_retry_deadline(network_state);
+	network_supervisor_update_connectivity_state(network_state);
+	network_supervisor_schedule_retry(network_state,
+				 network_supervisor_retry_delay(network_state));
+}
+
+static bool network_supervisor_wait_for_bringup(struct network_runtime_state *network_state)
+{
+	if (!network_state->bringup_in_progress) {
+		return false;
+	}
+
+	network_supervisor_update_connectivity_state(network_state);
+	network_supervisor_schedule_retry(network_state,
+				 network_supervisor_bringup_delay(network_state));
+	return true;
+}
+
+static bool network_supervisor_wait_for_retry_window(struct network_runtime_state *network_state)
+{
+	if (!network_supervisor_retry_wait_active(network_state)) {
+		return false;
+	}
+
+	network_supervisor_update_connectivity_state(network_state);
+	network_supervisor_schedule_retry(network_state,
+				 network_supervisor_retry_delay(network_state));
+	return true;
+}
+
 static struct network_runtime_state *network_supervisor_state_from_work(struct k_work *work)
 {
 	struct k_work_delayable *delayable = CONTAINER_OF(work, struct k_work_delayable, work);
@@ -200,6 +232,26 @@ static struct app_wifi_config network_supervisor_retry_wifi_config(
 
 	wifi_config.timeout_ms = network_state->retry_interval_ms;
 	return wifi_config;
+}
+
+static void network_supervisor_start_recovery_bringup(
+	struct network_runtime_state *network_state)
+{
+	struct app_wifi_config wifi_config = network_supervisor_retry_wifi_config(network_state);
+	int ret;
+
+	network_supervisor_clear_retry_deadline(network_state);
+	ret = wifi_lifecycle_connect_once(network_state, &wifi_config);
+	if (ret != 0) {
+		network_supervisor_record_failure(network_state, NETWORK_FAILURE_STAGE_CONNECT, ret);
+		network_supervisor_schedule_recovery(network_state);
+		return;
+	}
+
+	network_supervisor_start_bringup(network_state);
+	network_supervisor_update_connectivity_state(network_state);
+	network_supervisor_schedule_retry(network_state,
+				 network_supervisor_bringup_delay(network_state));
 }
 
 static void network_supervisor_retry_work_handler(struct k_work *work)
@@ -225,7 +277,7 @@ static void network_supervisor_retry_work_handler(struct k_work *work)
 					   ? network_state->last_disconnect_status
 					   : -ECONNRESET)
 					: (network_state->connect_status ? network_state->connect_status : -EIO));
-			network_supervisor_arm_retry_deadline(network_state);
+				network_supervisor_arm_retry_deadline(network_state);
 		}
 	}
 
@@ -250,36 +302,15 @@ static void network_supervisor_retry_work_handler(struct k_work *work)
 	}
 
 	if (!network_state->wifi_connected) {
-		if (network_state->bringup_in_progress) {
-			network_supervisor_update_connectivity_state(network_state);
-			network_supervisor_schedule_retry(network_state,
-					 network_supervisor_bringup_delay(network_state));
+		if (network_supervisor_wait_for_bringup(network_state)) {
 			return;
 		}
 
-		if (network_supervisor_retry_wait_active(network_state)) {
-			network_supervisor_update_connectivity_state(network_state);
-			network_supervisor_schedule_retry(network_state,
-					 network_supervisor_retry_delay(network_state));
+		if (network_supervisor_wait_for_retry_window(network_state)) {
 			return;
 		}
 
-		network_supervisor_clear_retry_deadline(network_state);
-		wifi_config = network_supervisor_retry_wifi_config(network_state);
-		ret = wifi_lifecycle_connect_once(network_state, &wifi_config);
-		if (ret != 0) {
-			network_supervisor_record_failure(network_state, NETWORK_FAILURE_STAGE_CONNECT, ret);
-			network_supervisor_arm_retry_deadline(network_state);
-			network_supervisor_update_connectivity_state(network_state);
-			network_supervisor_schedule_retry(network_state,
-					 network_supervisor_retry_delay(network_state));
-			return;
-		}
-
-		network_supervisor_start_bringup(network_state);
-		network_supervisor_update_connectivity_state(network_state);
-		network_supervisor_schedule_retry(network_state,
-					 network_supervisor_bringup_delay(network_state));
+		network_supervisor_start_recovery_bringup(network_state);
 		return;
 	}
 
@@ -290,36 +321,15 @@ static void network_supervisor_retry_work_handler(struct k_work *work)
 			network_supervisor_arm_retry_deadline(network_state);
 		}
 
-		if (network_state->bringup_in_progress) {
-			network_supervisor_update_connectivity_state(network_state);
-			network_supervisor_schedule_retry(network_state,
-					 network_supervisor_bringup_delay(network_state));
+		if (network_supervisor_wait_for_bringup(network_state)) {
 			return;
 		}
 
-		if (network_supervisor_retry_wait_active(network_state)) {
-			network_supervisor_update_connectivity_state(network_state);
-			network_supervisor_schedule_retry(network_state,
-					 network_supervisor_retry_delay(network_state));
+		if (network_supervisor_wait_for_retry_window(network_state)) {
 			return;
 		}
 
-		network_supervisor_clear_retry_deadline(network_state);
-		wifi_config = network_supervisor_retry_wifi_config(network_state);
-		ret = wifi_lifecycle_connect_once(network_state, &wifi_config);
-		if (ret != 0) {
-			network_supervisor_record_failure(network_state, NETWORK_FAILURE_STAGE_CONNECT, ret);
-			network_supervisor_arm_retry_deadline(network_state);
-			network_supervisor_update_connectivity_state(network_state);
-			network_supervisor_schedule_retry(network_state,
-					 network_supervisor_retry_delay(network_state));
-			return;
-		}
-
-		network_supervisor_start_bringup(network_state);
-		network_supervisor_update_connectivity_state(network_state);
-		network_supervisor_schedule_retry(network_state,
-					 network_supervisor_bringup_delay(network_state));
+		network_supervisor_start_recovery_bringup(network_state);
 		return;
 	}
 
@@ -334,10 +344,7 @@ static void network_supervisor_retry_work_handler(struct k_work *work)
 		network_supervisor_record_failure(network_state, NETWORK_FAILURE_STAGE_REACHABILITY,
 					  ret);
 		network_supervisor_complete_startup(network_state);
-		network_supervisor_update_connectivity_state(network_state);
-		network_supervisor_arm_retry_deadline(network_state);
-		network_supervisor_schedule_retry(network_state,
-					 network_supervisor_retry_delay(network_state));
+		network_supervisor_schedule_recovery(network_state);
 		return;
 	}
 
@@ -395,10 +402,7 @@ int network_supervisor_start(struct network_runtime_state *network_state,
 					  network_supervisor_startup_failure_stage(network_state),
 					  -ETIMEDOUT);
 		network_supervisor_complete_startup(network_state);
-		network_supervisor_arm_retry_deadline(network_state);
-		network_supervisor_update_connectivity_state(network_state);
-		network_supervisor_schedule_retry(network_state,
-					 network_supervisor_retry_delay(network_state));
+		network_supervisor_schedule_recovery(network_state);
 		return 0;
 	}
 

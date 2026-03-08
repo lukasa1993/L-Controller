@@ -81,6 +81,12 @@ int app_boot(struct app_context *app_context)
 			network_supervisor_connectivity_state_text(
 				network_status.connectivity_state));
 
+		if (network_status.connectivity_state != NETWORK_CONNECTIVITY_HEALTHY) {
+			LOG_WRN("Continuing boot with background network recovery in %s",
+				network_supervisor_connectivity_state_text(
+					network_status.connectivity_state));
+		}
+
 		if (network_status.last_failure.recorded) {
 			LOG_WRN("Most recent network failure during %s: %d",
 				network_supervisor_failure_stage_text(
