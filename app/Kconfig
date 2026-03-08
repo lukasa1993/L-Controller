@@ -21,6 +21,14 @@ config APP_WIFI_TIMEOUT_MS
 	default 90000
 	range 1000 600000
 
+config APP_WIFI_RETRY_INTERVAL_MS
+	int "Wi-Fi reconnect retry interval in milliseconds"
+	default 5000
+	range 1000 600000
+	help
+	  Retry cadence used by the network supervisor after startup or runtime
+	  network degradation.
+
 config APP_REACHABILITY_HOST
 	string "Hostname used for post-connect reachability check"
 	default "example.com"

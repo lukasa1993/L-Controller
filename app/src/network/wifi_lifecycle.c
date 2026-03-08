@@ -83,6 +83,11 @@ static void clear_ipv4_state(struct network_runtime_state *network_state)
 	memset(&network_state->leased_ipv4, 0, sizeof(network_state->leased_ipv4));
 }
 
+static void schedule_supervisor_retry(struct network_runtime_state *network_state)
+{
+	k_work_reschedule(&network_state->supervisor_retry_work, K_NO_WAIT);
+}
+
 static void handle_wifi_connect_result(struct network_runtime_state *network_state,
 				       struct net_mgmt_event_callback *cb)
 {
@@ -100,6 +105,7 @@ static void handle_wifi_connect_result(struct network_runtime_state *network_sta
 	}
 
 	k_sem_give(&network_state->connect_sem);
+	schedule_supervisor_retry(network_state);
 }
 
 static void handle_wifi_disconnect_result(struct network_runtime_state *network_state,
@@ -115,6 +121,7 @@ static void handle_wifi_disconnect_result(struct network_runtime_state *network_
 
 	LOG_WRN("Wi-Fi disconnected: %d", status->status);
 	log_iface_status(network_state);
+	schedule_supervisor_retry(network_state);
 }
 
 static void handle_ipv4_dhcp_bound(struct network_runtime_state *network_state,
@@ -129,6 +136,7 @@ static void handle_ipv4_dhcp_bound(struct network_runtime_state *network_state,
 	net_addr_ntop(AF_INET, &network_state->leased_ipv4, ip_buf, sizeof(ip_buf));
 	LOG_INF("DHCP IPv4 address: %s", ip_buf);
 	k_sem_give(&network_state->ipv4_sem);
+	schedule_supervisor_retry(network_state);
 }
 
 static void handle_ipv4_dhcp_stop(struct network_runtime_state *network_state)
@@ -136,6 +144,7 @@ static void handle_ipv4_dhcp_stop(struct network_runtime_state *network_state)
 	network_state->ipv4_lease_lost = true;
 	clear_ipv4_state(network_state);
 	LOG_WRN("DHCP IPv4 lease lost");
+	schedule_supervisor_retry(network_state);
 }
 
 static void handle_ipv4_addr_del(struct network_runtime_state *network_state)
@@ -143,6 +152,7 @@ static void handle_ipv4_addr_del(struct network_runtime_state *network_state)
 	network_state->ipv4_lease_lost = true;
 	clear_ipv4_state(network_state);
 	LOG_WRN("IPv4 address removed");
+	schedule_supervisor_retry(network_state);
 }
 
 static void wifi_event_handler(struct net_mgmt_event_callback *cb, uint64_t mgmt_event,
@@ -197,6 +207,7 @@ static void wifi_ready_cb(bool ready)
 	wifi_ready_state->wifi_ready = ready;
 	LOG_INF("Wi-Fi ready state changed: %s", ready ? "ready" : "not-ready");
 	k_sem_give(&wifi_ready_state->wifi_ready_sem);
+	schedule_supervisor_retry(wifi_ready_state);
 }
 
 void wifi_lifecycle_init(struct network_runtime_state *network_state, struct net_if *wifi_iface)

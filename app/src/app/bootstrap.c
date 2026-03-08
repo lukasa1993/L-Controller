@@ -19,6 +19,7 @@ static int load_app_config(struct app_context *app_context)
 			.ssid = CONFIG_APP_WIFI_SSID,
 			.psk = CONFIG_APP_WIFI_PSK,
 			.timeout_ms = CONFIG_APP_WIFI_TIMEOUT_MS,
+			.retry_interval_ms = CONFIG_APP_WIFI_RETRY_INTERVAL_MS,
 		},
 		.reachability = {
 			.host = CONFIG_APP_REACHABILITY_HOST,
@@ -79,6 +80,13 @@ int app_boot(struct app_context *app_context)
 		LOG_INF("Network supervisor entered %s",
 			network_supervisor_connectivity_state_text(
 				network_status.connectivity_state));
+
+		if (network_status.last_failure.recorded) {
+			LOG_WRN("Most recent network failure during %s: %d",
+				network_supervisor_failure_stage_text(
+					network_status.last_failure.failure_stage),
+				network_status.last_failure.reason);
+		}
 	}
 
 	LOG_INF("APP_READY");

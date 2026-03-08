@@ -9,6 +9,7 @@ struct app_wifi_config {
 	const char *psk;
 	enum wifi_security_type security;
 	int32_t timeout_ms;
+	int32_t retry_interval_ms;
 };
 
 struct app_reachability_config {
