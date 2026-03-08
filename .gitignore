@@ -4,5 +4,3 @@
 .venv/
 build/
 app/wifi.secrets.conf
-
-.planning/

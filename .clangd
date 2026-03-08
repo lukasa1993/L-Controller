@@ -1,0 +1,4 @@
+CompileFlags:
+  CompilationDatabase: build/nrf7002dk_nrf5340_cpuapp/app
+  Remove:
+    - -fno-printf-return-value

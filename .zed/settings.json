@@ -1,0 +1,9 @@
+{
+  "lsp": {
+    "clangd": {
+      "binary": {
+        "arguments": ["--compile-commands-dir=build/nrf7002dk_nrf5340_cpuapp/app"]
+      }
+    }
+  }
+}
