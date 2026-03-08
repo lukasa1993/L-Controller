@@ -33,6 +33,38 @@ config APP_REACHABILITY_HOST
 	string "Hostname used for post-connect reachability check"
 	default "example.com"
 
+config APP_RECOVERY_WATCHDOG_TIMEOUT_MS
+	int "Recovery watchdog timeout in milliseconds"
+	default 30000
+	range 1000 600000
+	help
+	  Hardware watchdog timeout serviced by the recovery manager only while
+	  supervised execution paths remain inside their allowed windows.
+
+config APP_RECOVERY_DEGRADED_PATIENCE_MS
+	int "Recovery degraded patience window in milliseconds"
+	default 120000
+	range 1000 3600000
+	help
+	  Maximum continuous degraded or no-progress window before recovery
+	  treats the condition as confirmed stuck.
+
+config APP_RECOVERY_STABLE_WINDOW_MS
+	int "Recovery stable-run clearing window in milliseconds"
+	default 30000
+	range 1000 600000
+	help
+	  Acceptable-runtime duration required before a prior recovery incident is
+	  considered cleared.
+
+config APP_RECOVERY_COOLDOWN_MS
+	int "Recovery anti-thrash cooldown in milliseconds"
+	default 180000
+	range 1000 3600000
+	help
+	  Minimum suppression window after a recovery-triggered reboot before
+	  another escalation may be considered.
+
 config APP_ADMIN_USERNAME
 	string "Admin username"
 	default ""
