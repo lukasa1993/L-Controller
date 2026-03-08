@@ -51,16 +51,26 @@ print_supervisor_state_markers() {
 		'Network recovered to healthy; last failure=... reason=...'
 }
 
-print_phase2_device_checklist() {
+print_recovery_watchdog_markers() {
+	printf '%s\n' \
+		'Recovery watchdog armed timeout_ms=...' \
+		'Recovery escalation trigger=confirmed-stuck state=... stage=... reason=...' \
+		'Previous recovery reset=confirmed-stuck hw=0x... state=... stage=... reason=...' \
+		'Previous recovery reset=watchdog-starvation hw=0x... state=... stage=... reason=...' \
+		'Recovery cooldown active for ... ms after previous reset' \
+		'Recovery incident cleared after stable window ... ms'
+}
+
+print_phase3_device_checklist() {
 	printf '%s\n' \
 		'Re-run ./scripts/validate.sh first so the canonical automated build path is green.' \
 		'Flash the latest firmware with ./scripts/flash.sh.' \
 		'Open the device console with ./scripts/console.sh.' \
-		'Confirm a normal boot reaches the ready-state markers and Network supervisor state=healthy.' \
-		'Break Wi-Fi or the boot dependency path and confirm Network supervisor state=degraded-retrying.' \
-		'Keep Wi-Fi and DHCP up while breaking upstream reachability, then confirm Network supervisor state=lan-up-upstream-degraded.' \
-		'Restore the failed path and confirm Network recovered to healthy; last failure=... reason=... plus Network supervisor state=healthy.' \
-		'Record which healthy, degraded-retrying, upstream-degraded, and recovery scenarios passed or failed.'
+		'Confirm a healthy boot reaches the ready-state markers, arms the watchdog, and enters Network supervisor state=healthy.' \
+		'Force a long-enough degraded or stalled path and confirm the recovery path eventually escalates instead of hanging forever.' \
+		'After the recovery reset, confirm the next boot logs the retained reset cause and recovery cooldown window.' \
+		'Use the selected lab workflow to confirm a watchdog-owned reset path and record the next-boot reset cause.' \
+		'Record whether the healthy stability, long-degraded escalation, reboot-breadcrumb, watchdog-reset, and anti-thrash scenarios passed or failed.'
 }
 
 maybe_add_jlink_to_path() {
