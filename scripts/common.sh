@@ -24,6 +24,25 @@ need_cmd() {
 	command -v "$1" >/dev/null 2>&1 || die "Missing command: $1"
 }
 
+run_repo_script() {
+	local script="$1"
+	shift
+
+	local script_path="$ROOT_DIR/$script"
+	[ -f "$script_path" ] || die "Missing script: $script"
+	[ -x "$script_path" ] || die "Script is not executable: $script"
+
+	"$script_path" "$@"
+}
+
+print_ready_state_markers() {
+	printf '%s\n' \
+		'Wi-Fi connected' \
+		'DHCP IPv4 address: ...' \
+		'Reachability check passed' \
+		'APP_READY'
+}
+
 maybe_add_jlink_to_path() {
 	local candidate
 	for candidate in \
