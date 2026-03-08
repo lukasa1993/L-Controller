@@ -51,6 +51,18 @@ print_supervisor_state_markers() {
 		'Network recovered to healthy; last failure=... reason=...'
 }
 
+print_phase2_device_checklist() {
+	printf '%s\n' \
+		'Re-run ./scripts/validate.sh first so the canonical automated build path is green.' \
+		'Flash the latest firmware with ./scripts/flash.sh.' \
+		'Open the device console with ./scripts/console.sh.' \
+		'Confirm a normal boot reaches the ready-state markers and Network supervisor state=healthy.' \
+		'Break Wi-Fi or the boot dependency path and confirm Network supervisor state=degraded-retrying.' \
+		'Keep Wi-Fi and DHCP up while breaking upstream reachability, then confirm Network supervisor state=lan-up-upstream-degraded.' \
+		'Restore the failed path and confirm Network recovered to healthy; last failure=... reason=... plus Network supervisor state=healthy.' \
+		'Record which healthy, degraded-retrying, upstream-degraded, and recovery scenarios passed or failed.'
+}
+
 maybe_add_jlink_to_path() {
 	local candidate
 	for candidate in \

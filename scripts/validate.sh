@@ -56,3 +56,9 @@ printf '  4. Confirm these supervisor-state markers during the device run:\n'
 while IFS= read -r marker; do
 	printf '     - %s\n' "$marker"
 done < <(print_supervisor_state_markers)
+printf '  5. Complete this blocking Phase 2 device checklist before approval:\n'
+checklist_step=1
+while IFS= read -r item; do
+	printf '     %d. %s\n' "$checklist_step" "$item"
+	checklist_step=$((checklist_step + 1))
+done < <(print_phase2_device_checklist)
