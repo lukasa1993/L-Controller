@@ -4,3 +4,4 @@
 .venv/
 build/
 app/wifi.secrets.conf
+!.zed/settings.json
