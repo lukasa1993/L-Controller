@@ -9,6 +9,7 @@
 #include <zephyr/net/net_mgmt.h>
 
 struct app_config;
+struct recovery_manager;
 
 enum network_connectivity_state {
 	NETWORK_CONNECTIVITY_NOT_READY,
@@ -36,6 +37,7 @@ struct network_failure_record {
 struct network_runtime_state {
 	struct net_if *wifi_iface;
 	const struct app_config *config;
+	struct recovery_manager *recovery;
 	struct net_mgmt_event_callback wifi_event_callback;
 	struct net_mgmt_event_callback ipv4_event_callback;
 	struct k_sem wifi_ready_sem;

@@ -6,8 +6,19 @@
 
 #include "network/reachability.h"
 #include "network/wifi_lifecycle.h"
+#include "recovery/recovery.h"
 
 LOG_MODULE_DECLARE(app, CONFIG_LOG_DEFAULT_LEVEL);
+
+static void network_supervisor_report_progress(struct network_runtime_state *network_state,
+					      const char *reason)
+{
+	if (network_state->recovery == NULL) {
+		return;
+	}
+
+	recovery_manager_report_network_progress(network_state->recovery, network_state, reason);
+}
 
 static k_timeout_t remaining_timeout(int64_t deadline_ms)
 {
@@ -33,6 +44,7 @@ static void network_supervisor_set_connectivity_state(
 	network_state->connectivity_state = next_state;
 	LOG_INF("Network supervisor state=%s",
 		network_supervisor_connectivity_state_text(next_state));
+	network_supervisor_report_progress(network_state, "connectivity-state-change");
 
 	if (next_state == NETWORK_CONNECTIVITY_HEALTHY &&
 	    previous_state != NETWORK_CONNECTIVITY_HEALTHY &&
@@ -86,6 +98,7 @@ static void network_supervisor_record_failure(struct network_runtime_state *netw
 
 	LOG_WRN("Network failure stage=%s reason=%d",
 		network_supervisor_failure_stage_text(stage), reason);
+	network_supervisor_report_progress(network_state, "network-failure");
 }
 
 static enum network_failure_stage network_supervisor_startup_failure_stage(
@@ -173,11 +186,13 @@ static void network_supervisor_complete_startup(struct network_runtime_state *ne
 	network_state->startup_settled = true;
 
 	if (!network_state->startup_wait_pending) {
+		network_supervisor_report_progress(network_state, "startup-settled");
 		return;
 	}
 
 	network_state->startup_wait_pending = false;
 	k_sem_give(&network_state->startup_outcome_sem);
+	network_supervisor_report_progress(network_state, "startup-settled");
 }
 
 static void network_supervisor_schedule_retry(struct network_runtime_state *network_state,
@@ -352,13 +367,15 @@ static void network_supervisor_retry_work_handler(struct k_work *work)
 	network_supervisor_update_connectivity_state(network_state);
 }
 
-void network_supervisor_init(struct network_runtime_state *network_state, struct net_if *wifi_iface)
+void network_supervisor_init(struct network_runtime_state *network_state, struct net_if *wifi_iface,
+			     struct recovery_manager *recovery)
 {
 	if (network_state == NULL) {
 		return;
 	}
 
 	wifi_lifecycle_init(network_state, wifi_iface);
+	network_state->recovery = recovery;
 	k_sem_init(&network_state->startup_outcome_sem, 0, 1);
 	k_work_init_delayable(&network_state->supervisor_retry_work,
 			     network_supervisor_retry_work_handler);

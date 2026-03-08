@@ -6,8 +6,25 @@
 #include "app/bootstrap.h"
 #include "network/network_supervisor.h"
 #include "network/wifi_lifecycle.h"
+#include "recovery/recovery.h"
 
 LOG_MODULE_DECLARE(app, CONFIG_LOG_DEFAULT_LEVEL);
+
+static void log_preserved_recovery_reset(const struct recovery_manager *manager)
+{
+	const struct recovery_reset_cause *reset_cause = recovery_manager_last_reset_cause(manager);
+
+	if (reset_cause == NULL || !reset_cause->available) {
+		return;
+	}
+
+	LOG_WRN("Previous recovery reset=%s hw=0x%x state=%s stage=%s reason=%d",
+		recovery_manager_reset_trigger_text(reset_cause->trigger),
+		reset_cause->hardware_reset_cause,
+		network_supervisor_connectivity_state_text(reset_cause->connectivity_state),
+		network_supervisor_failure_stage_text(reset_cause->failure_stage),
+		reset_cause->reason);
+}
 
 static int load_app_config(struct app_context *app_context)
 {
@@ -24,6 +41,12 @@ static int load_app_config(struct app_context *app_context)
 		.reachability = {
 			.host = CONFIG_APP_REACHABILITY_HOST,
 			.port = 80,
+		},
+		.recovery = {
+			.watchdog_timeout_ms = CONFIG_APP_RECOVERY_WATCHDOG_TIMEOUT_MS,
+			.degraded_patience_ms = CONFIG_APP_RECOVERY_DEGRADED_PATIENCE_MS,
+			.stable_window_ms = CONFIG_APP_RECOVERY_STABLE_WINDOW_MS,
+			.cooldown_ms = CONFIG_APP_RECOVERY_COOLDOWN_MS,
 		},
 	};
 
@@ -58,7 +81,14 @@ int app_boot(struct app_context *app_context)
 		return -ENODEV;
 	}
 
-	network_supervisor_init(&app_context->network_state, wifi_iface);
+	ret = recovery_manager_init(&app_context->recovery, app_context);
+	if (ret != 0) {
+		return ret;
+	}
+
+	log_preserved_recovery_reset(&app_context->recovery);
+	network_supervisor_init(&app_context->network_state, wifi_iface, &app_context->recovery);
+	recovery_manager_startup_begin(&app_context->recovery);
 
 	LOG_INF("Booting Wi-Fi bring-up app on %s", app_context->config.board_name);
 
@@ -74,6 +104,8 @@ int app_boot(struct app_context *app_context)
 
 		return ret;
 	}
+
+	recovery_manager_startup_complete(&app_context->recovery);
 
 	ret = network_supervisor_get_status(&app_context->network_state, &network_status);
 	if (ret == 0) {

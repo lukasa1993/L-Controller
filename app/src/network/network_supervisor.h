@@ -5,6 +5,8 @@
 #include "app/app_config.h"
 #include "network/network_state.h"
 
+struct recovery_manager;
+
 struct network_supervisor_status {
 	enum network_connectivity_state connectivity_state;
 	bool wifi_ready;
@@ -17,7 +19,8 @@ struct network_supervisor_status {
 };
 
 void network_supervisor_init(struct network_runtime_state *network_state,
-			     struct net_if *wifi_iface);
+			     struct net_if *wifi_iface,
+			     struct recovery_manager *recovery);
 int network_supervisor_start(struct network_runtime_state *network_state,
 			     const struct app_config *config);
 int network_supervisor_get_status(struct network_runtime_state *network_state,
