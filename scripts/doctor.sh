@@ -93,7 +93,7 @@ else
 fi
 
 echo
-echo "USB and serial"
+echo "USB and serial (required for flash/console smoke)"
 if ioreg -p IOUSB -l -w0 | grep -Eqi 'SEGGER|J-Link|nRF|Nordic'; then
 	printf '[ok]   %-16s %s\n' "USB probe" "Detected Nordic/SEGGER USB device"
 else
@@ -113,5 +113,10 @@ else
 	printf '[warn] %-16s %s\n' "serial ports" "No /dev/cu.usbmodem* devices found"
 	status=1
 fi
+
+echo
+echo "Validation split"
+printf '[info] %-16s %s\n' "build-first" "Use ./scripts/validate.sh for automated refactor feedback"
+printf '[info] %-16s %s\n' "hardware gate" "Use ./scripts/flash.sh + ./scripts/console.sh after USB/serial checks pass"
 
 exit "$status"
