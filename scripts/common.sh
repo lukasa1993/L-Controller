@@ -61,15 +61,27 @@ print_recovery_watchdog_markers() {
 		'Recovery incident cleared after stable window ... ms'
 }
 
+print_phase3_scenario_labels() {
+	printf '%s\n' \
+		'healthy stability' \
+		'long-degraded escalation' \
+		'reboot breadcrumb and retained reset cause' \
+		'watchdog reset' \
+		'anti-thrash cooldown and stable-window clearing'
+}
+
 print_phase3_device_checklist() {
 	printf '%s\n' \
 		'Re-run ./scripts/validate.sh first so the canonical automated build path is green.' \
 		'Flash the latest firmware with ./scripts/flash.sh.' \
 		'Open the device console with ./scripts/console.sh.' \
-		'Confirm a healthy boot reaches the ready-state markers, arms the watchdog, and enters Network supervisor state=healthy.' \
-		'Force a long-enough degraded or stalled path and confirm the recovery path eventually escalates instead of hanging forever.' \
-		'After the recovery reset, confirm the next boot logs the retained reset cause and recovery cooldown window.' \
-		'Use the selected lab workflow to confirm a watchdog-owned reset path and record the next-boot reset cause.' \
+		'Confirm a healthy boot reaches the ready-state markers, arms the watchdog, enters Network supervisor state=healthy, and stays stable without a false reset.' \
+		'Introduce brief or transient Wi-Fi/reachability failures and confirm ordinary degraded states and retries happen before escalation.' \
+		'Hold the degraded or stalled condition beyond the patience window and confirm the recovery path escalates to a whole-device reset.' \
+		'On the next boot, confirm the retained reset cause is visible together with the recovery cooldown/stable-window logs and preserved failure breadcrumb.' \
+		'Use the selected lab workflow to confirm a watchdog-feed starvation path produces a watchdog-owned reset and a visible next-boot reset cause.' \
+		'Keep or recreate the fault after reboot and confirm the cooldown window prevents rapid reset thrash.' \
+		'Restore a healthy path and confirm Recovery incident cleared after stable window ... ms once the device is stable long enough.' \
 		'Record whether the healthy stability, long-degraded escalation, reboot-breadcrumb, watchdog-reset, and anti-thrash scenarios passed or failed.'
 }
 

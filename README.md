@@ -54,14 +54,18 @@ Watch for these recovery/watchdog markers during the device run:
 
 Use this blocking device checklist before Phase 3 approval:
 
+This hardware gate is blocking for phase approval. Do not mark Phase 3 complete until a real-device run records each scenario below.
+
 1. Re-run `./scripts/validate.sh` and keep the automated `./scripts/build.sh` path green.
 2. Flash the latest image with `./scripts/flash.sh`.
 3. Open the live device log with `./scripts/console.sh`.
-4. Confirm a healthy boot reaches the ready-state markers above, arms the watchdog, and enters `Network supervisor state=healthy`.
-5. Force a long-enough degraded or stalled path and confirm the recovery path eventually escalates instead of hanging forever.
-6. After the recovery reset, confirm the next boot logs the retained reset cause and the recovery cooldown/stable-window policy.
-7. Use the selected lab workflow to confirm a watchdog-owned reset path and record the next-boot reset cause.
-8. Record whether the healthy stability, long-degraded escalation, reboot-breadcrumb, watchdog-reset, and anti-thrash scenarios passed or failed.
+4. Confirm a healthy boot reaches the ready-state markers above, arms the watchdog, enters `Network supervisor state=healthy`, and stays stable through the normal run window without a false reset.
+5. Introduce brief or transient Wi-Fi/reachability failures and confirm ordinary degraded states and retries happen first instead of every transient immediately resetting the device.
+6. Hold the degraded or stalled condition beyond the patience window and confirm `Recovery escalation trigger=confirmed-stuck state=... stage=... reason=...` produces a whole-device reset.
+7. On the next boot, confirm the retained reset cause is clearly visible through `Previous recovery reset=confirmed-stuck ...`, the recovery cooldown/stable-window logs, and the preserved failure breadcrumb.
+8. Use the selected lab workflow to confirm a watchdog-feed starvation path causes a watchdog-owned reset and the next boot reports `Previous recovery reset=watchdog-starvation ...`.
+9. Keep or recreate the fault after reboot and confirm the cooldown window prevents rapid reset thrash; once the device stays healthy long enough, confirm `Recovery incident cleared after stable window ... ms`.
+10. Record whether the healthy stability, long-degraded escalation, reboot-breadcrumb, watchdog-reset, and anti-thrash scenarios passed or failed.
 
 If the device run fails, record the exact scenario and last visible failure instead of treating the phase as complete.
 

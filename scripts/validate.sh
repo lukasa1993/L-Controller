@@ -66,3 +66,8 @@ while IFS= read -r item; do
 	printf '     %d. %s\n' "$checklist_step" "$item"
 	checklist_step=$((checklist_step + 1))
 done < <(print_phase3_device_checklist)
+printf '  7. Record outcomes for these blocking Phase 3 scenarios:\n'
+while IFS= read -r scenario; do
+	printf '     - %s\n' "$scenario"
+done < <(print_phase3_scenario_labels)
+log './scripts/validate.sh remains the canonical automated validation command; Phase 3 approval stays blocked until the real-device checklist and scenario results are recorded.'
