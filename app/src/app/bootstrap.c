@@ -10,8 +10,9 @@
 
 LOG_MODULE_DECLARE(app, CONFIG_LOG_DEFAULT_LEVEL);
 
-static void log_preserved_recovery_reset(const struct recovery_manager *manager)
+static void log_preserved_recovery_reset(const struct app_context *app_context)
 {
+	const struct recovery_manager *manager = &app_context->recovery;
 	const struct recovery_reset_cause *reset_cause = recovery_manager_last_reset_cause(manager);
 
 	if (reset_cause == NULL || !reset_cause->available) {
@@ -24,6 +25,9 @@ static void log_preserved_recovery_reset(const struct recovery_manager *manager)
 		network_supervisor_connectivity_state_text(reset_cause->connectivity_state),
 		network_supervisor_failure_stage_text(reset_cause->failure_stage),
 		reset_cause->reason);
+	LOG_WRN("Recovery cooldown=%dms stable_window=%dms",
+		app_context->config.recovery.cooldown_ms,
+		app_context->config.recovery.stable_window_ms);
 }
 
 static int load_app_config(struct app_context *app_context)
@@ -86,7 +90,7 @@ int app_boot(struct app_context *app_context)
 		return ret;
 	}
 
-	log_preserved_recovery_reset(&app_context->recovery);
+	log_preserved_recovery_reset(app_context);
 	network_supervisor_init(&app_context->network_state, wifi_iface, &app_context->recovery);
 	recovery_manager_startup_begin(&app_context->recovery);
 

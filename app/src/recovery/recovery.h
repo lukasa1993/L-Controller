@@ -37,7 +37,7 @@ struct recovery_manager {
 	int64_t last_progress_at_ms;
 	int64_t degraded_since_ms;
 	int64_t stable_since_ms;
-	int64_t escalation_blocked_until_ms;
+	int64_t cooldown_until_ms;
 	bool startup_guard_active;
 	bool runtime_supervision_active;
 	bool prior_recovery_active;
