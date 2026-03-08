@@ -46,11 +46,11 @@ Plans:
   1. Device boots using predefined Wi-Fi credentials through a supervisor-owned connection flow.
   2. Transient disconnects trigger bounded reconnect behavior without forcing a whole-device reboot.
   3. The system exposes clear connectivity state and last network failure information for downstream services and the future panel.
-**Plans**: 1/3 plans executed
+**Plans**: 2/3 plans executed
 
 Plans:
 - [x] 02-01: Implement the network supervisor state machine and event handling boundaries
-- [ ] 02-02: Add reconnect policy, backoff, and reachability-state reporting
+- [x] 02-02: Add reconnect policy, backoff, and reachability-state reporting
 - [ ] 02-03: Validate the supervisor against common Wi-Fi failure modes and regressions
 
 ### Phase 3: Recovery & Watchdog
@@ -154,7 +154,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation Refactor | 1/3 | In Progress | - |
-| 2. Wi-Fi Supervision | 1/3 | In Progress | - |
+| 2. Wi-Fi Supervision | 2/3 | In Progress | - |
 | 3. Recovery & Watchdog | 0/2 | Not started | - |
 | 4. Persistent Configuration | 0/3 | Not started | - |
 | 5. Local Control Panel | 0/3 | Not started | - |

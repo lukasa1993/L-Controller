@@ -16,7 +16,7 @@ Requirements for the initial release. Each maps to roadmap phases.
 ### Networking & Recovery
 
 - [x] **NET-01**: Device can connect at boot using predefined build-time Wi-Fi credentials
-- [ ] **NET-02**: Device can automatically recover from transient Wi-Fi disconnects without a full reboot
+- [x] **NET-02**: Device can automatically recover from transient Wi-Fi disconnects without a full reboot
 - [x] **NET-03**: Device exposes current connectivity state and last network failure state to the local admin panel
 - [ ] **REC-01**: Device supervises critical execution paths with watchdog logic
 - [ ] **REC-02**: Device triggers a full restart only after confirmed unrecoverable subsystem failure or watchdog starvation
@@ -101,7 +101,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PLAT-02 | Phase 1 | Complete |
 | PLAT-03 | Phase 1 | Complete |
 | NET-01 | Phase 2 | Complete |
-| NET-02 | Phase 2 | Pending |
+| NET-02 | Phase 2 | Complete |
 | NET-03 | Phase 2 | Complete |
 | REC-01 | Phase 3 | Pending |
 | REC-02 | Phase 3 | Pending |

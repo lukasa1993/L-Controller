@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: ready_to_execute
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-03-08T19:24:57.663Z"
-last_activity: 2026-03-08 — Completed 02-01 supervisor boundary, connectivity contract, and lifecycle event handoff
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-03-08T19:44:00.928Z"
+last_activity: 2026-03-08 — Completed 02-02 bounded startup, steady retry supervision, and reachability-aware degraded reporting
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 6
-  completed_plans: 4
-  percent: 67
+  completed_plans: 5
+  percent: 83
 ---
 
 # Project State
@@ -26,18 +26,18 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 ## Current Position
 
 Phase: 2 of 8 (Wi-Fi Supervision) — in progress
-Plan: 2 of 3 in current phase
+Plan: 3 of 3 in current phase
 Status: Ready to execute
-Last activity: 2026-03-08 — Completed 02-01 supervisor boundary, connectivity contract, and lifecycle event handoff
+Last activity: 2026-03-08 — Completed 02-02 bounded startup, steady retry supervision, and reachability-aware degraded reporting
 
-Progress: [███████░░░] 67%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 5.0 min
-- Total execution time: 0.3 hours
+- Total plans completed: 5
+- Average duration: 7.2 min
+- Total execution time: 0.6 hours
 
 **By Phase:**
 
@@ -48,11 +48,12 @@ Progress: [███████░░░] 67%
 | Phase 01-foundation-refactor P03 | 7 min | 4 tasks | 4 files |
 
 **Recent Trend:**
-- Last 5 plans: Phase 01 plan 01 (3 min), Phase 01 plan 02 (6 min), Phase 01 plan 03 (7 min), Phase 02 plan 01 (4 min)
-- Trend: Stable
+- Last 5 plans: Phase 01 plan 01 (3 min), Phase 01 plan 02 (6 min), Phase 01 plan 03 (7 min), Phase 02 plan 01 (4 min), Phase 02 plan 02 (16 min)
+- Trend: Slightly slower during supervision work
 
 *Updated after each plan completion*
 | Phase 02-wi-fi-supervision P01 | 4 min | 3 tasks | 7 files |
+| Phase 02-wi-fi-supervision P02 | 16 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,9 @@ Recent decisions affecting current work:
 - [Phase 02-wi-fi-supervision]: Network policy now starts at network_supervisor_*() while wifi_lifecycle.* stays limited to low-level callbacks and connect primitives.
 - [Phase 02-wi-fi-supervision]: Connectivity reporting uses a named enum plus structured last_failure so future panel and recovery code can read one operator-meaningful contract.
 - [Phase 02-wi-fi-supervision]: DHCP-stop and IPv4-address removal callbacks only clear raw link state; the supervisor derives degraded status above them.
+- [Phase 02-wi-fi-supervision]: Reuse CONFIG_APP_WIFI_TIMEOUT_MS as the bounded startup window while retries run on CONFIG_APP_WIFI_RETRY_INTERVAL_MS.
+- [Phase 02-wi-fi-supervision]: Boot now continues once the supervisor reaches healthy, upstream-degraded, or degraded-retrying startup outcome instead of blocking forever on full health.
+- [Phase 02-wi-fi-supervision]: Supervisor status snapshots preserve the most recent failure across recovery and expose the latest reachability result for downstream consumers.
 
 ### Pending Todos
 
@@ -90,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-08T19:24:57.661Z
-Stopped at: Completed 02-01-PLAN.md
-Resume file: .planning/phases/02-wi-fi-supervision/02-02-PLAN.md
+Last session: 2026-03-08T19:44:00.926Z
+Stopped at: Completed 02-02-PLAN.md
+Resume file: .planning/phases/02-wi-fi-supervision/02-03-PLAN.md
