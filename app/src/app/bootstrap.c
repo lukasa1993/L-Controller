@@ -4,7 +4,7 @@
 #include <zephyr/net/net_if.h>
 
 #include "app/bootstrap.h"
-#include "network/reachability.h"
+#include "network/network_supervisor.h"
 #include "network/wifi_lifecycle.h"
 
 LOG_MODULE_DECLARE(app, CONFIG_LOG_DEFAULT_LEVEL);
@@ -38,6 +38,7 @@ static int load_app_config(struct app_context *app_context)
 
 int app_boot(struct app_context *app_context)
 {
+	struct network_supervisor_status network_status;
 	struct net_if *wifi_iface;
 	int ret;
 
@@ -56,37 +57,28 @@ int app_boot(struct app_context *app_context)
 		return -ENODEV;
 	}
 
-	wifi_lifecycle_init(&app_context->network_state, wifi_iface);
-
-	ret = wifi_lifecycle_register_callbacks(&app_context->network_state);
-	if (ret != 0) {
-		LOG_ERR("Failed to register callbacks: %d", ret);
-		return ret;
-	}
+	network_supervisor_init(&app_context->network_state, wifi_iface);
 
 	LOG_INF("Booting Wi-Fi bring-up app on %s", app_context->config.board_name);
 
-	ret = wifi_lifecycle_wait_for_ready(&app_context->network_state);
+	ret = network_supervisor_start(&app_context->network_state, &app_context->config);
 	if (ret != 0) {
+		if (network_supervisor_get_status(&app_context->network_state, &network_status) == 0 &&
+		    network_status.last_failure.recorded) {
+			LOG_ERR("Network supervisor failed during %s: %d",
+				network_supervisor_failure_stage_text(
+					network_status.last_failure.failure_stage),
+				network_status.last_failure.reason);
+		}
+
 		return ret;
 	}
 
-	ret = wifi_lifecycle_connect_once(&app_context->network_state, &app_context->config.wifi);
-	if (ret != 0) {
-		return ret;
-	}
-
-	ret = wifi_lifecycle_wait_for_connection_and_ipv4(&app_context->network_state,
-							 app_context->config.wifi.timeout_ms);
-	if (ret != 0) {
-		LOG_ERR("Wi-Fi bring-up failed, last disconnect status=%d",
-			app_context->network_state.last_disconnect_status);
-		return ret;
-	}
-
-	ret = reachability_check_host(&app_context->config.reachability);
-	if (ret != 0) {
-		return ret;
+	ret = network_supervisor_get_status(&app_context->network_state, &network_status);
+	if (ret == 0) {
+		LOG_INF("Network supervisor entered %s",
+			network_supervisor_connectivity_state_text(
+				network_status.connectivity_state));
 	}
 
 	LOG_INF("APP_READY");
