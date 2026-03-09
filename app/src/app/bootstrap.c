@@ -6,6 +6,7 @@
 #include "app/bootstrap.h"
 #include "network/network_supervisor.h"
 #include "network/wifi_lifecycle.h"
+#include "persistence/persistence.h"
 #include "recovery/recovery.h"
 
 LOG_MODULE_DECLARE(app, CONFIG_LOG_DEFAULT_LEVEL);
@@ -30,6 +31,49 @@ static void log_preserved_recovery_reset(const struct app_context *app_context)
 		app_context->config.recovery.stable_window_ms);
 }
 
+static bool persistence_status_requires_warning(
+	const struct persistence_section_status *status)
+{
+	return status->reseeded ||
+	       status->state == PERSISTENCE_LOAD_STATE_INVALID_RESET ||
+	       status->state == PERSISTENCE_LOAD_STATE_INCOMPATIBLE_RESET;
+}
+
+static void log_persistence_section_status(
+	const struct persistence_section_status *status)
+{
+	const char *section_text;
+	const char *state_text;
+
+	if (status == NULL) {
+		return;
+	}
+
+	section_text = persistence_section_text(status->section);
+	state_text = persistence_load_state_text(status->state);
+
+	if (persistence_status_requires_warning(status)) {
+		LOG_WRN("Persistence %s: %s%s", section_text, state_text,
+			status->reseeded ? " (reseeded)" : "");
+		return;
+	}
+
+	LOG_INF("Persistence %s: %s", section_text, state_text);
+}
+
+static void log_persistence_load_report(
+	const struct persistence_load_report *load_report)
+{
+	if (load_report == NULL) {
+		return;
+	}
+
+	log_persistence_section_status(&load_report->auth);
+	log_persistence_section_status(&load_report->actions);
+	log_persistence_section_status(&load_report->relay);
+	log_persistence_section_status(&load_report->schedule);
+}
+
 static int load_app_config(struct app_context *app_context)
 {
 	int ret;
@@ -52,6 +96,10 @@ static int load_app_config(struct app_context *app_context)
 			.stable_window_ms = CONFIG_APP_RECOVERY_STABLE_WINDOW_MS,
 			.cooldown_ms = CONFIG_APP_RECOVERY_COOLDOWN_MS,
 		},
+		.persistence = {
+			.layout_version = APP_PERSISTENCE_LAYOUT_VERSION,
+			.default_relay_reboot_policy = APP_RELAY_REBOOT_POLICY_DEFAULT,
+		},
 	};
 
 	ret = wifi_lifecycle_security_from_text(CONFIG_APP_WIFI_SECURITY,
@@ -60,6 +108,32 @@ static int load_app_config(struct app_context *app_context)
 		LOG_ERR("Unsupported CONFIG_APP_WIFI_SECURITY value: %s", CONFIG_APP_WIFI_SECURITY);
 		return ret;
 	}
+
+	return 0;
+}
+
+static int load_persisted_config(struct app_context *app_context)
+{
+	int ret;
+
+	ret = persistence_store_init(&app_context->persistence, &app_context->config);
+	if (ret != 0) {
+		LOG_ERR("Failed to initialize persistence store: %d", ret);
+		return ret;
+	}
+
+	ret = persistence_store_load(&app_context->persistence,
+				     &app_context->persisted_config);
+	if (ret != 0) {
+		LOG_ERR("Failed to load persisted configuration: %d", ret);
+		return ret;
+	}
+
+	LOG_INF("Persistence snapshot ready (layout v%u, relay reboot=%s)",
+		app_context->persisted_config.layout_version,
+		persisted_relay_reboot_policy_text(
+			app_context->persisted_config.relay.reboot_policy));
+	log_persistence_load_report(&app_context->persisted_config.load_report);
 
 	return 0;
 }
@@ -75,6 +149,11 @@ int app_boot(struct app_context *app_context)
 	}
 
 	ret = load_app_config(app_context);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = load_persisted_config(app_context);
 	if (ret != 0) {
 		return ret;
 	}
