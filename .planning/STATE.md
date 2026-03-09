@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-03-09T08:23:13.529Z"
-last_activity: 2026-03-09 — Completed 04-01 persistence boundary and boot-owned snapshot loading
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-03-09T08:39:22.895Z"
+last_activity: 2026-03-09 — Completed 04-02 typed repositories and staged persistence validation
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 11
-  completed_plans: 9
-  percent: 35
+  completed_plans: 10
+  percent: 91
 ---
 
 # Project State
@@ -26,18 +26,18 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 ## Current Position
 
 Phase: 4 of 8 (Persistent Configuration) — in progress
-Plan: 2 of 3 in current phase
+Plan: 3 of 3 in current phase
 Status: Ready to execute next plan
-Last activity: 2026-03-09 — Completed 04-01 persistence boundary and boot-owned snapshot loading
+Last activity: 2026-03-09 — Completed 04-02 typed repositories and staged persistence validation
 
-Progress: [████░░░░░░] 35%
+Progress: [█████████░] 91%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 69.4 min
-- Total execution time: 10.4 hours
+- Total plans completed: 10
+- Average duration: 63.1 min
+- Total execution time: 10.5 hours
 
 **By Phase:**
 
@@ -48,7 +48,7 @@ Progress: [████░░░░░░] 35%
 | Phase 01-foundation-refactor P03 | 7 min | 4 tasks | 4 files |
 
 **Recent Trend:**
-- Last 5 plans: Phase 02 plan 02 (16 min), Phase 02 plan 03 (9 min), Phase 03 plan 01 (5 min), Phase 03 plan 02 (9h 23m), Phase 04 plan 01 (13 min)
+- Last 5 plans: Phase 02 plan 03 (9 min), Phase 03 plan 01 (5 min), Phase 03 plan 02 (9h 23m), Phase 04 plan 01 (13 min), Phase 04 plan 02 (6 min)
 - Trend: The hardware-validation checkpoint still dominates elapsed time while implementation plans remain short.
 
 *Updated after each plan completion*
@@ -58,6 +58,7 @@ Progress: [████░░░░░░] 35%
 | Phase 03-recovery-watchdog P01 | 5 min | 3 tasks | 11 files |
 | Phase 03-recovery-watchdog P02 | 9h 23m | 3 tasks | 3 files |
 | Phase 04-persistent-configuration P01 | 13 min | 3 tasks | 10 files |
+| Phase 04-persistent-configuration P02 | 6 min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,9 @@ Recent decisions affecting current work:
 - [Phase 04-persistent-configuration]: Use a dedicated NVS-backed settings_storage partition inside the persistence boundary.
 - [Phase 04-persistent-configuration]: Keep app_context as the single owner of the mounted persistence backend and resolved snapshot.
 - [Phase 04-persistent-configuration]: Reseed only auth from build-time credentials while other sections fall back with section-local resets or safe defaults.
+- [Phase 04-persistent-configuration]: Future writers save through request-shaped APIs tied to persisted_config, so callers never author raw schema-versioned NVS blobs.
+- [Phase 04-persistent-configuration]: Persistence stages candidate auth/action/relay/schedule updates in RAM, validates unique IDs and schedule references, then commits only the requested sections.
+- [Phase 04-persistent-configuration]: Boot logs summarize the resolved snapshot with action/schedule counts and relay intent without exposing credentials.
 
 ### Pending Todos
 
@@ -110,6 +114,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T08:23:13.527Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-03-09T08:39:22.894Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None

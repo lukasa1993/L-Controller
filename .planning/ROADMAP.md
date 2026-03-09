@@ -76,11 +76,11 @@ Plans:
   2. Configuration changes survive reboot and unexpected power loss within the supported write model.
   3. Corrupt or incompatible stored data is detected and handled safely.
   4. Persistent data access is centralized behind typed configuration APIs.
-**Plans**: 1/3 plans executed
+**Plans**: 2/3 plans executed
 
 Plans:
 - [x] 04-01: Define storage schema, versioning rules, and persistence boundaries
-- [ ] 04-02: Implement typed repositories for auth, action/relay, and schedule configuration
+- [x] 04-02: Implement typed repositories for auth, action/relay, and schedule configuration
 - [ ] 04-03: Add corruption handling, migration hooks, and persistence validation tests
 
 ### Phase 5: Local Control Panel
