@@ -89,4 +89,12 @@ config APP_ADMIN_PASSWORD
 	string "Admin password"
 	default ""
 
+config APP_PANEL_PORT
+	int "Local control panel HTTP port"
+	default 80
+	range 1 65535
+	help
+	  Plain HTTP port exposed by the device on the local LAN for the Phase 5
+	  control panel shell.
+
 endmenu
