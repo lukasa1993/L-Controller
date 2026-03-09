@@ -78,6 +78,25 @@ static void log_persistence_load_report(
 	log_persistence_section_status(&load_report->schedule);
 }
 
+static const char *persisted_relay_desired_state_text(bool last_desired_state)
+{
+	return last_desired_state ? "on" : "off";
+}
+
+static void log_persisted_snapshot_summary(const struct persisted_config *config)
+{
+	if (config == NULL) {
+		return;
+	}
+
+	LOG_INF("Persistence snapshot ready (layout v%u, actions=%u, schedules=%u, relay desired=%s, relay reboot=%s)",
+		config->layout_version,
+		config->actions.count,
+		config->schedule.count,
+		persisted_relay_desired_state_text(config->relay.last_desired_state),
+		persisted_relay_reboot_policy_text(config->relay.reboot_policy));
+}
+
 static int load_app_config(struct app_context *app_context)
 {
 	int ret;
@@ -133,10 +152,7 @@ static int load_persisted_config(struct app_context *app_context)
 		return ret;
 	}
 
-	LOG_INF("Persistence snapshot ready (layout v%u, relay reboot=%s)",
-		app_context->persisted_config.layout_version,
-		persisted_relay_reboot_policy_text(
-			app_context->persisted_config.relay.reboot_policy));
+	log_persisted_snapshot_summary(&app_context->persisted_config);
 	log_persistence_load_report(&app_context->persisted_config.load_report);
 
 	return 0;
