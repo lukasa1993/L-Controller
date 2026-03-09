@@ -13,8 +13,8 @@ LNH Nordic moves from a single-file Wi-Fi bring-up firmware into a mission-criti
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation Refactor** - Split the monolithic firmware into explicit subsystem boundaries and keep the existing boot path working
-- [ ] **Phase 2: Wi-Fi Supervision** - Introduce a dedicated network supervisor with robust reconnect and visibility into connectivity state
-- [ ] **Phase 3: Recovery & Watchdog** - Add conservative fault supervision and reset escalation for true stuck states
+- [x] **Phase 2: Wi-Fi Supervision** - Introduce a dedicated network supervisor with robust reconnect and visibility into connectivity state
+- [x] **Phase 3: Recovery & Watchdog** - Add conservative fault supervision and reset escalation for true stuck states
 - [ ] **Phase 4: Persistent Configuration** - Establish durable, validated storage for auth, actions, relay state rules, and schedules
 - [ ] **Phase 5: Local Control Panel** - Ship the authenticated local HTTP panel with authored HTML/JS assets and operator status views
 - [ ] **Phase 6: Action Engine & Relay Control** - Implement the generic action path and the first real relay on/off behavior
@@ -61,11 +61,11 @@ Plans:
   1. Critical execution paths are supervised by watchdog logic rather than a single generic feed loop.
   2. Minor or transient faults do not trigger device reset loops.
   3. Confirmed stuck states escalate through a defined recovery path to full restart when necessary.
-**Plans**: 2 plans
+**Plans**: 2/2 plans executed
 
 Plans:
 - [x] 03-01: Implement task-level supervision and escalation policy boundaries
-- [ ] 03-02: Validate stuck-state detection, escalation thresholds, and reset semantics
+- [x] 03-02: Validate stuck-state detection, escalation thresholds, and reset semantics
 
 ### Phase 4: Persistent Configuration
 **Goal**: Create a validated persistent configuration layer for auth, actions, relay rules, and schedules.
@@ -155,7 +155,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 |-------|----------------|--------|-----------|
 | 1. Foundation Refactor | 3/3 | Complete | 2026-03-08 |
 | 2. Wi-Fi Supervision | 3/3 | Complete | 2026-03-08 |
-| 3. Recovery & Watchdog | 1/2 | In Progress | - |
+| 3. Recovery & Watchdog | 2/2 | Complete | 2026-03-09 |
 | 4. Persistent Configuration | 0/3 | Not started | - |
 | 5. Local Control Panel | 0/3 | Not started | - |
 | 6. Action Engine & Relay Control | 0/3 | Not started | - |
