@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 5
 current_phase_name: Local Control Panel
-current_plan: Not started
-status: planning
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-03-09T13:21:04Z"
-last_activity: 2026-03-09 — Phase 04 complete, transitioned to Phase 5
+current_plan: 2
+status: executing
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-03-09T15:41:27.463Z"
+last_activity: 2026-03-09 — Completed 05-01 panel HTTP shell and embedded asset pipeline
 progress:
   total_phases: 8
   completed_phases: 4
-  total_plans: 11
-  completed_plans: 11
-  percent: 100
+  total_plans: 13
+  completed_plans: 12
+  percent: 92
 ---
 
 # Project State
@@ -30,25 +30,25 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Current Phase:** 5
 **Current Phase Name:** Local Control Panel
-**Current Plan:** Not started
+**Current Plan:** 2
 **Total Plans in Phase:** 3
-**Status:** Ready to plan
-**Last Activity:** 2026-03-09 — Phase 04 complete, transitioned to Phase 5
-**Last Activity Description:** Phase 04 complete, transitioned to Phase 5
+**Status:** Ready to execute next plan
+**Last Activity:** 2026-03-09 — Completed 05-01 panel HTTP shell and embedded asset pipeline
+**Last Activity Description:** Completed 05-01 panel HTTP shell and embedded asset pipeline
 
-Phase: 5 of 8 (Local Control Panel) — ready to plan
-Plan: Not started in current phase
-Status: Ready for next phase planning
-Last activity: 2026-03-09 — Phase 04 complete, transitioned to Phase 5
+Phase: 5 of 8 (Local Control Panel) — in progress
+Plan: 2 of 3 in current phase
+Status: Ready to execute next plan
+Last activity: 2026-03-09 — Completed 05-01 panel HTTP shell and embedded asset pipeline
 
-Progress: [██████████] 100%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
-- Average duration: 80.5 min
-- Total execution time: 14.8 hours
+- Total plans completed: 12
+- Average duration: 74.3 min
+- Total execution time: 14.9 hours
 
 **By Phase:**
 
@@ -59,8 +59,8 @@ Progress: [██████████] 100%
 | Phase 01-foundation-refactor P03 | 7 min | 4 tasks | 4 files |
 
 **Recent Trend:**
-- Last 5 plans: Phase 03 plan 01 (5 min), Phase 03 plan 02 (9h 23m), Phase 04 plan 01 (13 min), Phase 04 plan 02 (6 min), Phase 04 plan 03 (4h 15m)
-- Trend: The hardware-validation checkpoint still dominates elapsed time while implementation plans remain short.
+- Last 5 plans: Phase 03 plan 02 (9h 23m), Phase 04 plan 01 (13 min), Phase 04 plan 02 (6 min), Phase 04 plan 03 (4h 15m), Phase 05 plan 01 (3 min)
+- Trend: Human-approved hardware checkpoints still dominate elapsed time while implementation plans remain short.
 
 *Updated after each plan completion*
 | Phase 02-wi-fi-supervision P01 | 4 min | 3 tasks | 7 files |
@@ -71,6 +71,7 @@ Progress: [██████████] 100%
 | Phase 04-persistent-configuration P01 | 13 min | 3 tasks | 10 files |
 | Phase 04-persistent-configuration P02 | 6 min | 3 tasks | 4 files |
 | Phase 04 P03 | 4h 15m | 3 tasks | 7 files |
+| Phase 05-local-control-panel P01 | 3 min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -117,6 +118,12 @@ Recent decisions affecting current work:
 - [Phase 04]: Corrupt or incompatible persisted sections reset independently, while invalid auth reseeds from the configured build-time credentials.
 - [Phase 04]: Boot exposes explicit per-section migration action and schema-version status instead of attempting ambiguous best-effort migration.
 - [Phase 04]: Phase 4 keeps ./scripts/validate.sh as the canonical automated command and requires recorded device approval for the durability scenarios before completion.
+- [Phase 05-local-control-panel]: Kept 05-01 on plain local HTTP with no TLS, websocket, filesystem, auth, or protected API routes.
+- [Phase 05-local-control-panel]: Embedded authored panel assets via generate_inc_file_for_target(... --gzip) instead of generating markup in C.
+- [Phase 05-local-control-panel]: Marked only PANEL-01 and PANEL-02 complete because auth/session and status requirements remain in 05-02 and 05-03.
+- [Phase 05]: Phase 5 uses Zephyr's native HTTP service with linker-registered resources instead of a filesystem-backed or generated-markup panel. — This keeps the local panel transport minimal, Zephyr-native, and ready for later auth and status routes without adding a new serving stack.
+- [Phase 05]: The panel shell serves authored gzip-compressed HTML and JavaScript directly from firmware while staying on local plain HTTP only. — This satisfies the authored-asset requirement while avoiding filesystem dependencies, TLS expansion, or C-generated markup in Phase 5 Wave 1.
+- [Phase 05]: Boot starts the public panel shell after the network supervisor reaches a locally reachable state, including upstream-degraded connectivity. — The shell should remain available whenever the device has local LAN reachability, even if upstream internet is degraded, matching the established operator contract.
 
 ### Pending Todos
 
@@ -129,6 +136,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T13:08:29.215Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-03-09T15:41:27.461Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None

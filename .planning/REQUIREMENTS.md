@@ -26,8 +26,8 @@ Requirements for the initial release. Each maps to roadmap phases.
 - [ ] **AUTH-01**: Operator can log in with a single local username/password
 - [ ] **AUTH-02**: Unauthenticated users cannot access control, configuration, scheduling, or update endpoints
 - [ ] **AUTH-03**: Authenticated operator can log out and browser session state behaves predictably across page navigation
-- [ ] **PANEL-01**: Device serves a local HTTP admin panel composed of authored HTML and JavaScript assets
-- [ ] **PANEL-02**: Panel uses Tailwind Play CDN styling without generating UI markup in C
+- [x] **PANEL-01**: Device serves a local HTTP admin panel composed of authored HTML and JavaScript assets
+- [x] **PANEL-02**: Panel uses Tailwind Play CDN styling without generating UI markup in C
 - [ ] **PANEL-03**: Panel shows current device, Wi-Fi, relay, scheduler, and update status
 
 ### Configuration & Persistence
@@ -112,8 +112,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUTH-01 | Phase 5 | Pending |
 | AUTH-02 | Phase 5 | Pending |
 | AUTH-03 | Phase 5 | Pending |
-| PANEL-01 | Phase 5 | Pending |
-| PANEL-02 | Phase 5 | Pending |
+| PANEL-01 | Phase 5 | Complete |
+| PANEL-02 | Phase 5 | Complete |
 | PANEL-03 | Phase 5 | Pending |
 | ACT-01 | Phase 6 | Pending |
 | ACT-02 | Phase 6 | Pending |
