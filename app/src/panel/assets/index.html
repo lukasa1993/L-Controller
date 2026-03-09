@@ -3,49 +3,81 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>LNH Nordic Panel</title>
-	<meta
-		name="description"
-		content="Local-only control panel shell for the LNH Nordic device.">
+	<title>LNH Nordic Local Control Panel</title>
+	<meta name="description" content="Local authenticated control panel for the LNH Nordic device.">
 	<script src="https://cdn.tailwindcss.com"></script>
+	<style>
+		:root { color-scheme: dark; --bg: #071019; --panel: rgba(10,22,35,.88); --line: rgba(125,211,252,.18); --text: #eff7ff; --muted: #9db6cb; --accent: #7dd3fc; }
+		* { box-sizing: border-box; }
+		body { margin: 0; min-height: 100vh; font-family: "IBM Plex Mono", ui-monospace, monospace; background: radial-gradient(circle at top left, rgba(34,211,238,.12), transparent 24%), linear-gradient(180deg, #040a10 0%, #071019 52%, #050b11 100%); color: var(--text); }
+		.shell { max-width: 1120px; margin: 0 auto; padding: 32px 20px 56px; display: grid; gap: 18px; }
+		.panel, .hero, .command-bar { border: 1px solid var(--line); background: var(--panel); border-radius: 24px; padding: 20px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+		.overline { font-size: 12px; letter-spacing: .34em; text-transform: uppercase; color: var(--accent); margin: 0 0 8px; }
+		h1, h2 { margin: 0; font-family: "Iowan Old Style", "Palatino Linotype", serif; }
+		h1 { font-size: clamp(2.5rem, 5vw, 4.2rem); line-height: .96; }
+		.muted { color: var(--muted); }
+		.hidden { display: none !important; }
+		.alert { border-radius: 18px; padding: 12px 14px; border: 1px solid var(--line); background: rgba(8,15,24,.75); color: var(--muted); }
+		.input, .button { width: 100%; border-radius: 14px; border: 1px solid var(--line); padding: 14px 16px; color: var(--text); background: rgba(5,10,17,.72); }
+		.button { cursor: pointer; font-weight: 600; text-transform: uppercase; letter-spacing: .14em; background: linear-gradient(135deg, rgba(34,211,238,.28), rgba(13,22,33,.96)); }
+		.button--ghost { width: auto; }
+		.form-grid, .field, .toolbar, .hero-grid { display: grid; gap: 14px; }
+		.hero-grid { gap: 18px; }
+		@media (min-width: 920px) { .hero-grid { grid-template-columns: 1.35fr .85fr; } }
+		.command-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-radius: 999px; }
+		.badge { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(8,15,24,.68); font-size: .78rem; text-transform: uppercase; letter-spacing: .16em; }
+	</style>
 	<script defer src="/main.js"></script>
 </head>
-<body class="min-h-screen bg-slate-950 text-slate-50">
-	<main class="mx-auto flex min-h-screen max-w-5xl flex-col px-6 py-10">
-		<header class="space-y-3 border-b border-white/10 pb-6">
-			<p class="text-xs font-semibold uppercase tracking-[0.35em] text-cyan-300">
-				Local Device Shell
-			</p>
-			<h1 class="text-4xl font-semibold tracking-tight">LNH Nordic control panel</h1>
-			<p class="max-w-2xl text-sm text-slate-300">
-				This Phase 5 shell is served directly from firmware over the local LAN.
-				Authentication and device status surfaces arrive in later plan steps.
-			</p>
-		</header>
-
-		<section class="grid gap-4 py-8 md:grid-cols-[1.4fr,0.9fr]">
-			<div class="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-cyan-950/20">
-				<p class="text-sm font-medium text-cyan-200">Panel bootstrap</p>
-				<h2 class="mt-3 text-2xl font-semibold text-white">Static assets are embedded</h2>
-				<p class="mt-3 text-sm leading-6 text-slate-300">
-					The device is now capable of serving authored HTML and JavaScript from the
-					firmware image without generating markup inside C code or mounting a filesystem.
-				</p>
+<body>
+	<div class="shell">
+		<header class="hero">
+			<div class="hero-grid">
+				<div>
+					<p class="overline">Local Authenticated Panel</p>
+					<h1>LNH Nordic Mission Console</h1>
+					<p class="muted">This shell trusts the device as the source of truth: it checks <code>/api/auth/session</code> on load, keeps browser state server-owned, and reserves live status cards for the next frontend task.</p>
+				</div>
+				<aside class="panel">
+					<p class="overline">Phase 5 boundary</p>
+					<h2>Login first, then hydrate</h2>
+					<ul class="muted">
+						<li>Manual logout ends the session.</li>
+						<li>Refresh asks the device whether the session still exists.</li>
+						<li>Device reboot forces a fresh login because sessions are RAM-only.</li>
+					</ul>
+				</aside>
 			</div>
-
-			<aside class="rounded-3xl border border-cyan-400/20 bg-cyan-500/10 p-6 text-sm text-cyan-50">
-				<p class="font-semibold uppercase tracking-[0.28em] text-cyan-200">Next up</p>
-				<ul class="mt-4 space-y-2 text-cyan-50/90">
-					<li>Cookie-backed login and logout flow</li>
-					<li>Protected status API and dashboard hydration</li>
-					<li>Read-only placeholders for relay, schedule, and update surfaces</li>
-				</ul>
-			</aside>
+		</header>
+		<div class="command-bar">
+			<span id="session-chip" class="badge">Session bootstrap pending</span>
+			<div class="toolbar" style="display:flex; gap:10px; flex-wrap:wrap;">
+				<button id="refresh-button" class="button button--ghost" type="button">Re-check session</button>
+				<button id="logout-button" class="button button--ghost" type="button">Logout</button>
+			</div>
+		</div>
+		<section id="panel-alert" class="alert">Waiting for the session bootstrap to confirm whether this browser is already authenticated.</section>
+		<section id="login-view" class="panel">
+			<p class="overline">Authentication</p>
+			<h2>Login-first shell</h2>
+			<p class="muted">Use the configured local admin credentials to unlock the protected panel flow.</p>
+			<form id="login-form" class="form-grid">
+				<div class="field">
+					<label for="login-username">Username</label>
+					<input id="login-username" class="input" name="username" autocomplete="username" required>
+				</div>
+				<div class="field">
+					<label for="login-password">Password</label>
+					<input id="login-password" class="input" name="password" type="password" autocomplete="current-password" required>
+				</div>
+				<button id="login-submit" class="button" type="submit">Authenticate locally</button>
+			</form>
 		</section>
-
-		<section id="panel-shell-status" class="mt-auto rounded-3xl border border-white/10 bg-slate-900/80 p-5 text-sm text-slate-300">
-			Waiting for local panel JavaScript to initialize.
+		<section id="dashboard-view" class="panel hidden">
+			<p class="overline">Authenticated shell</p>
+			<h2>Session is active</h2>
+			<p class="muted">The protected dashboard and status cards arrive in the next frontend task. For now, this shell proves login, refresh, navigation, and logout stay tied to the server-issued cookie session.</p>
 		</section>
-	</main>
+	</div>
 </body>
 </html>
