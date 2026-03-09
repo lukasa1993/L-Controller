@@ -9,8 +9,8 @@ show_usage() {
 	printf '%s\n' \
 		'Usage: ./scripts/validate.sh [--preflight]' \
 		'' \
-		'Runs the fast automated validation path for Phase 4 persistence work.' \
-		'By default this delegates to ./scripts/build.sh only and leaves device durability verification manual.' \
+		'Runs the fast automated validation path for Phase 5 local panel work.' \
+		'By default this delegates to ./scripts/build.sh only and leaves browser/curl/device sign-off manual.' \
 		'' \
 		'Options:' \
 		'  --preflight  Run ./scripts/doctor.sh first for an explicit tool/device preflight.' \
@@ -35,7 +35,7 @@ while [ "$#" -gt 0 ]; do
 	shift
 done
 
-log 'Phase 4 automated validation uses ./scripts/build.sh as the canonical build signal.'
+log 'Phase 5 automated validation uses ./scripts/build.sh as the canonical build signal.'
 
 if [ "$run_preflight" -eq 1 ]; then
 	log 'Running optional preflight via ./scripts/doctor.sh'
@@ -45,25 +45,25 @@ fi
 run_repo_script scripts/build.sh
 
 printf '\n'
-log 'Automated validation passed. Device-only Phase 4 persistence sign-off remains blocking:'
+log 'Automated validation passed. Browser/curl/device Phase 5 sign-off remains blocking:'
 printf '  1. %s\n' './scripts/flash.sh'
 printf '  2. %s\n' './scripts/console.sh'
 printf '  3. Confirm these ready-state markers on the healthy path:\n'
 while IFS= read -r marker; do
 	printf '     - %s\n' "$marker"
 done < <(print_ready_state_markers)
-printf '  4. Watch for these persistence markers during boot and reload:\n'
-while IFS= read -r marker; do
-	printf '     - %s\n' "$marker"
-done < <(print_phase4_persistence_markers)
-printf '  5. Complete this blocking Phase 4 device checklist before approval:\n'
+printf '  4. Run these curl checks against the device IP:\n'
+while IFS= read -r command; do
+	printf '     - %s\n' "$command"
+done < <(print_phase5_curl_commands)
+printf '  5. Complete this blocking Phase 5 browser/curl/device checklist before approval:\n'
 checklist_step=1
 while IFS= read -r item; do
 	printf '     %d. %s\n' "$checklist_step" "$item"
 	checklist_step=$((checklist_step + 1))
-done < <(print_phase4_device_checklist)
-printf '  6. Record outcomes for these blocking Phase 4 scenarios:\n'
+done < <(print_phase5_device_checklist)
+printf '  6. Record outcomes for these blocking Phase 5 scenarios:\n'
 while IFS= read -r scenario; do
 	printf '     - %s\n' "$scenario"
-done < <(print_phase4_scenario_labels)
-log './scripts/validate.sh remains the canonical automated validation command; Phase 4 approval stays blocked until the real-device persistence checklist and scenario results are recorded.'
+done < <(print_phase5_scenario_labels)
+log './scripts/validate.sh remains the canonical automated validation command; Phase 5 approval stays blocked until the browser/curl/device checklist and scenario results are recorded.'

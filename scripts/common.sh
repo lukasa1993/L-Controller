@@ -76,6 +76,43 @@ print_phase4_device_checklist() {
 		'Record whether the clean-device defaults, reboot persistence, supported power loss durability, section corruption isolation, auth reseed, and relay reboot policy scenarios passed or failed.'
 }
 
+print_phase5_curl_commands() {
+	printf '%s\n' \
+		"curl -i http://<device-ip>/api/status" \
+		"curl -i -c cookie.txt -H 'Content-Type: application/json' -d '{\"username\":\"...\",\"password\":\"...\"}' http://<device-ip>/api/auth/login" \
+		"curl -i -b cookie.txt http://<device-ip>/api/status"
+}
+
+print_phase5_scenario_labels() {
+	printf '%s\n' \
+		'auth denial' \
+		'login success' \
+		'refresh and navigation persistence' \
+		'logout revocation' \
+		'cooldown recovery' \
+		'concurrent sessions' \
+		'reboot invalidates session' \
+		'degraded styling resilience' \
+		'read-only relay, scheduler, and update surfaces'
+}
+
+print_phase5_device_checklist() {
+	printf '%s\n' \
+		'Re-run ./scripts/validate.sh first so the canonical automated build path is green.' \
+		'Flash the latest firmware with ./scripts/flash.sh.' \
+		'Open the device console with ./scripts/console.sh and determine the device IP from the boot log.' \
+		'Verify unauthenticated access is denied with curl -i http://<device-ip>/api/status.' \
+		'Log in with curl using the configured CONFIG_APP_ADMIN_USERNAME and CONFIG_APP_ADMIN_PASSWORD values and confirm the device returns a sid cookie.' \
+		'Verify curl -i -b cookie.txt http://<device-ip>/api/status succeeds after login.' \
+		'Open the panel in a browser, log in, refresh, and navigate within the Phase 5 dashboard to confirm the session remains active until logout.' \
+		'Trigger repeated wrong-password attempts until the cooldown appears, wait for recovery, and confirm a valid login succeeds again.' \
+		'Log in from a second browser or private window and confirm both sessions remain usable independently.' \
+		'Reboot the device and confirm the old browser session no longer reaches protected routes until a fresh login occurs.' \
+		'Inspect the dashboard during normal and degraded-local conditions and confirm local status still renders even if Tailwind CDN styling is reduced.' \
+		'Confirm relay, scheduler, and update cards remain read-only or placeholder-only in Phase 5.' \
+		'Record which auth, session, cooldown, concurrent-session, reboot, degraded-styling, and read-only-surface scenarios passed or failed.'
+}
+
 maybe_add_jlink_to_path() {
 	local candidate
 	for candidate in \
