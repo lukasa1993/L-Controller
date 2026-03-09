@@ -32,10 +32,10 @@ Requirements for the initial release. Each maps to roadmap phases.
 
 ### Configuration & Persistence
 
-- [ ] **CFG-01**: Device persists local authentication configuration across reboots
-- [ ] **CFG-02**: Device persists relay and action configuration across reboots
-- [ ] **CFG-03**: Device persists schedules across reboots
-- [ ] **CFG-04**: Device validates persisted configuration on boot and falls back safely if data is corrupt or incompatible
+- [x] **CFG-01**: Device persists local authentication configuration across reboots
+- [x] **CFG-02**: Device persists relay and action configuration across reboots
+- [x] **CFG-03**: Device persists schedules across reboots
+- [x] **CFG-04**: Device validates persisted configuration on boot and falls back safely if data is corrupt or incompatible
 
 ### Actions & Relay Control
 
@@ -105,10 +105,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | NET-03 | Phase 2 | Complete |
 | REC-01 | Phase 3 | Complete |
 | REC-02 | Phase 3 | Complete |
-| CFG-01 | Phase 4 | Pending |
-| CFG-02 | Phase 4 | Pending |
-| CFG-03 | Phase 4 | Pending |
-| CFG-04 | Phase 4 | Pending |
+| CFG-01 | Phase 4 | Complete |
+| CFG-02 | Phase 4 | Complete |
+| CFG-03 | Phase 4 | Complete |
+| CFG-04 | Phase 4 | Complete |
 | AUTH-01 | Phase 5 | Pending |
 | AUTH-02 | Phase 5 | Pending |
 | AUTH-03 | Phase 5 | Pending |

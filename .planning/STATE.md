@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-03-09T06:26:40.674Z"
-last_activity: 2026-03-09 — Completed 03-02 recovery validation and hardware sign-off
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-03-09T08:23:13.529Z"
+last_activity: 2026-03-09 — Completed 04-01 persistence boundary and boot-owned snapshot loading
 progress:
   total_phases: 8
   completed_phases: 3
-  total_plans: 23
-  completed_plans: 8
+  total_plans: 11
+  completed_plans: 9
   percent: 35
 ---
 
@@ -25,19 +25,19 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 
 ## Current Position
 
-Phase: 4 of 8 (Persistent Configuration) — ready to start
-Plan: 1 of 3 in current phase
+Phase: 4 of 8 (Persistent Configuration) — in progress
+Plan: 2 of 3 in current phase
 Status: Ready to execute next plan
-Last activity: 2026-03-09 — Completed 03-02 recovery validation and hardware sign-off
+Last activity: 2026-03-09 — Completed 04-01 persistence boundary and boot-owned snapshot loading
 
 Progress: [████░░░░░░] 35%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: 76.6 min
-- Total execution time: 10.2 hours
+- Total plans completed: 9
+- Average duration: 69.4 min
+- Total execution time: 10.4 hours
 
 **By Phase:**
 
@@ -48,8 +48,8 @@ Progress: [████░░░░░░] 35%
 | Phase 01-foundation-refactor P03 | 7 min | 4 tasks | 4 files |
 
 **Recent Trend:**
-- Last 5 plans: Phase 02 plan 01 (4 min), Phase 02 plan 02 (16 min), Phase 02 plan 03 (9 min), Phase 03 plan 01 (5 min), Phase 03 plan 02 (9h 23m)
-- Trend: The hardware-validation checkpoint dominated elapsed time while implementation plans remained short.
+- Last 5 plans: Phase 02 plan 02 (16 min), Phase 02 plan 03 (9 min), Phase 03 plan 01 (5 min), Phase 03 plan 02 (9h 23m), Phase 04 plan 01 (13 min)
+- Trend: The hardware-validation checkpoint still dominates elapsed time while implementation plans remain short.
 
 *Updated after each plan completion*
 | Phase 02-wi-fi-supervision P01 | 4 min | 3 tasks | 7 files |
@@ -57,6 +57,7 @@ Progress: [████░░░░░░] 35%
 | Phase 02-wi-fi-supervision P03 | 9 min | 3 tasks | 3 files |
 | Phase 03-recovery-watchdog P01 | 5 min | 3 tasks | 11 files |
 | Phase 03-recovery-watchdog P02 | 9h 23m | 3 tasks | 3 files |
+| Phase 04-persistent-configuration P01 | 13 min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -94,6 +95,9 @@ Recent decisions affecting current work:
 - [Phase 03-recovery-watchdog]: Keep ./scripts/validate.sh build-only and treat real-hardware recovery/watchdog verification as the blocking Phase 3 approval gate.
 - [Phase 03-recovery-watchdog]: Centralize ready, supervisor, and recovery/watchdog markers plus the device checklist in scripts/common.sh so README and CLI guidance stay aligned.
 - [Phase 03-recovery-watchdog]: Record 03-02 as approved after healthy, degraded, recovery-reset, watchdog-reset, and anti-thrash scenarios were confirmed on hardware.
+- [Phase 04-persistent-configuration]: Use a dedicated NVS-backed settings_storage partition inside the persistence boundary.
+- [Phase 04-persistent-configuration]: Keep app_context as the single owner of the mounted persistence backend and resolved snapshot.
+- [Phase 04-persistent-configuration]: Reseed only auth from build-time credentials while other sections fall back with section-local resets or safe defaults.
 
 ### Pending Todos
 
@@ -106,6 +110,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T06:26:40.672Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-03-09T08:23:13.527Z
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None
