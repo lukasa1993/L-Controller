@@ -6,6 +6,7 @@
 #include "app/bootstrap.h"
 #include "network/network_supervisor.h"
 #include "network/wifi_lifecycle.h"
+#include "panel/panel_http.h"
 #include "persistence/persistence.h"
 #include "recovery/recovery.h"
 
@@ -140,6 +141,9 @@ static int load_app_config(struct app_context *app_context)
 			.stable_window_ms = CONFIG_APP_RECOVERY_STABLE_WINDOW_MS,
 			.cooldown_ms = CONFIG_APP_RECOVERY_COOLDOWN_MS,
 		},
+		.panel = {
+			.port = APP_PANEL_PORT,
+		},
 		.persistence = {
 			.layout_version = APP_PERSISTENCE_LAYOUT_VERSION,
 			.default_relay_reboot_policy = APP_RELAY_REBOOT_POLICY_DEFAULT,
@@ -249,6 +253,12 @@ int app_boot(struct app_context *app_context)
 					network_status.last_failure.failure_stage),
 				network_status.last_failure.reason);
 		}
+	}
+
+	ret = panel_http_server_init(&app_context->panel_http, app_context);
+	if (ret != 0) {
+		LOG_ERR("Failed to initialize panel HTTP shell: %d", ret);
+		return ret;
 	}
 
 	LOG_INF("APP_READY");
