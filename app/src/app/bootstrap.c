@@ -6,6 +6,7 @@
 #include "app/bootstrap.h"
 #include "network/network_supervisor.h"
 #include "network/wifi_lifecycle.h"
+#include "panel/panel_auth.h"
 #include "panel/panel_http.h"
 #include "persistence/persistence.h"
 #include "recovery/recovery.h"
@@ -143,6 +144,9 @@ static int load_app_config(struct app_context *app_context)
 		},
 		.panel = {
 			.port = APP_PANEL_PORT,
+			.max_sessions = APP_PANEL_MAX_SESSIONS,
+			.login_failure_limit = APP_PANEL_LOGIN_FAILURE_LIMIT,
+			.login_cooldown_ms = APP_PANEL_LOGIN_COOLDOWN_MS,
 		},
 		.persistence = {
 			.layout_version = APP_PERSISTENCE_LAYOUT_VERSION,
@@ -200,6 +204,12 @@ int app_boot(struct app_context *app_context)
 
 	ret = load_persisted_config(app_context);
 	if (ret != 0) {
+		return ret;
+	}
+
+	ret = panel_auth_service_init(&app_context->panel_auth, app_context);
+	if (ret != 0) {
+		LOG_ERR("Failed to initialize panel auth service: %d", ret);
 		return ret;
 	}
 

@@ -97,4 +97,27 @@ config APP_PANEL_PORT
 	  Plain HTTP port exposed by the device on the local LAN for the Phase 5
 	  control panel shell.
 
+config APP_PANEL_MAX_SESSIONS
+	int "Maximum concurrent panel sessions"
+	default 4
+	range 1 8
+	help
+	  Maximum number of concurrent RAM-only browser sessions allowed for the
+	  single local operator account.
+
+config APP_PANEL_LOGIN_FAILURE_LIMIT
+	int "Wrong-password attempts before cooldown"
+	default 5
+	range 1 20
+	help
+	  Consecutive wrong-password attempts allowed before the panel enters a
+	  temporary login cooldown.
+
+config APP_PANEL_LOGIN_COOLDOWN_MS
+	int "Panel login cooldown in milliseconds"
+	default 30000
+	range 1000 600000
+	help
+	  Cooldown applied after repeated wrong-password attempts.
+
 endmenu
