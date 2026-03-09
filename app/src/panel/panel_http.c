@@ -14,6 +14,7 @@
 #include "app/app_context.h"
 #include "panel/panel_auth.h"
 #include "panel/panel_http.h"
+#include "panel/panel_status.h"
 
 LOG_MODULE_REGISTER(panel_http, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -46,6 +47,13 @@ struct panel_auth_route_context {
 	struct http_header headers[1];
 };
 
+struct panel_status_route_context {
+	struct app_context *app_context;
+	char set_cookie_header[96];
+	char response_body[1536];
+	struct http_header headers[1];
+};
+
 static const uint8_t index_html_gz[] = {
 #include "panel/index.html.gz.inc"
 };
@@ -57,6 +65,7 @@ static const uint8_t main_js_gz[] = {
 static struct panel_login_route_context panel_auth_login_route_ctx;
 static struct panel_auth_route_context panel_auth_logout_route_ctx;
 static struct panel_auth_route_context panel_auth_session_route_ctx;
+static struct panel_status_route_context panel_status_route_ctx;
 
 static struct http_resource_detail_static panel_shell_index_resource_detail = {
 	.common = {
@@ -95,6 +104,11 @@ static int panel_auth_session_handler(struct http_client_ctx *client,
 				        const struct http_request_ctx *request_ctx,
 				        struct http_response_ctx *response_ctx,
 				        void *user_data);
+static int panel_status_handler(struct http_client_ctx *client,
+				 enum http_data_status status,
+				 const struct http_request_ctx *request_ctx,
+				 struct http_response_ctx *response_ctx,
+				 void *user_data);
 
 static struct http_resource_detail_dynamic panel_auth_login_resource_detail = {
 	.common = {
@@ -126,6 +140,16 @@ static struct http_resource_detail_dynamic panel_auth_session_resource_detail = 
 	.user_data = &panel_auth_session_route_ctx,
 };
 
+static struct http_resource_detail_dynamic panel_status_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_DYNAMIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
+		.content_type = "application/json",
+	},
+	.cb = panel_status_handler,
+	.user_data = &panel_status_route_ctx,
+};
+
 static uint16_t panel_http_service_port = APP_PANEL_PORT;
 
 HTTP_SERVICE_DEFINE(panel_http_service, NULL, &panel_http_service_port,
@@ -141,6 +165,8 @@ HTTP_RESOURCE_DEFINE(panel_auth_logout_resource, panel_http_service, "/api/auth/
 		     &panel_auth_logout_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_auth_session_resource, panel_http_service, "/api/auth/session",
 		     &panel_auth_session_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_status_resource, panel_http_service, "/api/status",
+		     &panel_status_resource_detail);
 
 static void panel_login_route_reset(struct panel_login_route_context *route_ctx)
 {
@@ -470,6 +496,65 @@ static int panel_auth_session_handler(struct http_client_ctx *client,
 	return ret;
 }
 
+static int panel_status_handler(struct http_client_ctx *client,
+				 enum http_data_status status,
+				 const struct http_request_ctx *request_ctx,
+				 struct http_response_ctx *response_ctx,
+				 void *user_data)
+{
+	struct panel_status_route_context *route_ctx = user_data;
+	char session_token[PANEL_AUTH_SESSION_TOKEN_LEN + 1];
+	bool has_cookie;
+	bool authenticated;
+	int ret;
+
+	ARG_UNUSED(client);
+
+	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	    response_ctx == NULL) {
+		return -EINVAL;
+	}
+
+	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+		return 0;
+	}
+
+	has_cookie = panel_http_extract_sid_cookie(request_ctx, session_token, sizeof(session_token));
+	authenticated = has_cookie &&
+		panel_auth_service_session_active(&route_ctx->app_context->panel_auth, session_token);
+	if (!authenticated) {
+		if (has_cookie) {
+			panel_http_attach_cookie_header(response_ctx,
+					      route_ctx->headers,
+					      route_ctx->set_cookie_header,
+					      sizeof(route_ctx->set_cookie_header),
+					      "sid=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
+		}
+		return panel_http_write_json_response(response_ctx,
+					 HTTP_401_UNAUTHORIZED,
+					 route_ctx->response_body,
+					 sizeof(route_ctx->response_body),
+					 "{\"authenticated\":false}");
+	}
+
+	ret = panel_status_render_json(route_ctx->app_context,
+			       route_ctx->response_body,
+			       sizeof(route_ctx->response_body));
+	if (ret < 0) {
+		return panel_http_write_json_response(response_ctx,
+					 HTTP_500_INTERNAL_SERVER_ERROR,
+					 route_ctx->response_body,
+					 sizeof(route_ctx->response_body),
+					 "{\"error\":\"status-render-failed\"}");
+	}
+
+	response_ctx->status = HTTP_200_OK;
+	response_ctx->body = (const uint8_t *)route_ctx->response_body;
+	response_ctx->body_len = (size_t)ret;
+	response_ctx->final_chunk = true;
+	return 0;
+}
+
 int panel_http_server_init(struct panel_http_server *server,
 			   struct app_context *app_context)
 {
@@ -491,6 +576,7 @@ int panel_http_server_init(struct panel_http_server *server,
 	panel_auth_login_route_ctx.auth_service = &app_context->panel_auth;
 	panel_auth_logout_route_ctx.auth_service = &app_context->panel_auth;
 	panel_auth_session_route_ctx.auth_service = &app_context->panel_auth;
+	panel_status_route_ctx.app_context = app_context;
 
 	ret = http_server_start();
 	if (ret != 0) {

@@ -14,6 +14,7 @@ set(APP_SOURCES
 	${APP_SOURCE_ROOT}/network/reachability.c
 	${APP_SOURCE_ROOT}/panel/panel_auth.c
 	${APP_SOURCE_ROOT}/panel/panel_http.c
+	${APP_SOURCE_ROOT}/panel/panel_status.c
 	${APP_SOURCE_ROOT}/persistence/persistence.c
 	${APP_SOURCE_ROOT}/recovery/recovery.c
 )
