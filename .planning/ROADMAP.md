@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation Refactor** - Split the monolithic firmware into explicit subsystem boundaries and keep the existing boot path working
 - [x] **Phase 2: Wi-Fi Supervision** - Introduce a dedicated network supervisor with robust reconnect and visibility into connectivity state
 - [x] **Phase 3: Recovery & Watchdog** - Add conservative fault supervision and reset escalation for true stuck states
-- [ ] **Phase 4: Persistent Configuration** - Establish durable, validated storage for auth, actions, relay state rules, and schedules
+- [x] **Phase 4: Persistent Configuration** - Establish durable, validated storage for auth, actions, relay state rules, and schedules (completed 2026-03-09)
 - [ ] **Phase 5: Local Control Panel** - Ship the authenticated local HTTP panel with authored HTML/JS assets and operator status views
 - [ ] **Phase 6: Action Engine & Relay Control** - Implement the generic action path and the first real relay on/off behavior
 - [ ] **Phase 7: Scheduling** - Add cron-style local scheduling for relay actions with deterministic reboot/time behavior
@@ -76,12 +76,12 @@ Plans:
   2. Configuration changes survive reboot and unexpected power loss within the supported write model.
   3. Corrupt or incompatible stored data is detected and handled safely.
   4. Persistent data access is centralized behind typed configuration APIs.
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans complete
 
 Plans:
 - [x] 04-01: Define storage schema, versioning rules, and persistence boundaries
 - [x] 04-02: Implement typed repositories for auth, action/relay, and schedule configuration
-- [ ] 04-03: Add corruption handling, migration hooks, and persistence validation tests
+- [x] 04-03: Add corruption handling, migration hooks, and persistence validation tests
 
 ### Phase 5: Local Control Panel
 **Goal**: Deliver the local authenticated HTTP panel using authored frontend assets and protected operator endpoints.
@@ -156,7 +156,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 1. Foundation Refactor | 3/3 | Complete | 2026-03-08 |
 | 2. Wi-Fi Supervision | 3/3 | Complete | 2026-03-08 |
 | 3. Recovery & Watchdog | 2/2 | Complete | 2026-03-09 |
-| 4. Persistent Configuration | 1/3 | In Progress | - |
+| 4. Persistent Configuration | 3/3 | Complete   | 2026-03-09 |
 | 5. Local Control Panel | 0/3 | Not started | - |
 | 6. Action Engine & Relay Control | 0/3 | Not started | - |
 | 7. Scheduling | 0/3 | Not started | - |

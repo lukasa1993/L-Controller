@@ -2,16 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-03-09T08:39:22.895Z"
-last_activity: 2026-03-09 — Completed 04-02 typed repositories and staged persistence validation
+current_phase: 4
+current_phase_name: Persistent Configuration
+current_plan: 3
+status: completed
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-03-09T13:08:29.217Z"
+last_activity: 2026-03-09 — Completed 04-03 persistence durability validation and approved hardware checkpoint
 progress:
   total_phases: 8
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 11
-  completed_plans: 10
-  percent: 91
+  completed_plans: 11
+  percent: 100
 ---
 
 # Project State
@@ -21,23 +24,27 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Core value:** The device must reliably and safely execute configured local control actions—even through Wi-Fi disruption or subsystem faults—without unnecessary operator intervention.
-**Current focus:** Persistent Configuration
+**Current focus:** Local Control Panel
 
 ## Current Position
 
-Phase: 4 of 8 (Persistent Configuration) — in progress
+Current Phase: 4
+Current Phase Name: Persistent Configuration
+Current Plan: 3
+Total Plans in Phase: 3
+Phase: 4 of 8 (Persistent Configuration) — complete
 Plan: 3 of 3 in current phase
-Status: Ready to execute next plan
-Last activity: 2026-03-09 — Completed 04-02 typed repositories and staged persistence validation
+Status: Phase complete — ready for Phase 5 handoff
+Last Activity: 2026-03-09 — Completed 04-03 persistence durability validation and approved hardware checkpoint
 
-Progress: [█████████░] 91%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
-- Average duration: 63.1 min
-- Total execution time: 10.5 hours
+- Total plans completed: 11
+- Average duration: 80.5 min
+- Total execution time: 14.8 hours
 
 **By Phase:**
 
@@ -48,7 +55,7 @@ Progress: [█████████░] 91%
 | Phase 01-foundation-refactor P03 | 7 min | 4 tasks | 4 files |
 
 **Recent Trend:**
-- Last 5 plans: Phase 02 plan 03 (9 min), Phase 03 plan 01 (5 min), Phase 03 plan 02 (9h 23m), Phase 04 plan 01 (13 min), Phase 04 plan 02 (6 min)
+- Last 5 plans: Phase 03 plan 01 (5 min), Phase 03 plan 02 (9h 23m), Phase 04 plan 01 (13 min), Phase 04 plan 02 (6 min), Phase 04 plan 03 (4h 15m)
 - Trend: The hardware-validation checkpoint still dominates elapsed time while implementation plans remain short.
 
 *Updated after each plan completion*
@@ -59,6 +66,7 @@ Progress: [█████████░] 91%
 | Phase 03-recovery-watchdog P02 | 9h 23m | 3 tasks | 3 files |
 | Phase 04-persistent-configuration P01 | 13 min | 3 tasks | 10 files |
 | Phase 04-persistent-configuration P02 | 6 min | 3 tasks | 4 files |
+| Phase 04 P03 | 4h 15m | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -102,6 +110,9 @@ Recent decisions affecting current work:
 - [Phase 04-persistent-configuration]: Future writers save through request-shaped APIs tied to persisted_config, so callers never author raw schema-versioned NVS blobs.
 - [Phase 04-persistent-configuration]: Persistence stages candidate auth/action/relay/schedule updates in RAM, validates unique IDs and schedule references, then commits only the requested sections.
 - [Phase 04-persistent-configuration]: Boot logs summarize the resolved snapshot with action/schedule counts and relay intent without exposing credentials.
+- [Phase 04]: Corrupt or incompatible persisted sections reset independently, while invalid auth reseeds from the configured build-time credentials.
+- [Phase 04]: Boot exposes explicit per-section migration action and schema-version status instead of attempting ambiguous best-effort migration.
+- [Phase 04]: Phase 4 keeps ./scripts/validate.sh as the canonical automated command and requires recorded device approval for the durability scenarios before completion.
 
 ### Pending Todos
 
@@ -114,6 +125,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T08:39:22.894Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-03-09T13:08:29.215Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
