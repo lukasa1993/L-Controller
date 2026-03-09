@@ -218,8 +218,8 @@ static int persistence_write_blob(
 
 static bool persisted_auth_valid(const struct persisted_auth *auth)
 {
-	return c_string_has_terminator(auth->username, sizeof(auth->username)) &&
-	       c_string_has_terminator(auth->password, sizeof(auth->password));
+	return c_string_is_non_empty(auth->username, sizeof(auth->username)) &&
+	       c_string_is_non_empty(auth->password, sizeof(auth->password));
 }
 
 static bool persisted_action_catalog_valid(const struct persisted_action_catalog *actions)

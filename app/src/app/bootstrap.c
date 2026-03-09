@@ -44,6 +44,7 @@ static void log_persistence_section_status(
 {
 	const char *section_text;
 	const char *state_text;
+	const char *suffix = "";
 
 	if (status == NULL) {
 		return;
@@ -51,10 +52,13 @@ static void log_persistence_section_status(
 
 	section_text = persistence_section_text(status->section);
 	state_text = persistence_load_state_text(status->state);
+	if (status->reseeded) {
+		suffix = status->section == PERSISTENCE_SECTION_AUTH ?
+			" (reseeded configured credentials)" : " (reseeded)";
+	}
 
 	if (persistence_status_requires_warning(status)) {
-		LOG_WRN("Persistence %s: %s%s", section_text, state_text,
-			status->reseeded ? " (reseeded)" : "");
+		LOG_WRN("Persistence %s: %s%s", section_text, state_text, suffix);
 		return;
 	}
 
