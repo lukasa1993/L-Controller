@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 5
 current_phase_name: Local Control Panel
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-03-09T15:41:27.463Z"
-last_activity: 2026-03-09 — Completed 05-01 panel HTTP shell and embedded asset pipeline
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-03-09T15:59:48.859Z"
+last_activity: 2026-03-09 — Completed 05-02 auth sessions and protected status API
 progress:
   total_phases: 8
   completed_phases: 4
-  total_plans: 13
-  completed_plans: 12
-  percent: 92
+  total_plans: 14
+  completed_plans: 13
+  percent: 93
 ---
 
 # Project State
@@ -30,25 +30,25 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Current Phase:** 5
 **Current Phase Name:** Local Control Panel
-**Current Plan:** 2
+**Current Plan:** 3
 **Total Plans in Phase:** 3
 **Status:** Ready to execute next plan
-**Last Activity:** 2026-03-09 — Completed 05-01 panel HTTP shell and embedded asset pipeline
-**Last Activity Description:** Completed 05-01 panel HTTP shell and embedded asset pipeline
+**Last Activity:** 2026-03-09 — Completed 05-02 auth sessions and protected status API
+**Last Activity Description:** Completed 05-02 auth sessions and protected status API
 
 Phase: 5 of 8 (Local Control Panel) — in progress
-Plan: 2 of 3 in current phase
+Plan: 3 of 3 in current phase
 Status: Ready to execute next plan
-Last activity: 2026-03-09 — Completed 05-01 panel HTTP shell and embedded asset pipeline
+Last activity: 2026-03-09 — Completed 05-02 auth sessions and protected status API
 
-Progress: [█████████░] 92%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
-- Average duration: 74.3 min
-- Total execution time: 14.9 hours
+- Total plans completed: 13
+- Average duration: 69.2 min
+- Total execution time: 15.0 hours
 
 **By Phase:**
 
@@ -59,7 +59,7 @@ Progress: [█████████░] 92%
 | Phase 01-foundation-refactor P03 | 7 min | 4 tasks | 4 files |
 
 **Recent Trend:**
-- Last 5 plans: Phase 03 plan 02 (9h 23m), Phase 04 plan 01 (13 min), Phase 04 plan 02 (6 min), Phase 04 plan 03 (4h 15m), Phase 05 plan 01 (3 min)
+- Last 5 plans: Phase 04 plan 01 (13 min), Phase 04 plan 02 (6 min), Phase 04 plan 03 (4h 15m), Phase 05 plan 01 (3 min), Phase 05 plan 02 (5 min)
 - Trend: Human-approved hardware checkpoints still dominate elapsed time while implementation plans remain short.
 
 *Updated after each plan completion*
@@ -72,6 +72,7 @@ Progress: [█████████░] 92%
 | Phase 04-persistent-configuration P02 | 6 min | 3 tasks | 4 files |
 | Phase 04 P03 | 4h 15m | 3 tasks | 7 files |
 | Phase 05-local-control-panel P01 | 3 min | 3 tasks | 11 files |
+| Phase 05-local-control-panel P02 | 5 min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -124,6 +125,9 @@ Recent decisions affecting current work:
 - [Phase 05]: Phase 5 uses Zephyr's native HTTP service with linker-registered resources instead of a filesystem-backed or generated-markup panel. — This keeps the local panel transport minimal, Zephyr-native, and ready for later auth and status routes without adding a new serving stack.
 - [Phase 05]: The panel shell serves authored gzip-compressed HTML and JavaScript directly from firmware while staying on local plain HTTP only. — This satisfies the authored-asset requirement while avoiding filesystem dependencies, TLS expansion, or C-generated markup in Phase 5 Wave 1.
 - [Phase 05]: Boot starts the public panel shell after the network supervisor reaches a locally reachable state, including upstream-degraded connectivity. — The shell should remain available whenever the device has local LAN reachability, even if upstream internet is degraded, matching the established operator contract.
+- [Phase 05]: Panel auth uses a fixed-size mutex-guarded RAM session table with opaque sid cookies so sessions survive refresh and navigation but are invalidated on reboot. — This matches the locked browser behavior while keeping trust on the firmware side and avoiding persistent tokens.
+- [Phase 05]: Phase 5 exposes only the exact auth trio plus one protected aggregate /api/status endpoint; control, configuration, scheduling, and update routes stay intentionally unavailable. — A minimal exact-path API is simpler to secure now and leaves future control surfaces clearly deferred to later phases.
+- [Phase 05]: Unauthorized session and status requests clear stale sid cookies so browsers recover cleanly after reboot or logout. — Clearing stale cookies avoids confusing half-authenticated browser state after the firmware invalidates all RAM sessions at boot.
 
 ### Pending Todos
 
