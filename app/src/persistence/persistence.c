@@ -20,6 +20,13 @@ enum persistence_nvs_id {
 	PERSISTENCE_NVS_ID_SCHEDULE = 0x4004,
 };
 
+struct persistence_migration_plan {
+	enum persistence_section section;
+	uint32_t stored_schema_version;
+	uint32_t expected_schema_version;
+	enum persistence_migration_action action;
+};
+
 static uint32_t persistence_expected_layout_version(const struct persistence_store *store)
 {
 	return store->config->persistence.layout_version;
@@ -28,13 +35,43 @@ static uint32_t persistence_expected_layout_version(const struct persistence_sto
 static struct persistence_section_status persistence_make_status(
 	enum persistence_section section,
 	enum persistence_load_state state,
-	bool reseeded)
+	bool reseeded,
+	enum persistence_migration_action migration_action,
+	uint32_t stored_schema_version,
+	uint32_t expected_schema_version)
 {
 	return (struct persistence_section_status){
 		.section = section,
 		.state = state,
+		.migration_action = migration_action,
+		.stored_schema_version = stored_schema_version,
+		.expected_schema_version = expected_schema_version,
 		.reseeded = reseeded,
 	};
+}
+
+static struct persistence_migration_plan persistence_plan_section_migration(
+	const struct persistence_store *store,
+	enum persistence_section section,
+	uint32_t stored_schema_version)
+{
+	const uint32_t expected_schema_version = persistence_expected_layout_version(store);
+	struct persistence_migration_plan plan = {
+		.section = section,
+		.stored_schema_version = stored_schema_version,
+		.expected_schema_version = expected_schema_version,
+		.action = PERSISTENCE_MIGRATION_ACTION_NONE,
+	};
+
+	if (stored_schema_version == expected_schema_version) {
+		return plan;
+	}
+
+	plan.action = section == PERSISTENCE_SECTION_AUTH ?
+		PERSISTENCE_MIGRATION_ACTION_RESEED_FROM_CONFIG :
+		PERSISTENCE_MIGRATION_ACTION_RESET_TO_DEFAULTS;
+
+	return plan;
 }
 
 bool persistence_store_is_ready(const struct persistence_store *store)
@@ -66,9 +103,24 @@ const char *persistence_load_state_text(enum persistence_load_state state)
 	case PERSISTENCE_LOAD_STATE_EMPTY_DEFAULT:
 		return "empty-default";
 	case PERSISTENCE_LOAD_STATE_INVALID_RESET:
-		return "invalid-reset";
+		return "corrupt-reset";
 	case PERSISTENCE_LOAD_STATE_INCOMPATIBLE_RESET:
 		return "incompatible-reset";
+	default:
+		return "unknown";
+	}
+}
+
+const char *persistence_migration_action_text(
+	enum persistence_migration_action action)
+{
+	switch (action) {
+	case PERSISTENCE_MIGRATION_ACTION_NONE:
+		return "none";
+	case PERSISTENCE_MIGRATION_ACTION_RESET_TO_DEFAULTS:
+		return "reset-to-defaults";
+	case PERSISTENCE_MIGRATION_ACTION_RESEED_FROM_CONFIG:
+		return "reseed-from-config";
 	default:
 		return "unknown";
 	}
@@ -376,7 +428,12 @@ static void persisted_config_mark_section_loaded(
 	enum persistence_section section)
 {
 	struct persistence_section_status status =
-		persistence_make_status(section, PERSISTENCE_LOAD_STATE_LOADED, false);
+		persistence_make_status(section,
+					PERSISTENCE_LOAD_STATE_LOADED,
+					false,
+					PERSISTENCE_MIGRATION_ACTION_NONE,
+					config->layout_version,
+					config->layout_version);
 
 	switch (section) {
 	case PERSISTENCE_SECTION_AUTH:
@@ -748,6 +805,7 @@ int persistence_store_load_auth(
 	struct persistence_section_status *status)
 {
 	struct persisted_auth candidate;
+	struct persistence_migration_plan migration_plan;
 	enum persistence_load_state state;
 	int ret;
 
@@ -756,14 +814,25 @@ int persistence_store_load_auth(
 	}
 
 	memset(&candidate, 0, sizeof(candidate));
+	migration_plan = persistence_plan_section_migration(store,
+						  PERSISTENCE_SECTION_AUTH,
+						  0U);
 	state = persistence_read_blob(store, PERSISTENCE_NVS_ID_AUTH, &candidate,
 				      sizeof(candidate));
 	if (state == PERSISTENCE_LOAD_STATE_LOADED) {
-		if (candidate.schema_version != persistence_expected_layout_version(store)) {
+		migration_plan = persistence_plan_section_migration(store,
+							  PERSISTENCE_SECTION_AUTH,
+							  candidate.schema_version);
+		if (migration_plan.action != PERSISTENCE_MIGRATION_ACTION_NONE) {
 			state = PERSISTENCE_LOAD_STATE_INCOMPATIBLE_RESET;
 		} else if (persisted_auth_valid(&candidate)) {
 			*auth = candidate;
-			*status = persistence_make_status(PERSISTENCE_SECTION_AUTH, state, false);
+			*status = persistence_make_status(PERSISTENCE_SECTION_AUTH,
+						      state,
+						      false,
+						      migration_plan.action,
+						      candidate.schema_version,
+						      migration_plan.expected_schema_version);
 			return 0;
 		} else {
 			state = PERSISTENCE_LOAD_STATE_INVALID_RESET;
@@ -775,7 +844,14 @@ int persistence_store_load_auth(
 		return ret;
 	}
 
-	*status = persistence_make_status(PERSISTENCE_SECTION_AUTH, state, true);
+	*status = persistence_make_status(PERSISTENCE_SECTION_AUTH,
+					  state,
+					  true,
+					  state == PERSISTENCE_LOAD_STATE_INCOMPATIBLE_RESET ?
+						  migration_plan.action :
+						  PERSISTENCE_MIGRATION_ACTION_NONE,
+					  candidate.schema_version,
+					  migration_plan.expected_schema_version);
 	return persistence_write_auth_section(store, auth);
 }
 
@@ -785,6 +861,7 @@ int persistence_store_load_actions(
 	struct persistence_section_status *status)
 {
 	struct persisted_action_catalog candidate;
+	struct persistence_migration_plan migration_plan;
 	enum persistence_load_state state;
 	int ret;
 
@@ -793,14 +870,25 @@ int persistence_store_load_actions(
 	}
 
 	memset(&candidate, 0, sizeof(candidate));
+	migration_plan = persistence_plan_section_migration(store,
+						  PERSISTENCE_SECTION_ACTIONS,
+						  0U);
 	state = persistence_read_blob(store, PERSISTENCE_NVS_ID_ACTIONS, &candidate,
 				      sizeof(candidate));
 	if (state == PERSISTENCE_LOAD_STATE_LOADED) {
-		if (candidate.schema_version != persistence_expected_layout_version(store)) {
+		migration_plan = persistence_plan_section_migration(store,
+							  PERSISTENCE_SECTION_ACTIONS,
+							  candidate.schema_version);
+		if (migration_plan.action != PERSISTENCE_MIGRATION_ACTION_NONE) {
 			state = PERSISTENCE_LOAD_STATE_INCOMPATIBLE_RESET;
 		} else if (persisted_action_catalog_valid(&candidate)) {
 			*actions = candidate;
-			*status = persistence_make_status(PERSISTENCE_SECTION_ACTIONS, state, false);
+			*status = persistence_make_status(PERSISTENCE_SECTION_ACTIONS,
+						      state,
+						      false,
+						      migration_plan.action,
+						      candidate.schema_version,
+						      migration_plan.expected_schema_version);
 			return 0;
 		} else {
 			state = PERSISTENCE_LOAD_STATE_INVALID_RESET;
@@ -808,7 +896,14 @@ int persistence_store_load_actions(
 	}
 
 	persisted_action_defaults(store, actions);
-	*status = persistence_make_status(PERSISTENCE_SECTION_ACTIONS, state, false);
+	*status = persistence_make_status(PERSISTENCE_SECTION_ACTIONS,
+					  state,
+					  false,
+					  state == PERSISTENCE_LOAD_STATE_INCOMPATIBLE_RESET ?
+						  migration_plan.action :
+						  PERSISTENCE_MIGRATION_ACTION_NONE,
+					  candidate.schema_version,
+					  migration_plan.expected_schema_version);
 	if (state == PERSISTENCE_LOAD_STATE_EMPTY_DEFAULT) {
 		return 0;
 	}
@@ -823,6 +918,7 @@ int persistence_store_load_relay(
 	struct persistence_section_status *status)
 {
 	struct persisted_relay candidate;
+	struct persistence_migration_plan migration_plan;
 	enum persistence_load_state state;
 	int ret;
 
@@ -831,14 +927,25 @@ int persistence_store_load_relay(
 	}
 
 	memset(&candidate, 0, sizeof(candidate));
+	migration_plan = persistence_plan_section_migration(store,
+						  PERSISTENCE_SECTION_RELAY,
+						  0U);
 	state = persistence_read_blob(store, PERSISTENCE_NVS_ID_RELAY, &candidate,
 				      sizeof(candidate));
 	if (state == PERSISTENCE_LOAD_STATE_LOADED) {
-		if (candidate.schema_version != persistence_expected_layout_version(store)) {
+		migration_plan = persistence_plan_section_migration(store,
+							  PERSISTENCE_SECTION_RELAY,
+							  candidate.schema_version);
+		if (migration_plan.action != PERSISTENCE_MIGRATION_ACTION_NONE) {
 			state = PERSISTENCE_LOAD_STATE_INCOMPATIBLE_RESET;
 		} else if (persisted_relay_valid(&candidate)) {
 			*relay = candidate;
-			*status = persistence_make_status(PERSISTENCE_SECTION_RELAY, state, false);
+			*status = persistence_make_status(PERSISTENCE_SECTION_RELAY,
+						      state,
+						      false,
+						      migration_plan.action,
+						      candidate.schema_version,
+						      migration_plan.expected_schema_version);
 			return 0;
 		} else {
 			state = PERSISTENCE_LOAD_STATE_INVALID_RESET;
@@ -846,7 +953,14 @@ int persistence_store_load_relay(
 	}
 
 	persisted_relay_defaults(store, relay);
-	*status = persistence_make_status(PERSISTENCE_SECTION_RELAY, state, false);
+	*status = persistence_make_status(PERSISTENCE_SECTION_RELAY,
+					  state,
+					  false,
+					  state == PERSISTENCE_LOAD_STATE_INCOMPATIBLE_RESET ?
+						  migration_plan.action :
+						  PERSISTENCE_MIGRATION_ACTION_NONE,
+					  candidate.schema_version,
+					  migration_plan.expected_schema_version);
 	if (state == PERSISTENCE_LOAD_STATE_EMPTY_DEFAULT) {
 		return 0;
 	}
@@ -862,6 +976,7 @@ int persistence_store_load_schedule(
 	struct persistence_section_status *status)
 {
 	struct persisted_schedule_table candidate;
+	struct persistence_migration_plan migration_plan;
 	enum persistence_load_state state;
 	int ret;
 
@@ -871,14 +986,25 @@ int persistence_store_load_schedule(
 	}
 
 	memset(&candidate, 0, sizeof(candidate));
+	migration_plan = persistence_plan_section_migration(store,
+						  PERSISTENCE_SECTION_SCHEDULE,
+						  0U);
 	state = persistence_read_blob(store, PERSISTENCE_NVS_ID_SCHEDULE, &candidate,
 				      sizeof(candidate));
 	if (state == PERSISTENCE_LOAD_STATE_LOADED) {
-		if (candidate.schema_version != persistence_expected_layout_version(store)) {
+		migration_plan = persistence_plan_section_migration(store,
+							  PERSISTENCE_SECTION_SCHEDULE,
+							  candidate.schema_version);
+		if (migration_plan.action != PERSISTENCE_MIGRATION_ACTION_NONE) {
 			state = PERSISTENCE_LOAD_STATE_INCOMPATIBLE_RESET;
 		} else if (persisted_schedule_table_valid(&candidate, actions)) {
 			*schedule_table = candidate;
-			*status = persistence_make_status(PERSISTENCE_SECTION_SCHEDULE, state, false);
+			*status = persistence_make_status(PERSISTENCE_SECTION_SCHEDULE,
+						      state,
+						      false,
+						      migration_plan.action,
+						      candidate.schema_version,
+						      migration_plan.expected_schema_version);
 			return 0;
 		} else {
 			state = PERSISTENCE_LOAD_STATE_INVALID_RESET;
@@ -886,7 +1012,14 @@ int persistence_store_load_schedule(
 	}
 
 	persisted_schedule_defaults(store, schedule_table);
-	*status = persistence_make_status(PERSISTENCE_SECTION_SCHEDULE, state, false);
+	*status = persistence_make_status(PERSISTENCE_SECTION_SCHEDULE,
+					  state,
+					  false,
+					  state == PERSISTENCE_LOAD_STATE_INCOMPATIBLE_RESET ?
+						  migration_plan.action :
+						  PERSISTENCE_MIGRATION_ACTION_NONE,
+					  candidate.schema_version,
+					  migration_plan.expected_schema_version);
 	if (state == PERSISTENCE_LOAD_STATE_EMPTY_DEFAULT) {
 		return 0;
 	}

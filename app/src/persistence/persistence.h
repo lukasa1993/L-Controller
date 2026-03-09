@@ -74,5 +74,8 @@ const char *persistence_section_text(enum persistence_section section);
 
 const char *persistence_load_state_text(enum persistence_load_state state);
 
+const char *persistence_migration_action_text(
+	enum persistence_migration_action action);
+
 const char *persisted_relay_reboot_policy_text(
 	enum persisted_relay_reboot_policy policy);

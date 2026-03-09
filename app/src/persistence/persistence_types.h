@@ -26,6 +26,12 @@ enum persistence_load_state {
 	PERSISTENCE_LOAD_STATE_INCOMPATIBLE_RESET,
 };
 
+enum persistence_migration_action {
+	PERSISTENCE_MIGRATION_ACTION_NONE = 0,
+	PERSISTENCE_MIGRATION_ACTION_RESET_TO_DEFAULTS,
+	PERSISTENCE_MIGRATION_ACTION_RESEED_FROM_CONFIG,
+};
+
 enum persisted_relay_reboot_policy {
 	PERSISTED_RELAY_REBOOT_POLICY_SAFE_OFF = 0,
 	PERSISTED_RELAY_REBOOT_POLICY_RESTORE_LAST_DESIRED = 1,
@@ -104,6 +110,9 @@ struct persisted_config_save_request {
 struct persistence_section_status {
 	enum persistence_section section;
 	enum persistence_load_state state;
+	enum persistence_migration_action migration_action;
+	uint32_t stored_schema_version;
+	uint32_t expected_schema_version;
 	bool reseeded;
 };
 

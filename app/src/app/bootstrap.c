@@ -44,6 +44,7 @@ static void log_persistence_section_status(
 {
 	const char *section_text;
 	const char *state_text;
+	const char *migration_text;
 	const char *suffix = "";
 
 	if (status == NULL) {
@@ -52,9 +53,29 @@ static void log_persistence_section_status(
 
 	section_text = persistence_section_text(status->section);
 	state_text = persistence_load_state_text(status->state);
+	migration_text = persistence_migration_action_text(status->migration_action);
 	if (status->reseeded) {
 		suffix = status->section == PERSISTENCE_SECTION_AUTH ?
 			" (reseeded configured credentials)" : " (reseeded)";
+	}
+
+	if (status->state == PERSISTENCE_LOAD_STATE_INCOMPATIBLE_RESET) {
+		LOG_WRN("Persistence %s: %s%s (stored schema v%u -> layout v%u, migration=%s)",
+			section_text,
+			state_text,
+			suffix,
+			status->stored_schema_version,
+			status->expected_schema_version,
+			migration_text);
+		return;
+	}
+
+	if (status->state == PERSISTENCE_LOAD_STATE_INVALID_RESET) {
+		LOG_WRN("Persistence %s: %s%s (corrupt section reset safely)",
+			section_text,
+			state_text,
+			suffix);
+		return;
 	}
 
 	if (persistence_status_requires_warning(status)) {
