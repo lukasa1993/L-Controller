@@ -11,6 +11,7 @@ set(APP_SOURCES
 	${APP_SOURCE_ROOT}/network/network_supervisor.c
 	${APP_SOURCE_ROOT}/network/wifi_lifecycle.c
 	${APP_SOURCE_ROOT}/network/reachability.c
+	${APP_SOURCE_ROOT}/persistence/persistence.c
 	${APP_SOURCE_ROOT}/recovery/recovery.c
 )
 

@@ -65,6 +65,22 @@ config APP_RECOVERY_COOLDOWN_MS
 	  Minimum suppression window after a recovery-triggered reboot before
 	  another escalation may be considered.
 
+config APP_PERSISTENCE_LAYOUT_VERSION
+	int "Persistent configuration layout version"
+	default 1
+	range 1 255
+	help
+	  Schema layout version for the persisted configuration contracts.
+
+config APP_RELAY_REBOOT_POLICY_DEFAULT
+	int "Clean-device relay reboot policy"
+	default 0
+	range 0 2
+	help
+	  0 keeps the relay safely off after reboot until runtime configuration is
+	  saved. 1 restores the last desired relay state. 2 ignores the last desired
+	  state and leaves runtime relay control to later boot logic.
+
 config APP_ADMIN_USERNAME
 	string "Admin username"
 	default ""

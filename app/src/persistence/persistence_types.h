@@ -1,0 +1,9 @@
+#pragma once
+
+#include <stdint.h>
+
+enum persisted_relay_reboot_policy {
+	PERSISTED_RELAY_REBOOT_POLICY_SAFE_OFF = 0,
+	PERSISTED_RELAY_REBOOT_POLICY_RESTORE_LAST_DESIRED = 1,
+	PERSISTED_RELAY_REBOOT_POLICY_IGNORE_LAST_DESIRED = 2,
+};
