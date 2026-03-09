@@ -43,46 +43,37 @@ print_ready_state_markers() {
 		'APP_READY'
 }
 
-print_supervisor_state_markers() {
+print_phase4_persistence_markers() {
 	printf '%s\n' \
-		'Network supervisor state=healthy' \
-		'Network supervisor state=degraded-retrying' \
-		'Network supervisor state=lan-up-upstream-degraded' \
-		'Network recovered to healthy; last failure=... reason=...'
+		'Persistence snapshot ready (layout v..., actions=..., schedules=..., relay desired=..., relay reboot=...)' \
+		'Persistence auth: loaded | empty-default (reseeded configured credentials) | corrupt-reset | incompatible-reset' \
+		'Persistence actions: loaded | empty-default | corrupt-reset | incompatible-reset' \
+		'Persistence relay: loaded | empty-default | corrupt-reset | incompatible-reset' \
+		'Persistence schedule: loaded | empty-default | corrupt-reset | incompatible-reset'
 }
 
-print_recovery_watchdog_markers() {
+print_phase4_scenario_labels() {
 	printf '%s\n' \
-		'Recovery watchdog armed timeout_ms=...' \
-		'Recovery escalation trigger=confirmed-stuck state=... stage=... reason=...' \
-		'Previous recovery reset=confirmed-stuck hw=0x... state=... stage=... reason=...' \
-		'Previous recovery reset=watchdog-starvation hw=0x... state=... stage=... reason=...' \
-		'Recovery cooldown active for ... ms after previous reset' \
-		'Recovery incident cleared after stable window ... ms'
+		'clean-device defaults' \
+		'reboot persistence' \
+		'supported power loss durability' \
+		'section corruption isolation' \
+		'auth reseed' \
+		'relay reboot policy'
 }
 
-print_phase3_scenario_labels() {
-	printf '%s\n' \
-		'healthy stability' \
-		'long-degraded escalation' \
-		'reboot breadcrumb and retained reset cause' \
-		'watchdog reset' \
-		'anti-thrash cooldown and stable-window clearing'
-}
-
-print_phase3_device_checklist() {
+print_phase4_device_checklist() {
 	printf '%s\n' \
 		'Re-run ./scripts/validate.sh first so the canonical automated build path is green.' \
 		'Flash the latest firmware with ./scripts/flash.sh.' \
 		'Open the device console with ./scripts/console.sh.' \
-		'Confirm a healthy boot reaches the ready-state markers, arms the watchdog, enters Network supervisor state=healthy, and stays stable without a false reset.' \
-		'Introduce brief or transient Wi-Fi/reachability failures and confirm ordinary degraded states and retries happen before escalation.' \
-		'Hold the degraded or stalled condition beyond the patience window and confirm the recovery path escalates to a whole-device reset.' \
-		'On the next boot, confirm the retained reset cause is visible together with the recovery cooldown/stable-window logs and preserved failure breadcrumb.' \
-		'Use the selected lab workflow to confirm a watchdog-feed starvation path produces a watchdog-owned reset and a visible next-boot reset cause.' \
-		'Keep or recreate the fault after reboot and confirm the cooldown window prevents rapid reset thrash.' \
-		'Restore a healthy path and confirm Recovery incident cleared after stable window ... ms once the device is stable long enough.' \
-		'Record whether the healthy stability, long-degraded escalation, reboot-breadcrumb, watchdog-reset, and anti-thrash scenarios passed or failed.'
+		'Confirm a clean device logs persistence initialization, starts with blank safe action and schedule defaults, and reseeds configured admin credentials when the auth section is absent or corrupt.' \
+		'Save representative auth, relay/action, and schedule data through the implemented persistence entrypoints.' \
+		'Reboot the device and confirm the saved values reload on the next boot together with Persistence snapshot ready ... and per-section persistence status logs.' \
+		'Repeat the durability check with the supported power loss or power-cycle lab flow after a completed save and confirm the device does not report ambiguous half-written state.' \
+		'Corrupt or remove exactly one persisted section and confirm only that section resets or reseeds while healthy sections still report loaded.' \
+		'Persist a non-default relay last desired state and reboot policy, reboot again, and confirm next-boot logs or observed relay behavior match the stored policy.' \
+		'Record whether the clean-device defaults, reboot persistence, supported power loss durability, section corruption isolation, auth reseed, and relay reboot policy scenarios passed or failed.'
 }
 
 maybe_add_jlink_to_path() {

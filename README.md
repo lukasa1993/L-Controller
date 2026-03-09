@@ -2,11 +2,11 @@
 
 Generic controller system for `nRF7002-DK`.
 
-## Phase 3 validation workflow
+## Phase 4 persistence validation workflow
 
-Phase 3 keeps fast refactor feedback build-first by default, then requires a separate device-only recovery/watchdog sign-off before the phase can be considered complete.
+Phase 4 keeps normal iteration build-first, then blocks phase approval on a separate real-device persistence checkpoint. The automated path proves the tree still builds cleanly; the hardware checkpoint proves reboot durability, supported power loss behavior, corrupt-section fallback, auth reseed, and relay reboot-policy behavior.
 
-### Automated refactor-safe validation
+### Automated validation remains build-first
 
 Run the repo-owned validation entrypoint during normal development:
 
@@ -15,65 +15,65 @@ Run the repo-owned validation entrypoint during normal development:
 ```
 
 - Delegates to `./scripts/build.sh`, which remains the canonical automated build signal.
-- Serves as the canonical wave-level automated validation command before any blocking device sign-off.
-- Stays safe for frequent refactor loops because it does **not** require hardware, forced degraded paths, or watchdog starvation by default.
+- Serves as the canonical wave-level automated validation command before the blocking device durability checkpoint.
+- Stays safe for frequent refactor loops because it does **not** require hardware or storage mutation by default.
 - Supports `./scripts/validate.sh --preflight` when you want `./scripts/doctor.sh` to check host tools and connected hardware first.
 
-### Device-only recovery/watchdog sign-off is the blocking gate
+### Device durability checkpoint is the blocking gate
 
-Automated validation is necessary but not sufficient for Phase 3 completion. Final sign-off stays manual on real hardware:
+Automated validation is necessary but not sufficient for Phase 4 completion. Final sign-off stays manual on real hardware:
 
 ```sh
 ./scripts/flash.sh
 ./scripts/console.sh
 ```
 
-Record these Phase 3 outcomes during the device run:
+Record these Phase 4 outcomes during the device run:
 
-- `healthy stability`: normal boot reaches `APP_READY`, logs `Recovery watchdog armed timeout_ms=...`, and stays in `Network supervisor state=healthy` without a false recovery reset.
-- `long-degraded escalation`: a long-enough degraded or stalled path eventually logs `Recovery escalation trigger=confirmed-stuck state=... stage=... reason=...` instead of hanging forever.
-- `reboot breadcrumb`: the next boot reports the retained reset cause with `Previous recovery reset=confirmed-stuck hw=0x... state=... stage=... reason=...` and the recovery cooldown/stable-window policy.
-- `watchdog reset`: a true watchdog-feed starvation path reboots under watchdog control and the next boot reports `Previous recovery reset=watchdog-starvation ...`.
-- `anti-thrash`: after a recovery-triggered reboot, the device respects the cooldown window, avoids rapid repeat resets, and eventually logs `Recovery incident cleared after stable window ... ms` once stability is restored.
+- `clean-device defaults`: first boot logs persistence initialization, starts with blank safe action/schedule data, and reseeds the configured admin credentials when auth is missing.
+- `reboot persistence`: saved auth, relay/action, and schedule data survive reboot and reload on the next boot.
+- `supported power loss durability`: within the supported write model, a reboot or power loss after a completed save does not leave ambiguous state.
+- `section corruption isolation`: corrupt or incompatible relay/action or schedule data resets only the broken section while healthy sections remain intact.
+- `auth reseed`: missing or corrupt auth data restores the configured single-operator credential source without wiping healthy sections.
+- `relay reboot policy`: the stored relay desired state and configured reboot policy are both reflected after the next boot.
 
-Confirm the healthy-path device log reaches all of these ready-state markers:
+Confirm the healthy-path device log reaches these ready-state markers:
 
 - `Wi-Fi connected`
 - `DHCP IPv4 address: ...`
 - `Reachability check passed`
 - `APP_READY`
 
-Watch for these recovery/watchdog markers during the device run:
+Watch for these persistence markers during boot and reload:
 
-- `Recovery watchdog armed timeout_ms=...`
-- `Recovery escalation trigger=confirmed-stuck state=... stage=... reason=...`
-- `Previous recovery reset=confirmed-stuck hw=0x... state=... stage=... reason=...`
-- `Previous recovery reset=watchdog-starvation hw=0x... state=... stage=... reason=...`
-- `Recovery cooldown active for ... ms after previous reset`
-- `Recovery incident cleared after stable window ... ms`
+- `Persistence snapshot ready (layout v..., actions=..., schedules=..., relay desired=..., relay reboot=...)`
+- `Persistence auth: ...`
+- `Persistence actions: ...`
+- `Persistence relay: ...`
+- `Persistence schedule: ...`
 
-Use this blocking device checklist before Phase 3 approval:
+Use this blocking device checklist before Phase 4 approval:
 
-This hardware gate is blocking for phase approval. Do not mark Phase 3 complete until a real-device run records each scenario below.
+This hardware gate is blocking for phase approval. Do not mark Phase 4 complete until a real-device run records each scenario below.
 
 1. Re-run `./scripts/validate.sh` and keep the automated `./scripts/build.sh` path green.
 2. Flash the latest image with `./scripts/flash.sh`.
 3. Open the live device log with `./scripts/console.sh`.
-4. Confirm a healthy boot reaches the ready-state markers above, arms the watchdog, enters `Network supervisor state=healthy`, and stays stable through the normal run window without a false reset.
-5. Introduce brief or transient Wi-Fi/reachability failures and confirm ordinary degraded states and retries happen first instead of every transient immediately resetting the device.
-6. Hold the degraded or stalled condition beyond the patience window and confirm `Recovery escalation trigger=confirmed-stuck state=... stage=... reason=...` produces a whole-device reset.
-7. On the next boot, confirm the retained reset cause is clearly visible through `Previous recovery reset=confirmed-stuck ...`, the recovery cooldown/stable-window logs, and the preserved failure breadcrumb.
-8. Use the selected lab workflow to confirm a watchdog-feed starvation path causes a watchdog-owned reset and the next boot reports `Previous recovery reset=watchdog-starvation ...`.
-9. Keep or recreate the fault after reboot and confirm the cooldown window prevents rapid reset thrash; once the device stays healthy long enough, confirm `Recovery incident cleared after stable window ... ms`.
-10. Record whether the healthy stability, long-degraded escalation, reboot-breadcrumb, watchdog-reset, and anti-thrash scenarios passed or failed.
+4. Confirm a clean device logs persistence initialization, starts with blank safe action/schedule defaults, and reseeds the configured admin credentials when the auth section is absent or corrupt.
+5. Save representative auth, relay/action, and schedule data through the implemented persistence entrypoints.
+6. Reboot the device and confirm the saved values reload on the next boot together with the persistence snapshot and per-section status logs.
+7. Repeat the durability check with the supported power loss or power-cycle lab flow after a completed save and confirm the device does not report ambiguous half-written state.
+8. Corrupt or remove exactly one persisted section and confirm only that section resets or reseeds while healthy sections still report loaded.
+9. Persist a non-default relay last desired state and reboot policy, reboot again, and confirm next-boot logs or observed relay behavior match the stored policy.
+10. Record whether the clean-device defaults, reboot persistence, supported power loss durability, section corruption isolation, auth reseed, and relay reboot policy scenarios passed or failed.
 
 If the device run fails, record the exact scenario and last visible failure instead of treating the phase as complete.
 
 ## Supporting scripts
 
-- `./scripts/validate.sh` is the canonical automated validation entrypoint for Phase 3.
+- `./scripts/validate.sh` is the canonical automated validation entrypoint for Phase 4.
 - `./scripts/doctor.sh` checks host prerequisites and board visibility before build-heavy or hardware-bound work.
 - `./scripts/build.sh` performs the canonical firmware build.
-- `./scripts/common.sh` centralizes shared Phase 3 marker text and the blocking device checklist.
+- `./scripts/common.sh` centralizes Phase 4 persistence markers and the blocking device checklist.
 - `./scripts/flash.sh` flashes the latest build to the device.
-- `./scripts/console.sh` opens the serial console used for final smoke verification.
+- `./scripts/console.sh` opens the serial console used for final durability verification.
