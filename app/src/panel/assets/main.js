@@ -1,7 +1,25 @@
+const NETWORK_CONNECTIVITY_LAN_UP_UPSTREAM_DEGRADED = 'lan-up-upstream-degraded';
+
+const state = {
+	authenticated: false,
+	sessionUsername: '',
+	status: null,
+	refreshTimer: null,
+};
+
 const routes = {
 	session: '/api/auth/session',
 	login: '/api/auth/login',
 	logout: '/api/auth/logout',
+	status: '/api/status',
+};
+
+const connectivityLabels = {
+	healthy: 'Healthy',
+	connecting: 'Connecting',
+	'not-ready': 'Not ready',
+	'degraded-retrying': 'Recovering locally',
+	[NETWORK_CONNECTIVITY_LAN_UP_UPSTREAM_DEGRADED]: 'LAN_UP_UPSTREAM_DEGRADED',
 };
 
 const elements = {
@@ -13,11 +31,37 @@ const elements = {
 	loginPassword: document.getElementById('login-password'),
 	loginSubmit: document.getElementById('login-submit'),
 	sessionChip: document.getElementById('session-chip'),
+	networkPill: document.getElementById('network-pill'),
 	refreshButton: document.getElementById('refresh-button'),
 	logoutButton: document.getElementById('logout-button'),
+	cards: {
+		device: document.getElementById('device-card'),
+		network: document.getElementById('network-card'),
+		recovery: document.getElementById('recovery-card'),
+		relay: document.getElementById('relay-card'),
+		scheduler: document.getElementById('scheduler-card'),
+		update: document.getElementById('update-card'),
+	},
 };
 
+function escapeHtml(value) {
+	return String(value)
+		.replaceAll('&', '&amp;')
+		.replaceAll('<', '&lt;')
+		.replaceAll('>', '&gt;')
+		.replaceAll('"', '&quot;')
+		.replaceAll("'", '&#39;');
+}
+
+function boolLabel(value) {
+	return value ? 'Yes' : 'No';
+}
+
 function setAlert(message, tone = 'info') {
+	if (!elements.alert) {
+		return;
+	}
+
 	elements.alert.textContent = message;
 	elements.alert.dataset.tone = tone;
 }
@@ -26,6 +70,7 @@ function setBusy(button, busy, label) {
 	if (!button) {
 		return;
 	}
+
 	button.disabled = busy;
 	if (label) {
 		button.textContent = label;
@@ -33,19 +78,26 @@ function setBusy(button, busy, label) {
 }
 
 function showLoginView(message, tone = 'info') {
-	elements.loginView.classList.remove('hidden');
-	elements.dashboardView.classList.add('hidden');
+	state.authenticated = false;
+	elements.loginView?.classList.remove('hidden');
+	elements.dashboardView?.classList.add('hidden');
+	elements.logoutButton?.setAttribute('disabled', 'disabled');
+	elements.refreshButton?.setAttribute('disabled', 'disabled');
 	elements.sessionChip.textContent = 'Authentication required';
+	elements.sessionChip.className = 'badge badge--warn';
 	if (message) {
 		setAlert(message, tone);
 	}
 }
 
-function showDashboardView(username) {
-	elements.loginView.classList.add('hidden');
-	elements.dashboardView.classList.remove('hidden');
-	elements.sessionChip.textContent = `Authenticated as ${username || 'operator'}`;
-	setAlert('Session is active. Refresh and logout stay tied to the server-issued cookie.', 'success');
+function showDashboardView() {
+	state.authenticated = true;
+	elements.loginView?.classList.add('hidden');
+	elements.dashboardView?.classList.remove('hidden');
+	elements.logoutButton?.removeAttribute('disabled');
+	elements.refreshButton?.removeAttribute('disabled');
+	elements.sessionChip.textContent = `Authenticated as ${state.sessionUsername || 'operator'}`;
+	elements.sessionChip.className = 'badge badge--ok';
 }
 
 async function requestJson(url, options = {}) {
@@ -67,46 +119,160 @@ async function requestJson(url, options = {}) {
 	return { response, data };
 }
 
+function renderCard(title, eyebrow, rows, footer = '') {
+	const metrics = rows
+		.map(({ label, value }) => `
+			<div class="metric-row">
+				<div>
+					<div class="metric-label">${escapeHtml(label)}</div>
+				</div>
+				<div class="metric-value">${escapeHtml(value)}</div>
+			</div>
+		`)
+		.join('');
+
+	return `
+		<p class="card-eyebrow">${escapeHtml(eyebrow)}</p>
+		<h3>${escapeHtml(title)}</h3>
+		<div class="metric-list">${metrics}</div>
+		${footer}
+	`;
+}
+
+function updateNetworkChrome(network) {
+	const connectivity = network?.connectivity || 'not-ready';
+	const label = connectivityLabels[connectivity] || connectivity;
+	const degraded = connectivity === NETWORK_CONNECTIVITY_LAN_UP_UPSTREAM_DEGRADED ||
+		connectivity === 'degraded-retrying';
+
+	elements.networkPill.textContent = label;
+	elements.networkPill.className = `badge ${degraded ? 'badge--warn' : 'badge--ok'}`;
+}
+
+function renderStatus(statusPayload) {
+	state.status = statusPayload;
+	updateNetworkChrome(statusPayload.network);
+
+	const networkLabel = connectivityLabels[statusPayload.network.connectivity] || statusPayload.network.connectivity;
+	const degradedCopy = statusPayload.network.connectivity === NETWORK_CONNECTIVITY_LAN_UP_UPSTREAM_DEGRADED
+		? '<div class="placeholder-copy">Local LAN access is healthy even though upstream internet reachability is degraded. The panel keeps rendering local status in this state.</div>'
+		: '';
+
+	elements.cards.device.innerHTML = renderCard('Device shell', 'Device', [
+		{ label: 'Board', value: statusPayload.device.board },
+		{ label: 'Panel port', value: statusPayload.device.panelPort },
+		{ label: 'APP_READY path', value: boolLabel(statusPayload.device.ready) },
+	]);
+
+	elements.cards.network.innerHTML = renderCard('Connectivity', 'Network', [
+		{ label: 'Connectivity', value: networkLabel },
+		{ label: 'Wi-Fi ready', value: boolLabel(statusPayload.network.wifiReady) },
+		{ label: 'Wi-Fi connected', value: boolLabel(statusPayload.network.wifiConnected) },
+		{ label: 'IPv4 bound', value: boolLabel(statusPayload.network.ipv4Bound) },
+		{ label: 'IPv4 address', value: statusPayload.network.ipv4Address || 'Pending' },
+		{ label: 'Reachability', value: boolLabel(statusPayload.network.reachabilityOk) },
+		{ label: 'Last failure stage', value: statusPayload.network.lastFailure.stage },
+	]);
+	elements.cards.network.innerHTML += degradedCopy;
+
+	elements.cards.recovery.innerHTML = renderCard('Recovery posture', 'Recovery', [
+		{ label: 'Reset cause available', value: boolLabel(statusPayload.recovery.available) },
+		{ label: 'Recovery reset', value: boolLabel(statusPayload.recovery.recoveryReset) },
+		{ label: 'Trigger', value: statusPayload.recovery.trigger },
+		{ label: 'Failure stage', value: statusPayload.recovery.failureStage },
+		{ label: 'Connectivity snapshot', value: statusPayload.recovery.connectivity },
+		{ label: 'Reason', value: statusPayload.recovery.reason },
+	]);
+
+	elements.cards.relay.innerHTML = renderCard('Relay surface', 'Phase 6 placeholder', [
+		{ label: 'Implemented', value: boolLabel(statusPayload.relay.implemented) },
+		{ label: 'Configured actions', value: statusPayload.relay.configuredActions },
+		{ label: 'Last desired state', value: boolLabel(statusPayload.relay.lastDesiredState) },
+		{ label: 'Reboot policy', value: statusPayload.relay.rebootPolicy },
+	], `<div class="placeholder-copy">${escapeHtml(statusPayload.relay.placeholder)}</div>`);
+
+	elements.cards.scheduler.innerHTML = renderCard('Scheduler surface', 'Phase 7 placeholder', [
+		{ label: 'Implemented', value: boolLabel(statusPayload.scheduler.implemented) },
+		{ label: 'Saved schedules', value: statusPayload.scheduler.scheduleCount },
+		{ label: 'Enabled schedules', value: statusPayload.scheduler.enabledCount },
+	], `<div class="placeholder-copy">${escapeHtml(statusPayload.scheduler.placeholder)}</div>`);
+
+	elements.cards.update.innerHTML = renderCard('Update surface', 'Phase 8 placeholder', [
+		{ label: 'Implemented', value: boolLabel(statusPayload.update.implemented) },
+		{ label: 'Contract', value: 'Read-only placeholder only' },
+	], `<div class="placeholder-copy">${escapeHtml(statusPayload.update.placeholder)}</div>`);
+}
+
+async function refreshStatus({ silent = false } = {}) {
+	try {
+		const { response, data } = await requestJson(routes.status, { method: 'GET' });
+		if (response.status === 401) {
+			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			return;
+		}
+
+		if (!response.ok || !data) {
+			throw new Error(`Status refresh failed (${response.status})`);
+		}
+
+		showDashboardView();
+		renderStatus(data);
+		setAlert('Protected status refreshed from the device.', silent ? 'info' : 'success');
+	} catch (error) {
+		setAlert(error instanceof Error ? error.message : 'Status refresh failed.', 'error');
+	}
+}
+
 async function bootstrapSession() {
-	setAlert('Checking whether this browser already has a valid session…', 'info');
+	setAlert('Checking whether this browser already has a valid local session…', 'info');
 	try {
 		const { response, data } = await requestJson(routes.session, { method: 'GET' });
 		if (response.ok && data?.authenticated) {
-			showDashboardView(data.username);
+			state.sessionUsername = data.username || 'operator';
+			await refreshStatus({ silent: true });
 			return;
 		}
-		showLoginView('Log in with the configured local admin credentials to continue.', 'info');
+		showLoginView('Log in with the configured local admin credentials to unlock protected status.', 'info');
 	} catch (error) {
-		showLoginView('The panel could not confirm session state yet. Try again once the device is reachable.', 'warn');
+		showLoginView('The panel could not confirm session state yet. Try logging in once the device is reachable.', 'warn');
 	}
 }
 
 async function handleLogin(event) {
 	event.preventDefault();
-	const username = elements.loginUsername.value.trim();
-	const password = elements.loginPassword.value;
+	const username = elements.loginUsername?.value?.trim() || '';
+	const password = elements.loginPassword?.value || '';
+
 	if (!username || !password) {
 		setAlert('Enter both the username and password before continuing.', 'warn');
 		return;
 	}
+
 	setBusy(elements.loginSubmit, true, 'Authenticating…');
+	setAlert('Sending credentials to the local device…', 'info');
+
 	try {
 		const { response, data } = await requestJson(routes.login, {
 			method: 'POST',
 			body: JSON.stringify({ username, password }),
 		});
+
 		if (response.ok && data?.authenticated) {
-			elements.loginForm.reset();
-			showDashboardView(username);
+			state.sessionUsername = username;
+			elements.loginForm?.reset();
+			await refreshStatus({ silent: false });
 			return;
 		}
+
 		if (response.status === 429) {
-			setAlert(`Too many wrong-password attempts. Wait ${Math.ceil((data?.retryAfterMs || 0) / 1000)} seconds and try again.`, 'warn');
+			const retryAfterMs = data?.retryAfterMs || 0;
+			setAlert(`Too many wrong-password attempts. Wait ${Math.ceil(retryAfterMs / 1000)} seconds and try again.`, 'warn');
 			return;
 		}
+
 		setAlert('Authentication failed. Confirm the local admin credentials and try again.', 'error');
 	} catch (error) {
-		setAlert('Authentication failed because the device did not respond cleanly.', 'error');
+		setAlert(error instanceof Error ? error.message : 'Authentication failed.', 'error');
 	} finally {
 		setBusy(elements.loginSubmit, false, 'Authenticate locally');
 	}
@@ -115,17 +281,38 @@ async function handleLogin(event) {
 async function handleLogout() {
 	setBusy(elements.logoutButton, true, 'Logging out…');
 	try {
-		await fetch(routes.logout, { method: 'POST', credentials: 'same-origin' });
-		showLoginView('Session cleared. Log in again to continue.', 'success');
+		await fetch(routes.logout, {
+			method: 'POST',
+			credentials: 'same-origin',
+		});
+		state.sessionUsername = '';
+		showLoginView('Session cleared. Log in again to view protected status.', 'success');
 	} catch (error) {
-		showLoginView('The logout request failed, but the session may already be invalid.', 'warn');
+		setAlert('Logout request failed, but the browser session may already be invalid.', 'warn');
+		showLoginView('Session reset locally. Log in again if needed.', 'warn');
 	} finally {
 		setBusy(elements.logoutButton, false, 'Logout');
 	}
 }
 
-elements.loginForm?.addEventListener('submit', handleLogin);
-	elements.refreshButton?.addEventListener('click', bootstrapSession);
+function attachEvents() {
+	elements.loginForm?.addEventListener('submit', handleLogin);
+	elements.refreshButton?.addEventListener('click', () => refreshStatus({ silent: false }));
 	elements.logoutButton?.addEventListener('click', handleLogout);
+}
 
+function startPolling() {
+	if (state.refreshTimer) {
+		clearInterval(state.refreshTimer);
+	}
+
+	state.refreshTimer = window.setInterval(() => {
+		if (state.authenticated) {
+			refreshStatus({ silent: true });
+		}
+	}, 15000);
+}
+
+attachEvents();
+startPolling();
 bootstrapSession();

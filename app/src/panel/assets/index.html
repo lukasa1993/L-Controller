@@ -4,79 +4,399 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>LNH Nordic Local Control Panel</title>
-	<meta name="description" content="Local authenticated control panel for the LNH Nordic device.">
+	<meta
+		name="description"
+		content="Local authenticated control panel for the LNH Nordic device.">
 	<script src="https://cdn.tailwindcss.com"></script>
 	<style>
-		:root { color-scheme: dark; --bg: #071019; --panel: rgba(10,22,35,.88); --line: rgba(125,211,252,.18); --text: #eff7ff; --muted: #9db6cb; --accent: #7dd3fc; }
+		:root {
+			color-scheme: dark;
+			--bg: #071019;
+			--panel: rgba(10, 22, 35, 0.86);
+			--panel-strong: rgba(12, 30, 47, 0.96);
+			--line: rgba(155, 205, 255, 0.18);
+			--line-strong: rgba(123, 214, 255, 0.34);
+			--text: #eff7ff;
+			--muted: #9db6cb;
+			--accent: #7dd3fc;
+			--accent-strong: #22d3ee;
+			--warn: #fbbf24;
+			--danger: #fb7185;
+			--ok: #34d399;
+		}
+
 		* { box-sizing: border-box; }
-		body { margin: 0; min-height: 100vh; font-family: "IBM Plex Mono", ui-monospace, monospace; background: radial-gradient(circle at top left, rgba(34,211,238,.12), transparent 24%), linear-gradient(180deg, #040a10 0%, #071019 52%, #050b11 100%); color: var(--text); }
-		.shell { max-width: 1120px; margin: 0 auto; padding: 32px 20px 56px; display: grid; gap: 18px; }
-		.panel, .hero, .command-bar { border: 1px solid var(--line); background: var(--panel); border-radius: 24px; padding: 20px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
-		.overline { font-size: 12px; letter-spacing: .34em; text-transform: uppercase; color: var(--accent); margin: 0 0 8px; }
-		h1, h2 { margin: 0; font-family: "Iowan Old Style", "Palatino Linotype", serif; }
-		h1 { font-size: clamp(2.5rem, 5vw, 4.2rem); line-height: .96; }
+
+		body {
+			margin: 0;
+			min-height: 100vh;
+			font-family: "IBM Plex Mono", "SFMono-Regular", "SF Mono", ui-monospace, monospace;
+			background:
+				radial-gradient(circle at top left, rgba(34, 211, 238, 0.12), transparent 24%),
+				radial-gradient(circle at 80% 10%, rgba(251, 191, 36, 0.12), transparent 18%),
+				linear-gradient(180deg, #040a10 0%, #071019 52%, #050b11 100%);
+			color: var(--text);
+		}
+
+		body::before {
+			content: "";
+			position: fixed;
+			inset: 0;
+			pointer-events: none;
+			background-image:
+				linear-gradient(rgba(125, 211, 252, 0.04) 1px, transparent 1px),
+				linear-gradient(90deg, rgba(125, 211, 252, 0.04) 1px, transparent 1px);
+			background-size: 28px 28px;
+			mask-image: radial-gradient(circle at center, black, transparent 88%);
+		}
+
+		.shell {
+			position: relative;
+			max-width: 1360px;
+			margin: 0 auto;
+			padding: 32px 20px 56px;
+		}
+
+		.chrome {
+			display: grid;
+			gap: 18px;
+		}
+
+		.hero,
+		.panel,
+		.card,
+		.command-bar {
+			border: 1px solid var(--line);
+			background: var(--panel);
+			backdrop-filter: blur(18px);
+			box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+		}
+
+		.hero {
+			border-radius: 28px;
+			padding: 24px;
+			display: grid;
+			gap: 18px;
+		}
+
+		.hero-grid {
+			display: grid;
+			gap: 18px;
+		}
+
+		@media (min-width: 980px) {
+			.hero-grid {
+				grid-template-columns: 1.5fr 0.9fr;
+			}
+		}
+
+		.overline {
+			font-size: 12px;
+			letter-spacing: 0.34em;
+			text-transform: uppercase;
+			color: var(--accent);
+			margin: 0;
+		}
+
+		h1,
+		h2,
+		h3 {
+			margin: 0;
+			font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+			font-weight: 600;
+			letter-spacing: -0.02em;
+		}
+
+		h1 { font-size: clamp(2.6rem, 5vw, 4.4rem); line-height: 0.96; }
+		h2 { font-size: 1.2rem; }
+		h3 { font-size: 1rem; }
+
+		p,
+		li,
+		label,
+		input,
+		button {
+			font-size: 0.95rem;
+			line-height: 1.6;
+		}
+
 		.muted { color: var(--muted); }
 		.hidden { display: none !important; }
-		.alert { border-radius: 18px; padding: 12px 14px; border: 1px solid var(--line); background: rgba(8,15,24,.75); color: var(--muted); }
-		.input, .button { width: 100%; border-radius: 14px; border: 1px solid var(--line); padding: 14px 16px; color: var(--text); background: rgba(5,10,17,.72); }
-		.button { cursor: pointer; font-weight: 600; text-transform: uppercase; letter-spacing: .14em; background: linear-gradient(135deg, rgba(34,211,238,.28), rgba(13,22,33,.96)); }
-		.button--ghost { width: auto; }
-		.form-grid, .field, .toolbar, .hero-grid { display: grid; gap: 14px; }
-		.hero-grid { gap: 18px; }
-		@media (min-width: 920px) { .hero-grid { grid-template-columns: 1.35fr .85fr; } }
-		.command-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-radius: 999px; }
-		.badge { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(8,15,24,.68); font-size: .78rem; text-transform: uppercase; letter-spacing: .16em; }
+
+		.hero-stat-grid,
+		.status-grid {
+			display: grid;
+			gap: 16px;
+		}
+
+		@media (min-width: 860px) {
+			.status-grid {
+				grid-template-columns: repeat(2, minmax(0, 1fr));
+			}
+		}
+
+		@media (min-width: 1160px) {
+			.status-grid {
+				grid-template-columns: repeat(3, minmax(0, 1fr));
+			}
+		}
+
+		.card,
+		.panel {
+			border-radius: 24px;
+			padding: 20px;
+		}
+
+		.hero-note {
+			display: grid;
+			gap: 12px;
+			align-content: start;
+			background: linear-gradient(180deg, rgba(34, 211, 238, 0.12), rgba(8, 14, 22, 0.55));
+			border-radius: 24px;
+			padding: 22px;
+			border: 1px solid var(--line-strong);
+		}
+
+		.hero-note ul,
+		.card ul,
+		.chrome-list {
+			margin: 0;
+			padding-left: 18px;
+		}
+
+		.command-bar {
+			border-radius: 999px;
+			padding: 12px 16px;
+			display: flex;
+			gap: 12px;
+			align-items: center;
+			justify-content: space-between;
+			flex-wrap: wrap;
+		}
+
+		.badge-row,
+		.toolbar {
+			display: flex;
+			gap: 10px;
+			align-items: center;
+			flex-wrap: wrap;
+		}
+
+		.badge,
+		.pill {
+			display: inline-flex;
+			align-items: center;
+			gap: 8px;
+			padding: 7px 12px;
+			border-radius: 999px;
+			border: 1px solid var(--line);
+			background: rgba(8, 15, 24, 0.68);
+			color: var(--text);
+			font-size: 0.78rem;
+			text-transform: uppercase;
+			letter-spacing: 0.16em;
+		}
+
+		.badge--ok { border-color: rgba(52, 211, 153, 0.35); color: #b8ffe2; }
+		.badge--warn { border-color: rgba(251, 191, 36, 0.35); color: #ffe7a6; }
+		.badge--danger { border-color: rgba(251, 113, 133, 0.35); color: #ffd4da; }
+
+		.form-grid {
+			display: grid;
+			gap: 14px;
+		}
+
+		.field {
+			display: grid;
+			gap: 8px;
+		}
+
+		.input,
+		.button {
+			width: 100%;
+			border-radius: 14px;
+			border: 1px solid var(--line);
+			padding: 14px 16px;
+			color: var(--text);
+			background: rgba(5, 10, 17, 0.72);
+		}
+
+		.input:focus {
+			outline: 2px solid rgba(34, 211, 238, 0.35);
+			outline-offset: 2px;
+			border-color: rgba(34, 211, 238, 0.45);
+		}
+
+		.button {
+			cursor: pointer;
+			font-weight: 600;
+			text-transform: uppercase;
+			letter-spacing: 0.14em;
+			background: linear-gradient(135deg, rgba(34, 211, 238, 0.28), rgba(13, 22, 33, 0.96));
+			transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+		}
+
+		.button:hover {
+			transform: translateY(-1px);
+			border-color: var(--line-strong);
+		}
+
+		.button[disabled] {
+			opacity: 0.56;
+			cursor: wait;
+			transform: none;
+		}
+
+		.button--ghost {
+			width: auto;
+			background: rgba(7, 16, 25, 0.72);
+		}
+
+		.alert {
+			border-radius: 18px;
+			padding: 12px 14px;
+			border: 1px solid var(--line);
+			background: rgba(8, 15, 24, 0.75);
+			color: var(--muted);
+		}
+
+		.alert[data-tone="error"] { border-color: rgba(251, 113, 133, 0.35); color: #ffd9df; }
+		.alert[data-tone="success"] { border-color: rgba(52, 211, 153, 0.35); color: #cffff0; }
+		.alert[data-tone="warn"] { border-color: rgba(251, 191, 36, 0.35); color: #ffe7a6; }
+
+		.card-eyebrow {
+			font-size: 0.74rem;
+			letter-spacing: 0.18em;
+			text-transform: uppercase;
+			color: var(--accent);
+			margin-bottom: 12px;
+		}
+
+		.metric-list {
+			display: grid;
+			gap: 10px;
+			margin-top: 14px;
+		}
+
+		.metric-row {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) auto;
+			gap: 16px;
+			padding-top: 10px;
+			border-top: 1px solid rgba(157, 182, 203, 0.14);
+		}
+
+		.metric-row:first-child { border-top: 0; padding-top: 0; }
+
+		.metric-label {
+			color: var(--muted);
+			text-transform: uppercase;
+			letter-spacing: 0.12em;
+			font-size: 0.72rem;
+		}
+
+		.metric-value {
+			text-align: right;
+			font-weight: 600;
+			color: var(--text);
+		}
+
+		.placeholder-copy {
+			color: #d4eef8;
+			background: linear-gradient(180deg, rgba(125, 211, 252, 0.08), rgba(7, 16, 25, 0));
+			border: 1px dashed rgba(125, 211, 252, 0.24);
+			border-radius: 18px;
+			padding: 14px;
+			margin-top: 16px;
+		}
 	</style>
 	<script defer src="/main.js"></script>
 </head>
 <body>
-	<div class="shell">
+	<div class="shell chrome">
 		<header class="hero">
 			<div class="hero-grid">
-				<div>
+				<div class="space-y-4">
 					<p class="overline">Local Authenticated Panel</p>
 					<h1>LNH Nordic Mission Console</h1>
-					<p class="muted">This shell trusts the device as the source of truth: it checks <code>/api/auth/session</code> on load, keeps browser state server-owned, and reserves live status cards for the next frontend task.</p>
+					<p class="muted max-w-3xl">
+						This panel stays local to the LAN, trusts the firmware as the source of truth,
+						and keeps relay, scheduler, and update controls explicitly deferred until later phases.
+					</p>
+					<div class="badge-row">
+						<span id="session-chip" class="badge">Session bootstrap pending</span>
+						<span id="network-pill" class="badge">Status not loaded</span>
+					</div>
 				</div>
-				<aside class="panel">
-					<p class="overline">Phase 5 boundary</p>
-					<h2>Login first, then hydrate</h2>
-					<ul class="muted">
-						<li>Manual logout ends the session.</li>
-						<li>Refresh asks the device whether the session still exists.</li>
-						<li>Device reboot forces a fresh login because sessions are RAM-only.</li>
+				<aside class="hero-note">
+					<p class="overline">Phase 5 Boundary</p>
+					<h2>Read-only operator visibility first</h2>
+					<ul class="chrome-list muted">
+						<li>Single local operator account with cookie-backed server sessions</li>
+						<li>One protected status API feeding device, Wi-Fi, recovery, relay, scheduler, and update cards</li>
+						<li>No mutating relay, schedule, config, or update controls in this phase</li>
 					</ul>
 				</aside>
 			</div>
 		</header>
+
 		<div class="command-bar">
-			<span id="session-chip" class="badge">Session bootstrap pending</span>
-			<div class="toolbar" style="display:flex; gap:10px; flex-wrap:wrap;">
-				<button id="refresh-button" class="button button--ghost" type="button">Re-check session</button>
+			<div class="toolbar">
+				<span class="pill">Server truth sessions only</span>
+				<span class="pill">Tailwind-enhanced, readable without it</span>
+			</div>
+			<div class="toolbar">
+				<button id="refresh-button" class="button button--ghost" type="button">Refresh status</button>
 				<button id="logout-button" class="button button--ghost" type="button">Logout</button>
 			</div>
 		</div>
-		<section id="panel-alert" class="alert">Waiting for the session bootstrap to confirm whether this browser is already authenticated.</section>
-		<section id="login-view" class="panel">
-			<p class="overline">Authentication</p>
-			<h2>Login-first shell</h2>
-			<p class="muted">Use the configured local admin credentials to unlock the protected panel flow.</p>
-			<form id="login-form" class="form-grid">
-				<div class="field">
-					<label for="login-username">Username</label>
-					<input id="login-username" class="input" name="username" autocomplete="username" required>
-				</div>
-				<div class="field">
-					<label for="login-password">Password</label>
-					<input id="login-password" class="input" name="password" type="password" autocomplete="current-password" required>
-				</div>
-				<button id="login-submit" class="button" type="submit">Authenticate locally</button>
-			</form>
+
+		<section id="panel-alert" class="alert" data-tone="info">
+			Waiting for the session bootstrap to confirm whether this browser is already authenticated.
 		</section>
-		<section id="dashboard-view" class="panel hidden">
-			<p class="overline">Authenticated shell</p>
-			<h2>Session is active</h2>
-			<p class="muted">The protected dashboard and status cards arrive in the next frontend task. For now, this shell proves login, refresh, navigation, and logout stay tied to the server-issued cookie session.</p>
+
+		<section id="login-view" class="panel">
+			<div class="grid gap-6 md:grid-cols-[1.15fr,0.85fr]">
+				<div class="space-y-4">
+					<p class="overline">Authentication</p>
+					<h2>Login-first shell</h2>
+					<p class="muted">
+						A valid session survives refresh and in-panel navigation, but the firmware clears all
+						RAM sessions on reboot. Use the configured local admin credentials to continue.
+					</p>
+					<form id="login-form" class="form-grid">
+						<div class="field">
+							<label for="login-username">Username</label>
+							<input id="login-username" class="input" name="username" autocomplete="username" required>
+						</div>
+						<div class="field">
+							<label for="login-password">Password</label>
+							<input id="login-password" class="input" name="password" type="password" autocomplete="current-password" required>
+						</div>
+						<button id="login-submit" class="button" type="submit">Authenticate locally</button>
+					</form>
+				</div>
+				<div class="card">
+					<p class="card-eyebrow">Operator checklist</p>
+					<ul class="chrome-list muted">
+						<li>Unauthenticated status requests stay denied until login.</li>
+						<li>Wrong-password retries cool down briefly instead of locking permanently.</li>
+						<li>Concurrent browsers can stay signed in independently.</li>
+						<li>Device reboot forces a fresh login because sessions are RAM-only.</li>
+					</ul>
+				</div>
+			</div>
+		</section>
+
+		<section id="dashboard-view" class="hidden">
+			<div class="status-grid">
+				<article id="device-card" class="card"></article>
+				<article id="network-card" class="card"></article>
+				<article id="recovery-card" class="card"></article>
+				<article id="relay-card" class="card"></article>
+				<article id="scheduler-card" class="card"></article>
+				<article id="update-card" class="card"></article>
+			</div>
 		</section>
 	</div>
 </body>
