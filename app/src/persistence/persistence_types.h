@@ -70,6 +70,37 @@ struct persisted_schedule_table {
 	struct persisted_schedule entries[PERSISTED_SCHEDULE_MAX_COUNT];
 };
 
+struct persisted_auth_save_request {
+	char username[PERSISTED_AUTH_USERNAME_MAX_LEN];
+	char password[PERSISTED_AUTH_PASSWORD_MAX_LEN];
+};
+
+struct persisted_action_catalog_save_request {
+	uint32_t count;
+	struct persisted_action entries[PERSISTED_ACTION_MAX_COUNT];
+};
+
+struct persisted_relay_save_request {
+	bool last_desired_state;
+	enum persisted_relay_reboot_policy reboot_policy;
+};
+
+struct persisted_schedule_table_save_request {
+	uint32_t count;
+	struct persisted_schedule entries[PERSISTED_SCHEDULE_MAX_COUNT];
+};
+
+struct persisted_config_save_request {
+	bool has_auth;
+	struct persisted_auth_save_request auth;
+	bool has_actions;
+	struct persisted_action_catalog_save_request actions;
+	bool has_relay;
+	struct persisted_relay_save_request relay;
+	bool has_schedule;
+	struct persisted_schedule_table_save_request schedule;
+};
+
 struct persistence_section_status {
 	enum persistence_section section;
 	enum persistence_load_state state;

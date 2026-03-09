@@ -218,22 +218,32 @@ static int persistence_write_blob(
 
 static bool persisted_auth_valid(const struct persisted_auth *auth)
 {
-	return c_string_is_non_empty(auth->username, sizeof(auth->username)) &&
+	return auth != NULL &&
+	       c_string_is_non_empty(auth->username, sizeof(auth->username)) &&
 	       c_string_is_non_empty(auth->password, sizeof(auth->password));
 }
 
 static bool persisted_action_catalog_valid(const struct persisted_action_catalog *actions)
 {
 	uint32_t index;
+	uint32_t match_index;
 
-	if (actions->count > PERSISTED_ACTION_MAX_COUNT) {
+	if (actions == NULL || actions->count > PERSISTED_ACTION_MAX_COUNT) {
 		return false;
 	}
 
 	for (index = 0U; index < actions->count; ++index) {
-		if (!c_string_is_non_empty(actions->entries[index].action_id,
-					 sizeof(actions->entries[index].action_id))) {
+		const struct persisted_action *action = &actions->entries[index];
+
+		if (!c_string_is_non_empty(action->action_id, sizeof(action->action_id))) {
 			return false;
+		}
+
+		for (match_index = index + 1U; match_index < actions->count; ++match_index) {
+			if (strcmp(action->action_id,
+				   actions->entries[match_index].action_id) == 0) {
+				return false;
+			}
 		}
 	}
 
@@ -246,6 +256,10 @@ static bool persisted_action_exists(
 {
 	uint32_t index;
 
+	if (actions == NULL || action_id == NULL) {
+		return false;
+	}
+
 	for (index = 0U; index < actions->count; ++index) {
 		if (strcmp(actions->entries[index].action_id, action_id) == 0) {
 			return true;
@@ -257,7 +271,8 @@ static bool persisted_action_exists(
 
 static bool persisted_relay_valid(const struct persisted_relay *relay)
 {
-	return persisted_relay_reboot_policy_valid(relay->reboot_policy);
+	return relay != NULL &&
+	       persisted_relay_reboot_policy_valid(relay->reboot_policy);
 }
 
 static bool persisted_schedule_table_valid(
@@ -265,8 +280,9 @@ static bool persisted_schedule_table_valid(
 	const struct persisted_action_catalog *actions)
 {
 	uint32_t index;
+	uint32_t match_index;
 
-	if (schedule_table->count > PERSISTED_SCHEDULE_MAX_COUNT) {
+	if (schedule_table == NULL || schedule_table->count > PERSISTED_SCHEDULE_MAX_COUNT) {
 		return false;
 	}
 
@@ -281,12 +297,145 @@ static bool persisted_schedule_table_valid(
 			return false;
 		}
 
+		for (match_index = index + 1U; match_index < schedule_table->count;
+		     ++match_index) {
+			if (strcmp(schedule->schedule_id,
+				   schedule_table->entries[match_index].schedule_id) == 0) {
+				return false;
+			}
+		}
+
 		if (actions != NULL && !persisted_action_exists(actions, schedule->action_id)) {
 			return false;
 		}
 	}
 
 	return true;
+}
+
+static bool persisted_config_save_request_has_changes(
+	const struct persisted_config_save_request *request)
+{
+	return request != NULL &&
+	       (request->has_auth || request->has_actions || request->has_relay ||
+		request->has_schedule);
+}
+
+static void persisted_auth_from_save_request(
+	const struct persistence_store *store,
+	const struct persisted_auth_save_request *request,
+	struct persisted_auth *auth)
+{
+	memset(auth, 0, sizeof(*auth));
+	auth->schema_version = persistence_expected_layout_version(store);
+	memcpy(auth->username, request->username, sizeof(auth->username));
+	memcpy(auth->password, request->password, sizeof(auth->password));
+}
+
+static void persisted_action_catalog_from_save_request(
+	const struct persistence_store *store,
+	const struct persisted_action_catalog_save_request *request,
+	struct persisted_action_catalog *actions)
+{
+	uint32_t copy_count = MIN(request->count, PERSISTED_ACTION_MAX_COUNT);
+
+	memset(actions, 0, sizeof(*actions));
+	actions->schema_version = persistence_expected_layout_version(store);
+	actions->count = request->count;
+	memcpy(actions->entries, request->entries,
+	       sizeof(actions->entries[0]) * copy_count);
+}
+
+static void persisted_relay_from_save_request(
+	const struct persistence_store *store,
+	const struct persisted_relay_save_request *request,
+	struct persisted_relay *relay)
+{
+	memset(relay, 0, sizeof(*relay));
+	relay->schema_version = persistence_expected_layout_version(store);
+	relay->last_desired_state = request->last_desired_state;
+	relay->reboot_policy = request->reboot_policy;
+}
+
+static void persisted_schedule_table_from_save_request(
+	const struct persistence_store *store,
+	const struct persisted_schedule_table_save_request *request,
+	struct persisted_schedule_table *schedule_table)
+{
+	uint32_t copy_count = MIN(request->count, PERSISTED_SCHEDULE_MAX_COUNT);
+
+	memset(schedule_table, 0, sizeof(*schedule_table));
+	schedule_table->schema_version = persistence_expected_layout_version(store);
+	schedule_table->count = request->count;
+	memcpy(schedule_table->entries, request->entries,
+	       sizeof(schedule_table->entries[0]) * copy_count);
+}
+
+static void persisted_config_mark_section_loaded(
+	struct persisted_config *config,
+	enum persistence_section section)
+{
+	struct persistence_section_status status =
+		persistence_make_status(section, PERSISTENCE_LOAD_STATE_LOADED, false);
+
+	switch (section) {
+	case PERSISTENCE_SECTION_AUTH:
+		config->load_report.auth = status;
+		break;
+	case PERSISTENCE_SECTION_ACTIONS:
+		config->load_report.actions = status;
+		break;
+	case PERSISTENCE_SECTION_RELAY:
+		config->load_report.relay = status;
+		break;
+	case PERSISTENCE_SECTION_SCHEDULE:
+		config->load_report.schedule = status;
+		break;
+	default:
+		break;
+	}
+}
+
+static int persistence_stage_config_save_request(
+	struct persistence_store *store,
+	const struct persisted_config *current,
+	const struct persisted_config_save_request *request,
+	struct persisted_config *staged)
+{
+	if (!persistence_store_is_ready(store) || current == NULL || request == NULL ||
+	    staged == NULL || !persisted_config_save_request_has_changes(request)) {
+		return -EINVAL;
+	}
+
+	*staged = *current;
+	staged->layout_version = persistence_expected_layout_version(store);
+
+	if (request->has_auth) {
+		persisted_auth_from_save_request(store, &request->auth, &staged->auth);
+	}
+
+	if (request->has_actions) {
+		persisted_action_catalog_from_save_request(store, &request->actions,
+							 &staged->actions);
+	}
+
+	if (request->has_relay) {
+		persisted_relay_from_save_request(store, &request->relay, &staged->relay);
+	}
+
+	if (request->has_schedule) {
+		persisted_schedule_table_from_save_request(store, &request->schedule,
+							  &staged->schedule);
+	}
+
+	if (!persisted_auth_valid(&staged->auth) ||
+	    !persisted_action_catalog_valid(&staged->actions) ||
+	    !persisted_relay_valid(&staged->relay) ||
+	    !persisted_schedule_table_valid(&staged->schedule, &staged->actions)) {
+		return -EINVAL;
+	}
+
+	return 0;
 }
 
 int persistence_store_init(struct persistence_store *store,
@@ -362,8 +511,8 @@ int persistence_store_init(struct persistence_store *store,
 	return 0;
 }
 
-int persistence_store_save_auth(struct persistence_store *store,
-				const struct persisted_auth *auth)
+static int persistence_write_auth_section(struct persistence_store *store,
+					 const struct persisted_auth *auth)
 {
 	struct persisted_auth canonical;
 
@@ -381,7 +530,7 @@ int persistence_store_save_auth(struct persistence_store *store,
 				      sizeof(canonical));
 }
 
-int persistence_store_save_actions(
+static int persistence_write_actions_section(
 	struct persistence_store *store,
 	const struct persisted_action_catalog *actions)
 {
@@ -401,8 +550,8 @@ int persistence_store_save_actions(
 				      sizeof(canonical));
 }
 
-int persistence_store_save_relay(struct persistence_store *store,
-			 const struct persisted_relay *relay)
+static int persistence_write_relay_section(struct persistence_store *store,
+					   const struct persisted_relay *relay)
 {
 	struct persisted_relay canonical;
 
@@ -420,8 +569,9 @@ int persistence_store_save_relay(struct persistence_store *store,
 				      sizeof(canonical));
 }
 
-int persistence_store_save_schedule(
+static int persistence_write_schedule_section(
 	struct persistence_store *store,
+	const struct persisted_action_catalog *actions,
 	const struct persisted_schedule_table *schedule_table)
 {
 	struct persisted_schedule_table canonical;
@@ -432,7 +582,7 @@ int persistence_store_save_schedule(
 
 	canonical = *schedule_table;
 	canonical.schema_version = persistence_expected_layout_version(store);
-	if (!persisted_schedule_table_valid(&canonical, NULL)) {
+	if (!persisted_schedule_table_valid(&canonical, actions)) {
 		return -EINVAL;
 	}
 
@@ -440,31 +590,156 @@ int persistence_store_save_schedule(
 				      sizeof(canonical));
 }
 
-int persistence_store_save_config(struct persistence_store *store,
-				  const struct persisted_config *config)
+int persistence_store_save_config(
+	struct persistence_store *store,
+	struct persisted_config *config,
+	const struct persisted_config_save_request *request)
 {
+	struct persisted_config staged;
 	int ret;
+	int reload_ret;
 
-	if (config == NULL) {
+	if (!persistence_store_is_ready(store) || config == NULL || request == NULL) {
 		return -EINVAL;
 	}
 
-	ret = persistence_store_save_auth(store, &config->auth);
+	ret = persistence_stage_config_save_request(store, config, request, &staged);
 	if (ret != 0) {
 		return ret;
 	}
 
-	ret = persistence_store_save_actions(store, &config->actions);
-	if (ret != 0) {
-		return ret;
+	if (request->has_auth) {
+		ret = persistence_write_auth_section(store, &staged.auth);
+		if (ret != 0) {
+			goto reload_snapshot;
+		}
 	}
 
-	ret = persistence_store_save_relay(store, &config->relay);
-	if (ret != 0) {
-		return ret;
+	if (request->has_actions) {
+		ret = persistence_write_actions_section(store, &staged.actions);
+		if (ret != 0) {
+			goto reload_snapshot;
+		}
 	}
 
-	return persistence_store_save_schedule(store, &config->schedule);
+	if (request->has_relay) {
+		ret = persistence_write_relay_section(store, &staged.relay);
+		if (ret != 0) {
+			goto reload_snapshot;
+		}
+	}
+
+	if (request->has_schedule) {
+		ret = persistence_write_schedule_section(store, &staged.actions,
+							  &staged.schedule);
+		if (ret != 0) {
+			goto reload_snapshot;
+		}
+	}
+
+	*config = staged;
+	if (request->has_auth) {
+		persisted_config_mark_section_loaded(config, PERSISTENCE_SECTION_AUTH);
+	}
+
+	if (request->has_actions) {
+		persisted_config_mark_section_loaded(config, PERSISTENCE_SECTION_ACTIONS);
+	}
+
+	if (request->has_relay) {
+		persisted_config_mark_section_loaded(config, PERSISTENCE_SECTION_RELAY);
+	}
+
+	if (request->has_schedule) {
+		persisted_config_mark_section_loaded(config, PERSISTENCE_SECTION_SCHEDULE);
+	}
+
+	return 0;
+
+reload_snapshot:
+	reload_ret = persistence_store_load(store, config);
+	if (reload_ret != 0) {
+		LOG_ERR("Failed to reload persistence snapshot after save error: %d",
+			reload_ret);
+	}
+
+	return ret;
+}
+
+int persistence_store_save_auth(
+	struct persistence_store *store,
+	struct persisted_config *config,
+	const struct persisted_auth_save_request *request)
+{
+	struct persisted_config_save_request save_request;
+
+	if (request == NULL) {
+		return -EINVAL;
+	}
+
+	save_request = (struct persisted_config_save_request){
+		.has_auth = true,
+		.auth = *request,
+	};
+
+	return persistence_store_save_config(store, config, &save_request);
+}
+
+int persistence_store_save_actions(
+	struct persistence_store *store,
+	struct persisted_config *config,
+	const struct persisted_action_catalog_save_request *request)
+{
+	struct persisted_config_save_request save_request;
+
+	if (request == NULL) {
+		return -EINVAL;
+	}
+
+	save_request = (struct persisted_config_save_request){
+		.has_actions = true,
+		.actions = *request,
+	};
+
+	return persistence_store_save_config(store, config, &save_request);
+}
+
+int persistence_store_save_relay(
+	struct persistence_store *store,
+	struct persisted_config *config,
+	const struct persisted_relay_save_request *request)
+{
+	struct persisted_config_save_request save_request;
+
+	if (request == NULL) {
+		return -EINVAL;
+	}
+
+	save_request = (struct persisted_config_save_request){
+		.has_relay = true,
+		.relay = *request,
+	};
+
+	return persistence_store_save_config(store, config, &save_request);
+}
+
+int persistence_store_save_schedule(
+	struct persistence_store *store,
+	struct persisted_config *config,
+	const struct persisted_schedule_table_save_request *request)
+{
+	struct persisted_config_save_request save_request;
+
+	if (request == NULL) {
+		return -EINVAL;
+	}
+
+	save_request = (struct persisted_config_save_request){
+		.has_schedule = true,
+		.schedule = *request,
+	};
+
+	return persistence_store_save_config(store, config, &save_request);
 }
 
 int persistence_store_load_auth(
@@ -501,7 +776,7 @@ int persistence_store_load_auth(
 	}
 
 	*status = persistence_make_status(PERSISTENCE_SECTION_AUTH, state, true);
-	return persistence_store_save_auth(store, auth);
+	return persistence_write_auth_section(store, auth);
 }
 
 int persistence_store_load_actions(
@@ -538,7 +813,7 @@ int persistence_store_load_actions(
 		return 0;
 	}
 
-	ret = persistence_store_save_actions(store, actions);
+	ret = persistence_write_actions_section(store, actions);
 	return ret;
 }
 
@@ -576,7 +851,7 @@ int persistence_store_load_relay(
 		return 0;
 	}
 
-	ret = persistence_store_save_relay(store, relay);
+	ret = persistence_write_relay_section(store, relay);
 	return ret;
 }
 
@@ -616,7 +891,7 @@ int persistence_store_load_schedule(
 		return 0;
 	}
 
-	ret = persistence_store_save_schedule(store, schedule_table);
+	ret = persistence_write_schedule_section(store, actions, schedule_table);
 	return ret;
 }
 
