@@ -1,21 +1,19 @@
 ---
-status: human_needed
+status: passed
 verified: 2026-03-10
-commit: 570ae58
+commit: 25cb217
 ---
 
 # Quick Task 2 Verification
 
 ## Goal Check
 
-The code changes for the quick task are in place, but the full real-device goal still needs a human follow-up because the flashed device did not expose the panel on the LAN during verification.
+The quick task goal was met on the real device.
 
-- Met:
-  - The repo now contains a real-device-only Playwright login smoke.
-  - The smoke can resolve a flashed device URL from auto-discovery or an explicit `LNH_PANEL_BASE_URL`.
-  - The README documents the intended build, flash, and smoke workflow.
-- Still needs human verification:
-  - The actual flashed board must surface the panel on the LAN so the Playwright smoke can run against the real device.
+- The repo contains a real-device-only Playwright login smoke.
+- The smoke can resolve a flashed device URL from auto-discovery or an explicit `LNH_PANEL_BASE_URL`.
+- The firmware now survives boot and authenticated panel refreshes without the stack overflows and empty-body bug that initially blocked verification.
+- The Playwright smoke passed against the flashed board after build and flash.
 
 ## Evidence
 
@@ -33,18 +31,28 @@ The code changes for the quick task are in place, but the full real-device goal 
 
 4. `./scripts/build.sh`
    Result: passed.
-   Notes: the sysbuild flow completed and regenerated the panel asset includes. Existing non-fatal MBEDTLS Kconfig warnings still appeared.
+   Notes: the sysbuild flow completed after the firmware fixes. Existing non-fatal MBEDTLS Kconfig warnings still appeared.
 
 5. `./scripts/flash.sh`
    Result: passed.
    Notes: the attached board flashed successfully through J-Link serial `1050756792`.
 
 6. `LNH_PANEL_SUBNET=192.168.19 node tests/helpers/panel-target.js`
-   Result: blocked.
-   Notes: discovery failed twice after flash with `No panel shell was discovered on the local private subnet... Scanned 252 candidates.`
+   Result: passed.
+   Notes: discovery resolved the flashed device at `http://192.168.19.86` after the `main()` stack fix.
 
-## Human Check Needed
+7. `curl -sS -i -c /tmp/lnh-cookie.txt -H 'Content-Type: application/json' -d '{"username":"admin","password":"***"}' http://192.168.19.86/api/auth/login`
+   Result: passed.
+   Notes: login returned `200` and issued a `sid` cookie.
 
-- Confirm the flashed device's post-boot IP from the serial console or DHCP/router view.
-- Re-run `node tests/helpers/panel-target.js` once the panel is reachable, or set `LNH_PANEL_BASE_URL=http://<device-ip>` explicitly.
-- Export the real panel credentials and run `LNH_PANEL_BASE_URL=auto npx playwright test tests/panel-login.spec.js` against the flashed device.
+8. `curl -sS -i -b /tmp/lnh-cookie.txt http://192.168.19.86/api/status`
+   Result: passed.
+   Notes: the route returned authenticated device, network, relay, scheduler, and update JSON after the HTTP server stack increase.
+
+9. `curl -sS -i -b /tmp/lnh-cookie.txt http://192.168.19.86/api/schedules`
+   Result: passed.
+   Notes: the route now returns valid JSON instead of `200` with an empty body after fixing `panel_status_render_schedule_snapshot_json()`.
+
+10. `LNH_PANEL_BASE_URL=http://192.168.19.86 LNH_PANEL_USERNAME=admin LNH_PANEL_PASSWORD='***' npx playwright test tests/panel-login.spec.js`
+    Result: passed.
+    Notes: Playwright reported `1 passed`, and the login shell transitioned to the authenticated dashboard on the flashed device.
