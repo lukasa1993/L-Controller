@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 7
 current_phase_name: scheduling
-current_plan: Not started
-status: planning
-stopped_at: Completed 06-action-engine-relay-control-03-PLAN.md
-last_updated: "2026-03-10T05:13:22.922Z"
+current_plan: 2
+status: executing
+stopped_at: Completed 07-scheduling-01-PLAN.md
+last_updated: "2026-03-10T06:29:09.694Z"
 last_activity: 2026-03-10
 progress:
   total_phases: 8
   completed_phases: 5
-  total_plans: 16
-  completed_plans: 16
-  percent: 94
+  total_plans: 19
+  completed_plans: 17
+  percent: 89
 ---
 
 # Project State
@@ -30,18 +30,18 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Current Phase:** 7
 **Current Phase Name:** scheduling
-**Current Plan:** Not started
+**Current Plan:** 2
 **Total Plans in Phase:** 3
-**Status:** Ready to plan
+**Status:** Ready to execute next plan
 **Last Activity:** 2026-03-10
-**Last Activity Description:** Phase 06 complete, transitioned to Phase 7
+**Last Activity Description:** Completed 07-01 trusted-clock scheduler foundations
 
-Phase: 7 of 8 (scheduling) — planning
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-03-10 — Phase 06 complete, transitioned to Phase 7
+Phase: 7 of 8 (scheduling) — in progress
+Plan: 2 of 3 in current phase
+Status: Ready to execute next plan
+Last activity: 2026-03-10 — Completed 07-01 trusted-clock scheduler foundations
 
-Progress: [█████████░] 94%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -76,6 +76,7 @@ Progress: [█████████░] 94%
 | Phase 06-action-engine-relay-control P01 | 3 min | 3 tasks | 7 files |
 | Phase 06-action-engine-relay-control P02 | 4m | 3 tasks | 7 files |
 | Phase 06-action-engine-relay-control P03 | 6 min (auto tasks) + approved human verification | 4 tasks | 8 files |
+| Phase 07-scheduling P01 | 10m | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -140,6 +141,9 @@ Recent decisions affecting current work:
 - [Phase 06-action-engine-relay-control]: Keep the external panel/API surface relay-centric with one `/api/relay/desired-state` route while the dispatcher continues to own internal action execution.
 - [Phase 06-action-engine-relay-control]: Show actual-versus-desired mismatch as operator visibility plus a safety note instead of treating it as an automatic command block.
 - [Phase 06-action-engine-relay-control]: Keep `./scripts/validate.sh` build-first and treat browser/curl/device relay verification as the blocking Phase 6 approval gate.
+- [Phase 07-scheduling]: Schedules persist as explicit UTC 5-field cron expressions and the persistence layout is bumped to version 2.
+- [Phase 07-scheduling]: Enabled opposite-state same-minute overlaps are rejected before save, while same-state overlaps remain allowed.
+- [Phase 07-scheduling]: Scheduler automation stays inactive until trusted time is explicitly acquired, and trust/correction events baseline the current minute, skip missed jobs, and compute only future runs.
 
 ### Pending Todos
 
@@ -152,6 +156,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T05:03:26.753Z
-Stopped at: Completed 06-action-engine-relay-control-03-PLAN.md
+Last session: 2026-03-10T06:29:09.692Z
+Stopped at: Completed 07-scheduling-01-PLAN.md
 Resume file: None
