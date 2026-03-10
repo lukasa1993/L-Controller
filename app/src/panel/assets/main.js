@@ -22,6 +22,8 @@ const state = {
 	scheduleSnapshot: null,
 	updateSnapshot: null,
 	refreshTimer: null,
+	refreshPromise: null,
+	refreshNeedsAnnouncement: false,
 	activeView: 'actions',
 	relayCommandPending: false,
 	relayCommandDesiredState: false,
@@ -1349,50 +1351,69 @@ function renderStatus(statusPayload, updatePayload = null) {
 }
 
 async function refreshDashboard({ silent = false } = {}) {
-	try {
-		const [statusResult, updateResult, schedulesResult] = await Promise.all([
-			requestJson(routes.status, { method: 'GET' }),
-			requestJson(routes.updateStatus, { method: 'GET' }),
-			requestJson(routes.schedules, { method: 'GET' }),
-		]);
-
-		if ([statusResult, updateResult, schedulesResult].some((result) => result.response.status === 401)) {
-			showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
-			return false;
-		}
-
-		if (!statusResult.response.ok || !statusResult.data) {
-			throw new Error(`Status refresh failed (${statusResult.response.status})`);
-		}
-		if (!updateResult.response.ok || !updateResult.data) {
-			throw new Error(`Update refresh failed (${updateResult.response.status})`);
-		}
-		if (!schedulesResult.response.ok || !schedulesResult.data) {
-			throw new Error(`Schedule refresh failed (${schedulesResult.response.status})`);
-		}
-
-		state.status = statusResult.data;
-		state.scheduleSnapshot = schedulesResult.data;
-		state.updateSnapshot = updateResult.data;
-		if (!state.authenticated) {
-			showDashboardView();
-		} else {
-			renderActiveView();
-		}
-		updateNetworkChrome(statusResult.data.network);
-		if (!silent) {
-			setAlert('Protected status, schedules, and OTA truth refreshed from the device.', 'success');
-		}
-		return true;
-	} catch (error) {
-		if (state.updateSnapshot?.state === 'apply-requested') {
-			setAlert('Device reboot is in progress for the staged update. Log in again once it returns.', 'warn');
-			return false;
-		}
-
-		setAlert(error instanceof Error ? error.message : 'Status refresh failed.', 'error');
-		return false;
+	state.refreshNeedsAnnouncement = state.refreshNeedsAnnouncement || !silent;
+	if (state.refreshPromise) {
+		return state.refreshPromise;
 	}
+
+	state.refreshPromise = (async () => {
+		try {
+			// Keep the device load predictable: one refresh flow at a time, one endpoint at a time.
+			const statusResult = await requestJson(routes.status, { method: 'GET' });
+			if (statusResult.response.status === 401) {
+				showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
+				return false;
+			}
+			if (!statusResult.response.ok || !statusResult.data) {
+				throw new Error(`Status refresh failed (${statusResult.response.status})`);
+			}
+
+			const updateResult = await requestJson(routes.updateStatus, { method: 'GET' });
+			if (updateResult.response.status === 401) {
+				showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
+				return false;
+			}
+			if (!updateResult.response.ok || !updateResult.data) {
+				throw new Error(`Update refresh failed (${updateResult.response.status})`);
+			}
+
+			const schedulesResult = await requestJson(routes.schedules, { method: 'GET' });
+			if (schedulesResult.response.status === 401) {
+				showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
+				return false;
+			}
+			if (!schedulesResult.response.ok || !schedulesResult.data) {
+				throw new Error(`Schedule refresh failed (${schedulesResult.response.status})`);
+			}
+
+			state.status = statusResult.data;
+			state.scheduleSnapshot = schedulesResult.data;
+			state.updateSnapshot = updateResult.data;
+			if (!state.authenticated) {
+				showDashboardView();
+			} else {
+				renderActiveView();
+			}
+			updateNetworkChrome(statusResult.data.network);
+			if (state.refreshNeedsAnnouncement) {
+				setAlert('Protected status, schedules, and OTA truth refreshed from the device.', 'success');
+			}
+			return true;
+		} catch (error) {
+			if (state.updateSnapshot?.state === 'apply-requested') {
+				setAlert('Device reboot is in progress for the staged update. Log in again once it returns.', 'warn');
+				return false;
+			}
+
+			setAlert(error instanceof Error ? error.message : 'Status refresh failed.', 'error');
+			return false;
+		} finally {
+			state.refreshPromise = null;
+			state.refreshNeedsAnnouncement = false;
+		}
+	})();
+
+	return state.refreshPromise;
 }
 
 async function handleRelaySet(desiredState) {
@@ -1628,7 +1649,7 @@ async function handleUpdateNow() {
 
 		setUpdateFeedback(data.detail || 'GitHub update check started.', 'info');
 		setAlert(data.detail || 'GitHub update check started.', 'info');
-		await refreshDashboard({ silent: true });
+				await refreshDashboard({ silent: false });
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Update now failed.';
 		setUpdateFeedback(message, 'error');
@@ -1960,9 +1981,13 @@ function startPolling() {
 	}
 
 	state.refreshTimer = window.setInterval(() => {
+		if (document.visibilityState === 'hidden') {
+			return;
+		}
+
 		if (state.authenticated && !state.schedulerBusy && !state.relayCommandPending &&
 			!state.updateBusy && !updateInputHasSelectedFile()) {
-			refreshDashboard({ silent: true });
+			void refreshDashboard({ silent: true });
 		}
 	}, 15000);
 }
