@@ -20,12 +20,15 @@ const state = {
 	sessionUsername: '',
 	status: null,
 	scheduleSnapshot: null,
+	updateSnapshot: null,
 	refreshTimer: null,
 	relayCommandPending: false,
 	relayCommandDesiredState: false,
 	relayFeedback: null,
 	schedulerBusy: false,
 	schedulerFeedback: null,
+	updateBusy: false,
+	updateFeedback: null,
 	schedulerForm: createSchedulerFormState(),
 };
 
@@ -34,6 +37,10 @@ const routes = {
 	login: '/api/auth/login',
 	logout: '/api/auth/logout',
 	status: '/api/status',
+	updateStatus: '/api/update',
+	updateUpload: '/api/update/upload',
+	updateApply: '/api/update/apply',
+	updateClear: '/api/update/clear',
 	relayDesiredState: '/api/relay/desired-state',
 	schedules: '/api/schedules',
 	scheduleCreate: '/api/schedules/create',
@@ -137,6 +144,10 @@ function setSchedulerFeedback(message, tone = 'info') {
 	state.schedulerFeedback = message ? { message, tone } : null;
 }
 
+function setUpdateFeedback(message, tone = 'info') {
+	state.updateFeedback = message ? { message, tone } : null;
+}
+
 function setAlert(message, tone = 'info') {
 	if (!elements.alert) {
 		return;
@@ -165,11 +176,14 @@ function showLoginView(message, tone = 'info') {
 	state.authenticated = false;
 	state.status = null;
 	state.scheduleSnapshot = null;
+	state.updateSnapshot = null;
 	state.relayCommandPending = false;
 	state.relayCommandDesiredState = false;
 	state.schedulerBusy = false;
+	state.updateBusy = false;
 	setRelayFeedback(null);
 	setSchedulerFeedback(null);
+	setUpdateFeedback(null);
 	resetSchedulerForm();
 	elements.loginView?.classList.remove('hidden');
 	elements.dashboardView?.classList.add('hidden');
@@ -211,6 +225,25 @@ async function requestJson(url, options = {}) {
 	return { response, data };
 }
 
+async function requestBinaryUpload(url, file) {
+	const response = await fetch(url, {
+		method: 'POST',
+		credentials: 'same-origin',
+		headers: {
+			'Content-Type': 'application/octet-stream',
+		},
+		body: file,
+	});
+
+	let data = null;
+	const contentType = response.headers.get('content-type') || '';
+	if (contentType.includes('application/json')) {
+		data = await response.json();
+	}
+
+	return { response, data };
+}
+
 function renderCard(title, eyebrow, rows, footer = '') {
 	const metrics = rows
 		.map(({ label, value }) => `
@@ -229,6 +262,164 @@ function renderCard(title, eyebrow, rows, footer = '') {
 		<div class="metric-list">${metrics}</div>
 		${footer}
 	`;
+}
+
+function updateVersionLabel(version) {
+	if (!version) {
+		return 'Unavailable';
+	}
+
+	if (typeof version === 'string') {
+		return version || 'Unavailable';
+	}
+
+	if (version.label) {
+		return version.label;
+	}
+
+	if (!version.available) {
+		return 'Unavailable';
+	}
+
+	return `${version.major}.${version.minor}.${version.revision}+${version.buildNum}`;
+}
+
+function updateInputHasSelectedFile() {
+	return Boolean(elements.cards.update?.querySelector('[data-update-file]')?.files?.length);
+}
+
+function syncUpdateFileMeta() {
+	const fileInput = elements.cards.update?.querySelector('[data-update-file]');
+	const meta = elements.cards.update?.querySelector('[data-update-file-meta]');
+	const file = fileInput?.files?.[0];
+
+	if (!meta) {
+		return;
+	}
+
+	if (!file) {
+		meta.textContent = 'Choose a signed firmware image from this computer. Same-version and downgrade uploads are rejected.';
+		return;
+	}
+
+	const sizeMb = file.size > 0 ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : '0.00 MB';
+	meta.textContent = `${file.name} · ${sizeMb}`;
+}
+
+function setUpdateCardBusy(busy, labels = {}) {
+	const uploadButton = elements.cards.update?.querySelector('[data-update-upload]');
+	const applyButton = elements.cards.update?.querySelector('[data-update-apply]');
+	const clearButton = elements.cards.update?.querySelector('[data-update-clear]');
+
+	state.updateBusy = busy;
+	setBusy(uploadButton, busy, labels.uploadLabel || 'Stage local firmware');
+	setBusy(applyButton, busy, labels.applyLabel || 'Apply staged update');
+	setBusy(clearButton, busy, labels.clearLabel || 'Clear staged image');
+}
+
+function updateFeedbackMarkup() {
+	if (!state.updateFeedback) {
+		return '';
+	}
+
+	return `<div class="update-feedback" data-tone="${escapeHtml(state.updateFeedback.tone)}">${escapeHtml(state.updateFeedback.message)}</div>`;
+}
+
+function renderUpdateSurface(snapshot) {
+	if (!elements.cards.update) {
+		return;
+	}
+
+	if (!snapshot) {
+		elements.cards.update.innerHTML = renderCard('Firmware updates', 'Phase 8 OTA surface', [
+			{ label: 'State', value: 'Loading' },
+		], '<div class="placeholder-copy">Authenticated update routes will populate this surface once the device responds.</div>');
+		return;
+	}
+
+	const currentVersion = updateVersionLabel(snapshot.currentVersion);
+	const stagedVersion = snapshot.stagedVersion?.available
+		? updateVersionLabel(snapshot.stagedVersion)
+		: 'No staged image';
+	const lastResultCode = snapshot.lastResult?.recorded
+		? humanizeHyphenated(snapshot.lastResult.code)
+		: 'No result yet';
+	const lastResultDetail = snapshot.lastResult?.detail || 'No staged or applied firmware result is recorded yet.';
+	const stateLabel = humanizeHyphenated(snapshot.state);
+	const applyReady = Boolean(snapshot.applyReady);
+	const clearAvailable = snapshot.state && snapshot.state !== 'idle';
+	const rollbackDetected = Boolean(snapshot.lastResult?.rollbackDetected);
+	const badges = [
+		`<span class="badge ${applyReady ? 'badge--warn' : ''}">State ${escapeHtml(stateLabel)}</span>`,
+		`<span class="badge ${snapshot.imageConfirmed ? 'badge--ok' : 'badge--warn'}">Image ${snapshot.imageConfirmed ? 'Confirmed' : 'Unconfirmed'}</span>`,
+		`<span class="badge ${applyReady ? 'badge--warn' : 'badge--ok'}">Apply ${applyReady ? 'Ready' : 'Not ready'}</span>`,
+		rollbackDetected ? '<span class="badge badge--warn">Rollback flagged</span>' : '',
+	].filter(Boolean).join('');
+
+	elements.cards.update.innerHTML = `
+		<p class="card-eyebrow">Phase 8 OTA surface</p>
+		<div class="update-shell">
+			<div>
+				<h3>Firmware updates</h3>
+				<p class="muted">Local uploads stream straight into the shared OTA pipeline, stage first, and only reboot after one explicit operator apply.</p>
+			</div>
+			<div class="relay-badge-row">${badges}</div>
+			<div class="update-warning" data-tone="${applyReady || snapshot.state === 'apply-requested' ? 'warn' : 'info'}">
+				<strong>${escapeHtml(snapshot.pendingWarning || 'No staged firmware image is waiting.')}</strong>
+				<div class="update-note">${escapeHtml(snapshot.sessionWarning || 'Applying an update clears the current browser session after reboot.')}</div>
+			</div>
+			<div class="update-summary-grid">
+				<div class="update-summary-card">
+					<span class="card-eyebrow">Current version</span>
+					<strong>${escapeHtml(currentVersion)}</strong>
+					<small>${snapshot.currentVersion?.available ? 'Running image from device truth' : 'Running image metadata unavailable'}</small>
+				</div>
+				<div class="update-summary-card">
+					<span class="card-eyebrow">Staged version</span>
+					<strong>${escapeHtml(stagedVersion)}</strong>
+					<small>${snapshot.stagedVersion?.available ? 'Ready to apply after confirmation' : 'No staged image eligible for apply'}</small>
+				</div>
+				<div class="update-summary-card">
+					<span class="card-eyebrow">Last result</span>
+					<strong>${escapeHtml(lastResultCode)}</strong>
+					<small>${escapeHtml(lastResultDetail)}</small>
+				</div>
+				<div class="update-summary-card">
+					<span class="card-eyebrow">Staging bytes</span>
+					<strong>${escapeHtml(String(snapshot.lastResult?.bytesWritten || 0))}</strong>
+					<small>${rollbackDetected ? `Rollback reason ${snapshot.lastResult?.rollbackReason || 0}` : 'Latest OTA attempt byte count'}</small>
+				</div>
+			</div>
+			${updateFeedbackMarkup()}
+			<div class="update-layout">
+				<div class="update-panel">
+					<p class="card-eyebrow">Stage local firmware</p>
+					<h3>Upload a newer signed image</h3>
+					<p class="update-note">The device rejects same-version reinstall and downgrade attempts before the staged image becomes apply-ready.</p>
+					<div class="update-upload-actions">
+						<div class="field">
+							<label for="update-file">Firmware image</label>
+							<input id="update-file" class="input" data-update-file type="file" accept=".bin,.hex,.img,application/octet-stream" ${state.updateBusy || snapshot.state === 'apply-requested' ? 'disabled' : ''}>
+						</div>
+						<button class="button" type="button" data-update-upload ${state.updateBusy || snapshot.state === 'apply-requested' ? 'disabled' : ''}>Stage local firmware</button>
+					</div>
+					<div class="update-file-meta" data-update-file-meta>Choose a signed firmware image from this computer. Same-version and downgrade uploads are rejected.</div>
+				</div>
+				<div class="update-panel">
+					<p class="card-eyebrow">Apply or clear</p>
+					<h3>Explicit reboot boundary</h3>
+					<p class="update-note">Applying the staged update reboots the device, drops the panel connection, and requires a fresh login once startup completes.</p>
+					<div class="button-row">
+						<button class="button" type="button" data-update-apply ${state.updateBusy || !applyReady ? 'disabled' : ''}>Apply staged update</button>
+						<button class="button button--ghost" type="button" data-update-clear ${state.updateBusy || !clearAvailable ? 'disabled' : ''}>Clear staged image</button>
+					</div>
+					<div class="update-note">The rest of the dashboard remains usable while a staged image waits for explicit apply.</div>
+				</div>
+			</div>
+		</div>
+	`;
+
+	syncUpdateFileMeta();
 }
 
 function updateNetworkChrome(network) {
@@ -590,8 +781,9 @@ function renderSchedulerSurface(snapshot) {
 	`;
 }
 
-function renderStatus(statusPayload) {
+function renderStatus(statusPayload, updatePayload = null) {
 	state.status = statusPayload;
+	state.updateSnapshot = updatePayload;
 	updateNetworkChrome(statusPayload.network);
 
 	const networkLabel = connectivityLabels[statusPayload.network.connectivity] || statusPayload.network.connectivity;
@@ -626,11 +818,7 @@ function renderStatus(statusPayload) {
 	]);
 
 	renderRelayCard(statusPayload.relay);
-
-	elements.cards.update.innerHTML = renderCard('Update surface', 'Phase 8 placeholder', [
-		{ label: 'Implemented', value: boolLabel(statusPayload.update.implemented) },
-		{ label: 'Contract', value: 'Read-only placeholder only' },
-	], `<div class="placeholder-copy">${escapeHtml(statusPayload.update.placeholder)}</div>`);
+	renderUpdateSurface(updatePayload || statusPayload.update || null);
 }
 
 async function refreshDashboard({ silent = false } = {}) {
@@ -645,6 +833,16 @@ async function refreshDashboard({ silent = false } = {}) {
 			throw new Error(`Status refresh failed (${statusResult.response.status})`);
 		}
 
+		const updateResult = await requestJson(routes.updateStatus, { method: 'GET' });
+		if (updateResult.response.status === 401) {
+			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			return false;
+		}
+
+		if (!updateResult.response.ok || !updateResult.data) {
+			throw new Error(`Update refresh failed (${updateResult.response.status})`);
+		}
+
 		const schedulesResult = await requestJson(routes.schedules, { method: 'GET' });
 		if (schedulesResult.response.status === 401) {
 			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
@@ -657,11 +855,17 @@ async function refreshDashboard({ silent = false } = {}) {
 
 		showDashboardView();
 		state.scheduleSnapshot = schedulesResult.data;
-		renderStatus(statusResult.data);
+		state.updateSnapshot = updateResult.data;
+		renderStatus(statusResult.data, updateResult.data);
 		renderSchedulerSurface(schedulesResult.data);
-		setAlert('Protected status and schedules refreshed from the device.', silent ? 'info' : 'success');
+		setAlert('Protected status, schedules, and OTA truth refreshed from the device.', silent ? 'info' : 'success');
 		return true;
 	} catch (error) {
+		if (state.updateSnapshot?.state === 'apply-requested') {
+			setAlert('Device reboot is in progress for the staged update. Log in again once it returns.', 'warn');
+			return false;
+		}
+
 		setAlert(error instanceof Error ? error.message : 'Status refresh failed.', 'error');
 		return false;
 	}
@@ -819,6 +1023,169 @@ async function handleSchedulerDelete(scheduleId) {
 	}
 }
 
+function handleUpdateFileChange() {
+	if (state.updateFeedback?.tone === 'error') {
+		setUpdateFeedback(null);
+	}
+
+	syncUpdateFileMeta();
+}
+
+async function handleUpdateUpload() {
+	const fileInput = elements.cards.update?.querySelector('[data-update-file]');
+	const file = fileInput?.files?.[0];
+
+	if (!file || state.updateBusy) {
+		setUpdateFeedback('Choose a firmware image before staging it.', 'warn');
+		setAlert('Choose a firmware image before staging it.', 'warn');
+		renderUpdateSurface(state.updateSnapshot);
+		return;
+	}
+
+	setUpdateCardBusy(true, {
+		uploadLabel: 'Staging firmware…',
+		applyLabel: 'Apply staged update',
+		clearLabel: 'Clear staged image',
+	});
+	setAlert('Streaming the firmware image into the device OTA slot…', 'info');
+
+	try {
+		const { response, data } = await requestBinaryUpload(routes.updateUpload, file);
+
+		if (response.status === 401) {
+			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			return;
+		}
+
+		if (!response.ok || !data?.accepted) {
+			throw new Error(data?.detail || `Firmware upload failed (${response.status})`);
+		}
+
+		setUpdateFeedback(data.detail || 'Firmware image staged.', 'success');
+		setAlert(data.detail || 'Firmware image staged.', 'success');
+		await refreshDashboard({ silent: true });
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Firmware upload failed.';
+		setUpdateFeedback(message, 'error');
+		setAlert(message, 'error');
+	} finally {
+		setUpdateCardBusy(false);
+		renderUpdateSurface(state.updateSnapshot);
+	}
+}
+
+async function handleUpdateClear() {
+	if (!state.updateSnapshot || state.updateBusy) {
+		return;
+	}
+
+	const confirmed = window.confirm(
+		state.updateSnapshot.state === 'staging'
+			? 'Cancel the current staging attempt and clear the OTA slot eligibility?'
+			: 'Clear the staged firmware image so it can no longer be applied?'
+	);
+	if (!confirmed) {
+		return;
+	}
+
+	setUpdateCardBusy(true, {
+		uploadLabel: 'Stage local firmware',
+		applyLabel: 'Apply staged update',
+		clearLabel: 'Clearing staged image…',
+	});
+	setAlert('Clearing staged firmware eligibility…', 'info');
+
+	try {
+		const { response, data } = await requestJson(routes.updateClear, { method: 'POST' });
+
+		if (response.status === 401) {
+			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			return;
+		}
+
+		if (!response.ok || !data?.accepted) {
+			throw new Error(data?.detail || `Clear staged image failed (${response.status})`);
+		}
+
+		if (state.updateSnapshot) {
+			state.updateSnapshot = {
+				...state.updateSnapshot,
+				state: 'idle',
+				applyReady: false,
+				stagedVersion: { ...(state.updateSnapshot.stagedVersion || {}), available: false, label: 'Unavailable' },
+				pendingWarning: 'No staged firmware image is currently waiting for apply.',
+			};
+		}
+
+		setUpdateFeedback(data.detail || 'Staged firmware eligibility cleared.', 'success');
+		setAlert(data.detail || 'Staged firmware eligibility cleared.', 'success');
+		await refreshDashboard({ silent: true });
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Clear staged image failed.';
+		setUpdateFeedback(message, 'error');
+		setAlert(message, 'error');
+	} finally {
+		setUpdateCardBusy(false);
+		renderUpdateSurface(state.updateSnapshot);
+	}
+}
+
+async function handleUpdateApply() {
+	if (!state.updateSnapshot?.applyReady || state.updateBusy) {
+		return;
+	}
+
+	const stagedVersion = updateVersionLabel(state.updateSnapshot.stagedVersion);
+	const confirmation = window.confirm(
+		`Apply staged firmware ${stagedVersion} now?\n\nThis will reboot the device, drop the panel connection, and require a fresh login after startup.`
+	);
+	if (!confirmation) {
+		return;
+	}
+
+	setUpdateCardBusy(true, {
+		uploadLabel: 'Stage local firmware',
+		applyLabel: 'Applying update…',
+		clearLabel: 'Clear staged image',
+	});
+	setAlert('Queueing the staged firmware image for reboot…', 'warn');
+
+	try {
+		const { response, data } = await requestJson(routes.updateApply, { method: 'POST' });
+
+		if (response.status === 401) {
+			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			return;
+		}
+
+		if (!response.ok || !data?.accepted) {
+			throw new Error(data?.detail || `Apply staged update failed (${response.status})`);
+		}
+
+		state.updateSnapshot = {
+			...(state.updateSnapshot || {}),
+			state: 'apply-requested',
+			applyReady: false,
+			pendingWarning: data.detail || 'The staged firmware image has been queued for reboot.',
+			lastResult: {
+				...(state.updateSnapshot?.lastResult || {}),
+				recorded: true,
+				code: 'apply-requested',
+				detail: data.detail || 'The staged firmware image has been queued for reboot.',
+			},
+		};
+		setUpdateFeedback(data.detail || 'Staged firmware apply requested.', 'warn');
+		setAlert(data.detail || 'Staged firmware apply requested.', 'warn');
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Apply staged update failed.';
+		setUpdateFeedback(message, 'error');
+		setAlert(message, 'error');
+	} finally {
+		setUpdateCardBusy(false);
+		renderUpdateSurface(state.updateSnapshot);
+	}
+}
+
 async function bootstrapSession() {
 	setAlert('Checking whether this browser already has a valid local session…', 'info');
 	try {
@@ -945,6 +1312,22 @@ async function handleSchedulerCardSubmit(event) {
 	await handleSchedulerFormSubmit();
 }
 
+async function handleUpdateCardClick(event) {
+	if (event.target.closest('[data-update-upload]')) {
+		await handleUpdateUpload();
+		return;
+	}
+
+	if (event.target.closest('[data-update-apply]')) {
+		await handleUpdateApply();
+		return;
+	}
+
+	if (event.target.closest('[data-update-clear]')) {
+		await handleUpdateClear();
+	}
+}
+
 function attachEvents() {
 	elements.loginForm?.addEventListener('submit', handleLogin);
 	elements.refreshButton?.addEventListener('click', () => refreshDashboard({ silent: false }));
@@ -953,6 +1336,12 @@ function attachEvents() {
 	elements.cards.scheduler?.addEventListener('change', handleSchedulerCardInput);
 	elements.cards.scheduler?.addEventListener('click', (event) => { void handleSchedulerCardClick(event); });
 	elements.cards.scheduler?.addEventListener('submit', (event) => { void handleSchedulerCardSubmit(event); });
+	elements.cards.update?.addEventListener('change', (event) => {
+		if (event.target.closest('[data-update-file]')) {
+			handleUpdateFileChange();
+		}
+	});
+	elements.cards.update?.addEventListener('click', (event) => { void handleUpdateCardClick(event); });
 }
 
 function startPolling() {
@@ -961,7 +1350,8 @@ function startPolling() {
 	}
 
 	state.refreshTimer = window.setInterval(() => {
-		if (state.authenticated && !state.schedulerBusy && !state.relayCommandPending) {
+		if (state.authenticated && !state.schedulerBusy && !state.relayCommandPending &&
+			!state.updateBusy && !updateInputHasSelectedFile()) {
 			refreshDashboard({ silent: true });
 		}
 	}, 15000);
