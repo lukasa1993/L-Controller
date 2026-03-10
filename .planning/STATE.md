@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 7
 current_phase_name: scheduling
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 07-scheduling-01-PLAN.md
-last_updated: "2026-03-10T06:29:09.694Z"
+stopped_at: Completed 07-02-PLAN.md
+last_updated: "2026-03-10T06:58:09.984Z"
 last_activity: 2026-03-10
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 19
-  completed_plans: 17
-  percent: 89
+  completed_plans: 18
+  percent: 95
 ---
 
 # Project State
@@ -30,23 +30,23 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Current Phase:** 7
 **Current Phase Name:** scheduling
-**Current Plan:** 2
+**Current Plan:** 3
 **Total Plans in Phase:** 3
-**Status:** Ready to execute next plan
+**Status:** Ready to execute
 **Last Activity:** 2026-03-10
-**Last Activity Description:** Completed 07-01 trusted-clock scheduler foundations
+**Last Activity Description:** Completed 07-02 live scheduler runtime and status
 
 Phase: 7 of 8 (scheduling) — in progress
-Plan: 2 of 3 in current phase
+Plan: 3 of 3 in current phase
 Status: Ready to execute next plan
-Last activity: 2026-03-10 — Completed 07-01 trusted-clock scheduler foundations
+Last activity: 2026-03-10 — Completed 07-02 live scheduler runtime and status
 
-Progress: [█████████░] 89%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 16
+- Total plans completed: 18
 - Average duration: 69.2 min
 - Total execution time: 15.0 hours
 
@@ -77,6 +77,7 @@ Progress: [█████████░] 89%
 | Phase 06-action-engine-relay-control P02 | 4m | 3 tasks | 7 files |
 | Phase 06-action-engine-relay-control P03 | 6 min (auto tasks) + approved human verification | 4 tasks | 8 files |
 | Phase 07-scheduling P01 | 10m | 3 tasks | 10 files |
+| Phase 07 P02 | 13 min | 4 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -144,6 +145,9 @@ Recent decisions affecting current work:
 - [Phase 07-scheduling]: Schedules persist as explicit UTC 5-field cron expressions and the persistence layout is bumped to version 2.
 - [Phase 07-scheduling]: Enabled opposite-state same-minute overlaps are rejected before save, while same-state overlaps remain allowed.
 - [Phase 07-scheduling]: Scheduler automation stays inactive until trusted time is explicitly acquired, and trust/correction events baseline the current minute, skip missed jobs, and compute only future runs.
+- [Phase 07]: Trusted time comes from a scheduler-owned Zephyr SNTP helper that prefers DHCP-provided NTP and falls back to an app-configured server.
+- [Phase 07]: The live scheduler runs from one delayable minute-boundary work item and recomputes from the current UTC minute instead of backfilling missed work.
+- [Phase 07]: Manual and scheduled commands share one dispatcher mutex and skip already-applied desired-state writes to avoid race windows and flash churn.
 
 ### Pending Todos
 
@@ -156,6 +160,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T06:29:09.692Z
-Stopped at: Completed 07-scheduling-01-PLAN.md
+Last session: 2026-03-10T06:58:09.981Z
+Stopped at: Completed 07-02-PLAN.md
 Resume file: None

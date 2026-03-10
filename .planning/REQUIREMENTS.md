@@ -49,7 +49,7 @@ Requirements for the initial release. Each maps to roadmap phases.
 
 - [x] **SCHED-01**: Operator can create cron-style schedules for relay actions
 - [x] **SCHED-02**: Operator can enable, disable, edit, and delete saved schedules
-- [ ] **SCHED-03**: Scheduled relay actions execute locally without requiring external services
+- [x] **SCHED-03**: Scheduled relay actions execute locally without requiring external services
 - [x] **SCHED-04**: Device defines deterministic behavior for reboot, missed jobs, and time resynchronization
 
 ### Updates
@@ -122,7 +122,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RELAY-03 | Phase 6 | Complete |
 | SCHED-01 | Phase 7 | Complete |
 | SCHED-02 | Phase 7 | Complete |
-| SCHED-03 | Phase 7 | Pending |
+| SCHED-03 | Phase 7 | Complete |
 | SCHED-04 | Phase 7 | Complete |
 | OTA-01 | Phase 8 | Pending |
 | OTA-02 | Phase 8 | Pending |

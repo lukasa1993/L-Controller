@@ -127,7 +127,7 @@ Plans:
 
 Plans:
 - [x] 07-01: Define the time model, schedule schema, and missed-job semantics
-- [ ] 07-02: Implement the scheduler engine and persistent job storage
+- [x] 07-02: Implement the scheduler engine and persistent job storage
 - [ ] 07-03: Add schedule management endpoints/UI and validate execution behavior
 
 ### Phase 8: OTA Lifecycle
@@ -159,5 +159,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Persistent Configuration | 3/3 | Complete   | 2026-03-09 |
 | 5. Local Control Panel | 2/3 | In Progress | - |
 | 6. Action Engine & Relay Control | 3/3 | Complete | 2026-03-10 |
-| 7. Scheduling | 1/3 | In Progress | - |
+| 7. Scheduling | 2/3 | In Progress | - |
 | 8. OTA Lifecycle | 0/3 | Not started | - |
