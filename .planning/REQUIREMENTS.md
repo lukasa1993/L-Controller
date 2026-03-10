@@ -39,8 +39,8 @@ Requirements for the initial release. Each maps to roadmap phases.
 
 ### Actions & Relay Control
 
-- [ ] **ACT-01**: Device supports a generic action definition model that can be extended beyond relay control later
-- [ ] **ACT-02**: Manual panel commands and scheduled jobs execute through the same action engine path
+- [x] **ACT-01**: Device supports a generic action definition model that can be extended beyond relay control later
+- [x] **ACT-02**: Manual panel commands and scheduled jobs execute through the same action engine path
 - [ ] **RELAY-01**: Authenticated operator can activate the first relay from the panel
 - [ ] **RELAY-02**: Authenticated operator can deactivate the first relay from the panel
 - [x] **RELAY-03**: Relay returns to a defined safe state on boot and fault recovery
@@ -115,8 +115,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PANEL-01 | Phase 5 | Complete |
 | PANEL-02 | Phase 5 | Complete |
 | PANEL-03 | Phase 5 | Pending |
-| ACT-01 | Phase 6 | Pending |
-| ACT-02 | Phase 6 | Pending |
+| ACT-01 | Phase 6 | Complete |
+| ACT-02 | Phase 6 | Complete |
 | RELAY-01 | Phase 6 | Pending |
 | RELAY-02 | Phase 6 | Pending |
 | RELAY-03 | Phase 6 | Complete |

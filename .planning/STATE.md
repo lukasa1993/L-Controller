@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 6
 current_phase_name: Action Engine & Relay Control
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-03-10T03:42:59.672Z"
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-03-10T03:55:10.861Z"
 last_activity: 2026-03-10
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 16
-  completed_plans: 14
-  percent: 88
+  completed_plans: 15
+  percent: 94
 ---
 
 # Project State
@@ -30,18 +30,18 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Current Phase:** 6
 **Current Phase Name:** Action Engine & Relay Control
-**Current Plan:** 2
+**Current Plan:** 3
 **Total Plans in Phase:** 3
-**Status:** Ready to execute next plan
-**Last Activity:** 2026-03-10 — Completed 06-01 relay runtime ownership and startup policy
-**Last Activity Description:** Completed 06-01 relay runtime ownership and startup policy
+**Status:** Ready to execute
+**Last Activity:** 2026-03-10
+**Last Activity Description:** Completed 06-02 generic action model and execution pipeline
 
 Phase: 6 of 8 (Action Engine & Relay Control) — in progress
-Plan: 2 of 3 in current phase
+Plan: 3 of 3 in current phase
 Status: Ready to execute next plan
-Last activity: 2026-03-10 — Completed 06-01 relay runtime ownership and startup policy
+Last activity: 2026-03-10 — Completed 06-02 generic action model and execution pipeline
 
-Progress: [█████████░] 88%
+Progress: [█████████░] 94%
 
 ## Performance Metrics
 
@@ -74,6 +74,7 @@ Progress: [█████████░] 88%
 | Phase 05-local-control-panel P01 | 3 min | 3 tasks | 11 files |
 | Phase 05-local-control-panel P02 | 5 min | 3 tasks | 11 files |
 | Phase 06-action-engine-relay-control P01 | 3 min | 3 tasks | 7 files |
+| Phase 06-action-engine-relay-control P02 | 4m | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -132,6 +133,9 @@ Recent decisions affecting current work:
 - [Phase 06-action-engine-relay-control]: The board mapping for relay 0 lives behind a relay0 devicetree alias so callers stay hardware-agnostic.
 - [Phase 06-action-engine-relay-control]: The relay runtime preserves remembered desired state even when boot or recovery policy forces the applied state off.
 - [Phase 06-action-engine-relay-control]: Boot initializes recovery breadcrumbs before the relay service so startup policy can distinguish ordinary reboots from recovery resets.
+- [Phase 06-action-engine-relay-control]: Reserve stable relay built-ins as relay0.off and relay0.on and seed them during dispatcher startup.
+- [Phase 06-action-engine-relay-control]: Keep HTTP and future scheduler callers on action_id execution while the dispatcher owns relay actuation and persistence writes.
+- [Phase 06-action-engine-relay-control]: Roll back relay runtime state if desired-state persistence fails so accepted commands remain durable and truthful.
 
 ### Pending Todos
 
@@ -144,6 +148,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T03:42:59.670Z
-Stopped at: Completed 06-01-PLAN.md
+Last session: 2026-03-10T03:55:10.859Z
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None

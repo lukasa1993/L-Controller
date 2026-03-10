@@ -111,7 +111,7 @@ Plans:
 
 Plans:
 - [x] 06-01: Implement the relay driver abstraction and safe-state policy
-- [ ] 06-02: Implement the generic action model and execution pipeline
+- [x] 06-02: Implement the generic action model and execution pipeline
 - [ ] 06-03: Wire panel/API relay commands through the action engine and validate end-to-end behavior
 
 ### Phase 7: Scheduling
@@ -158,6 +158,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Recovery & Watchdog | 2/2 | Complete | 2026-03-09 |
 | 4. Persistent Configuration | 3/3 | Complete   | 2026-03-09 |
 | 5. Local Control Panel | 2/3 | In Progress | - |
-| 6. Action Engine & Relay Control | 0/3 | Not started | - |
+| 6. Action Engine & Relay Control | 2/3 | In Progress | - |
 | 7. Scheduling | 0/3 | Not started | - |
 | 8. OTA Lifecycle | 0/3 | Not started | - |
