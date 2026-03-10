@@ -5,6 +5,9 @@ const state = {
 	sessionUsername: '',
 	status: null,
 	refreshTimer: null,
+	relayCommandPending: false,
+	relayCommandDesiredState: false,
+	relayFeedback: null,
 };
 
 const routes = {
@@ -12,6 +15,7 @@ const routes = {
 	login: '/api/auth/login',
 	logout: '/api/auth/logout',
 	status: '/api/status',
+	relayDesiredState: '/api/relay/desired-state',
 };
 
 const connectivityLabels = {
@@ -57,6 +61,34 @@ function boolLabel(value) {
 	return value ? 'Yes' : 'No';
 }
 
+function relayStateLabel(value) {
+	return value ? 'On' : 'Off';
+}
+
+function humanizeHyphenated(value) {
+	return String(value || 'none')
+		.split('-')
+		.filter(Boolean)
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+		.join(' ');
+}
+
+function relaySourceBadgeClass(source) {
+	switch (source) {
+	case 'manual-panel':
+		return 'badge--ok';
+	case 'recovery-policy':
+	case 'safety-policy':
+		return 'badge--warn';
+	default:
+		return '';
+	}
+}
+
+function setRelayFeedback(message, tone = 'info') {
+	state.relayFeedback = message ? { message, tone } : null;
+}
+
 function setAlert(message, tone = 'info') {
 	if (!elements.alert) {
 		return;
@@ -79,6 +111,9 @@ function setBusy(button, busy, label) {
 
 function showLoginView(message, tone = 'info') {
 	state.authenticated = false;
+	state.relayCommandPending = false;
+	state.relayCommandDesiredState = false;
+	setRelayFeedback(null);
 	elements.loginView?.classList.remove('hidden');
 	elements.dashboardView?.classList.add('hidden');
 	elements.logoutButton?.setAttribute('disabled', 'disabled');
@@ -149,6 +184,82 @@ function updateNetworkChrome(network) {
 	elements.networkPill.className = `badge ${degraded ? 'badge--warn' : 'badge--ok'}`;
 }
 
+function relayFeedbackState(relay) {
+	if (state.relayCommandPending) {
+		return {
+			tone: 'warn',
+			message: `Pending: requesting relay ${state.relayCommandDesiredState ? 'on' : 'off'} from the device…`,
+		};
+	}
+
+	if (state.relayFeedback) {
+		return state.relayFeedback;
+	}
+
+	if (relay.blocked && relay.blockedReason && relay.blockedReason !== 'none') {
+		return { tone: 'warn', message: relay.blockedReason };
+	}
+
+	return null;
+}
+
+function renderRelayCard(relay) {
+	const actualState = relayStateLabel(relay.actualState);
+	const desiredState = relayStateLabel(relay.desiredState);
+	const pending = state.relayCommandPending || relay.pending;
+	const blocked = relay.blocked;
+	const available = relay.implemented && relay.available;
+	const mismatch = relay.actualState !== relay.desiredState;
+	const feedback = relayFeedbackState(relay);
+	const sourceClass = relaySourceBadgeClass(relay.source);
+	const buttonLabel = !available
+		? 'Relay unavailable'
+		: pending
+			? 'Sending relay command…'
+			: relay.actualState
+				? 'Turn relay off'
+				: 'Turn relay on';
+	const actionCopy = !available
+		? 'Relay control stays locked until the live runtime becomes available again.'
+		: pending
+			? 'The control stays locked until live status refresh confirms the result.'
+			: 'One tap asks the local device to change the relay, then the panel refreshes from live status.';
+	const badgeMarkup = `
+		<div class="relay-badge-row">
+			<span class="badge ${relay.actualState ? 'badge--ok' : ''}">Actual ${escapeHtml(actualState)}</span>
+			<span class="badge ${sourceClass}">Source ${escapeHtml(humanizeHyphenated(relay.source))}</span>
+			${blocked ? '<span class="badge badge--warn">Blocked</span>' : ''}
+			${pending ? '<span class="badge badge--warn">Pending</span>' : ''}
+		</div>
+	`;
+	const noteMarkup = [
+		relay.safetyNote && relay.safetyNote !== 'none'
+			? `<div class="relay-note relay-note--info">Safety note: ${escapeHtml(relay.safetyNote)}</div>`
+			: '',
+		mismatch
+			? `<div class="relay-note relay-note--warn">Actual ${escapeHtml(actualState)} differs from remembered desired ${escapeHtml(desiredState)}.</div>`
+			: '',
+	].join('');
+	const feedbackMarkup = feedback
+		? `<div class="relay-feedback" data-tone="${escapeHtml(feedback.tone)}">${escapeHtml(feedback.message)}</div>`
+		: '';
+
+	elements.cards.relay.innerHTML = renderCard('Relay control', 'Phase 6 live surface', [
+		{ label: 'Actual state', value: actualState },
+		{ label: 'Remembered desired', value: desiredState },
+		{ label: 'Control path', value: available ? 'Available' : 'Unavailable' },
+		{ label: 'Reboot policy', value: humanizeHyphenated(relay.rebootPolicy) },
+	], `${badgeMarkup}
+		<div class="relay-action">
+			<button class="button" type="button" data-relay-toggle ${pending || blocked || !available ? 'disabled' : ''}>${escapeHtml(buttonLabel)}</button>
+			<p class="relay-action-copy muted">${escapeHtml(actionCopy)}</p>
+		</div>
+		${feedbackMarkup}
+		${noteMarkup}`);
+
+	elements.cards.relay.querySelector('[data-relay-toggle]')?.addEventListener('click', handleRelayToggle);
+}
+
 function renderStatus(statusPayload) {
 	state.status = statusPayload;
 	updateNetworkChrome(statusPayload.network);
@@ -184,12 +295,7 @@ function renderStatus(statusPayload) {
 		{ label: 'Reason', value: statusPayload.recovery.reason },
 	]);
 
-	elements.cards.relay.innerHTML = renderCard('Relay surface', 'Phase 6 placeholder', [
-		{ label: 'Implemented', value: boolLabel(statusPayload.relay.implemented) },
-		{ label: 'Configured actions', value: statusPayload.relay.configuredActions },
-		{ label: 'Last desired state', value: boolLabel(statusPayload.relay.lastDesiredState) },
-		{ label: 'Reboot policy', value: statusPayload.relay.rebootPolicy },
-	], `<div class="placeholder-copy">${escapeHtml(statusPayload.relay.placeholder)}</div>`);
+	renderRelayCard(statusPayload.relay);
 
 	elements.cards.scheduler.innerHTML = renderCard('Scheduler surface', 'Phase 7 placeholder', [
 		{ label: 'Implemented', value: boolLabel(statusPayload.scheduler.implemented) },
@@ -208,7 +314,7 @@ async function refreshStatus({ silent = false } = {}) {
 		const { response, data } = await requestJson(routes.status, { method: 'GET' });
 		if (response.status === 401) {
 			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
-			return;
+			return false;
 		}
 
 		if (!response.ok || !data) {
@@ -218,8 +324,59 @@ async function refreshStatus({ silent = false } = {}) {
 		showDashboardView();
 		renderStatus(data);
 		setAlert('Protected status refreshed from the device.', silent ? 'info' : 'success');
+		return true;
 	} catch (error) {
 		setAlert(error instanceof Error ? error.message : 'Status refresh failed.', 'error');
+		return false;
+	}
+}
+
+async function handleRelayToggle() {
+	const relay = state.status?.relay;
+	if (!relay || state.relayCommandPending || relay.blocked || !relay.implemented || !relay.available) {
+		return;
+	}
+
+	const desiredState = !relay.actualState;
+	state.relayCommandPending = true;
+	state.relayCommandDesiredState = desiredState;
+	setRelayFeedback(`Pending: requesting relay ${desiredState ? 'on' : 'off'} from the device…`, 'warn');
+	renderRelayCard(relay);
+
+	try {
+		const { response, data } = await requestJson(routes.relayDesiredState, {
+			method: 'POST',
+			body: JSON.stringify({ desiredState }),
+		});
+
+		if (response.status === 401) {
+			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			return;
+		}
+
+		if (!response.ok || !data?.accepted) {
+			const detail = data?.detail || data?.error || `Relay command failed (${response.status})`;
+			throw new Error(`Relay command failed: ${detail}`);
+		}
+
+		const refreshed = await refreshStatus({ silent: true });
+		if (!refreshed) {
+			setRelayFeedback('Relay command was accepted, but live status refresh did not complete yet.', 'warn');
+			return;
+		}
+
+		setRelayFeedback(null);
+		setAlert(`Relay ${desiredState ? 'on' : 'off'} request applied.`, 'success');
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Relay command failed.';
+		setRelayFeedback(message, 'error');
+		setAlert(message, 'error');
+	} finally {
+		state.relayCommandPending = false;
+		state.relayCommandDesiredState = false;
+		if (state.status?.relay) {
+			renderRelayCard(state.status.relay);
+		}
 	}
 }
 
@@ -286,6 +443,9 @@ async function handleLogout() {
 			credentials: 'same-origin',
 		});
 		state.sessionUsername = '';
+		state.relayCommandPending = false;
+		state.relayCommandDesiredState = false;
+		setRelayFeedback(null);
 		showLoginView('Session cleared. Log in again to view protected status.', 'success');
 	} catch (error) {
 		setAlert('Logout request failed, but the browser session may already be invalid.', 'warn');

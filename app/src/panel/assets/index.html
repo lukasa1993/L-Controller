@@ -301,15 +301,58 @@
 			color: var(--text);
 		}
 
-		.placeholder-copy {
-			color: #d4eef8;
-			background: linear-gradient(180deg, rgba(125, 211, 252, 0.08), rgba(7, 16, 25, 0));
-			border: 1px dashed rgba(125, 211, 252, 0.24);
-			border-radius: 18px;
-			padding: 14px;
-			margin-top: 16px;
-		}
-	</style>
+			.placeholder-copy {
+				color: #d4eef8;
+				background: linear-gradient(180deg, rgba(125, 211, 252, 0.08), rgba(7, 16, 25, 0));
+				border: 1px dashed rgba(125, 211, 252, 0.24);
+				border-radius: 18px;
+				padding: 14px;
+				margin-top: 16px;
+			}
+
+			.relay-badge-row {
+				display: flex;
+				gap: 10px;
+				flex-wrap: wrap;
+				margin-top: 16px;
+			}
+
+			.relay-action {
+				display: grid;
+				gap: 10px;
+				margin-top: 16px;
+			}
+
+			.relay-action-copy {
+				margin: 0;
+			}
+
+			.relay-note,
+			.relay-feedback {
+				margin-top: 14px;
+				padding: 12px 14px;
+				border-radius: 18px;
+				border: 1px solid rgba(125, 211, 252, 0.24);
+				background: linear-gradient(180deg, rgba(125, 211, 252, 0.08), rgba(7, 16, 25, 0));
+				color: #dff8ff;
+			}
+
+			.relay-note--warn,
+			.relay-feedback[data-tone="warn"] {
+				border-color: rgba(251, 191, 36, 0.3);
+				color: #ffe7a6;
+			}
+
+			.relay-feedback[data-tone="error"] {
+				border-color: rgba(251, 113, 133, 0.34);
+				color: #ffd4da;
+			}
+
+			.relay-feedback[data-tone="success"] {
+				border-color: rgba(52, 211, 153, 0.34);
+				color: #cffff0;
+			}
+		</style>
 	<script defer src="/main.js"></script>
 </head>
 <body>
@@ -319,24 +362,24 @@
 				<div class="space-y-4">
 					<p class="overline">Local Authenticated Panel</p>
 					<h1>LNH Nordic Mission Console</h1>
-					<p class="muted max-w-3xl">
-						This panel stays local to the LAN, trusts the firmware as the source of truth,
-						and keeps relay, scheduler, and update controls explicitly deferred until later phases.
-					</p>
+						<p class="muted max-w-3xl">
+							This panel stays local to the LAN, trusts the firmware as the source of truth,
+							and now exposes one authenticated relay toggle while keeping scheduler and update controls deferred.
+						</p>
 					<div class="badge-row">
 						<span id="session-chip" class="badge">Session bootstrap pending</span>
 						<span id="network-pill" class="badge">Status not loaded</span>
 					</div>
 				</div>
-				<aside class="hero-note">
-					<p class="overline">Phase 5 Boundary</p>
-					<h2>Read-only operator visibility first</h2>
-					<ul class="chrome-list muted">
-						<li>Single local operator account with cookie-backed server sessions</li>
-						<li>One protected status API feeding device, Wi-Fi, recovery, relay, scheduler, and update cards</li>
-						<li>No mutating relay, schedule, config, or update controls in this phase</li>
-					</ul>
-				</aside>
+					<aside class="hero-note">
+						<p class="overline">Phase 6 Boundary</p>
+						<h2>Single relay control, nothing broader</h2>
+						<ul class="chrome-list muted">
+							<li>Single local operator account with cookie-backed server sessions</li>
+							<li>One relay-centric toggle backed by the protected status and relay APIs</li>
+							<li>Scheduler and update controls remain read-only or deferred in this phase</li>
+						</ul>
+					</aside>
 			</div>
 		</header>
 
