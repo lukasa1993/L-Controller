@@ -80,6 +80,94 @@ const elements = {
 	},
 };
 
+const ui = {
+	badgeBase: 'inline-flex items-center gap-2 rounded-full border border-sky-100/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100',
+	badgeOk: 'border-emerald-400/35 text-emerald-100',
+	badgeWarn: 'border-amber-300/35 text-amber-100',
+	badgeDanger: 'border-rose-400/35 text-rose-100',
+	buttonBase: 'inline-flex w-full items-center justify-center rounded-2xl border border-sky-100/20 bg-[linear-gradient(135deg,rgba(34,211,238,0.28),rgba(13,22,33,0.96))] px-4 py-[14px] text-[0.95rem] font-semibold uppercase tracking-[0.14em] text-slate-50 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 disabled:cursor-wait disabled:opacity-60 disabled:translate-y-0',
+	buttonGhost: 'w-auto bg-slate-950/70',
+	inputBase: 'w-full rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] leading-relaxed text-slate-50 outline-none placeholder:text-slate-500 focus:border-cyan-300/45 focus:ring-2 focus:ring-cyan-300/35',
+	alertBase: 'rounded-[18px] border border-sky-300/25 bg-[linear-gradient(180deg,rgba(125,211,252,0.08),rgba(7,16,25,0))] px-[14px] py-3 text-[0.95rem] leading-relaxed text-sky-50',
+	alertWarn: 'border-amber-300/30 text-amber-100',
+	alertError: 'border-rose-400/35 text-rose-100',
+	alertSuccess: 'border-emerald-400/35 text-emerald-50',
+	eyebrow: 'mb-3 text-[0.74rem] uppercase tracking-[0.18em] text-sky-300',
+	title: 'm-0 font-serif text-base font-semibold tracking-[-0.02em] text-slate-50',
+	muted: 'text-[0.95rem] leading-relaxed text-slate-300',
+	metricList: 'mt-[14px] grid gap-2.5',
+	metricRow: 'grid grid-cols-[minmax(0,1fr)_auto] gap-4 border-t border-slate-300/15 pt-2.5 first:border-t-0 first:pt-0',
+	metricLabel: 'text-[0.72rem] uppercase tracking-[0.12em] text-slate-400',
+	metricValue: 'text-right font-semibold text-slate-50',
+	placeholder: 'mt-4 rounded-[18px] border border-dashed border-sky-300/25 bg-[linear-gradient(180deg,rgba(125,211,252,0.08),rgba(7,16,25,0))] px-[14px] py-3 text-[0.95rem] leading-relaxed text-sky-100',
+	noticeBase: 'rounded-[18px] border border-sky-300/25 bg-[linear-gradient(180deg,rgba(125,211,252,0.08),rgba(7,16,25,0))] px-[14px] py-3 text-[0.95rem] leading-relaxed text-sky-50',
+	insetPanel: 'rounded-[18px] border border-sky-200/20 bg-slate-950/55 p-4',
+	rowFlex: 'flex flex-wrap items-center gap-2.5',
+	gridGap3: 'grid gap-3',
+	gridGap4: 'grid gap-4',
+	summaryGrid: 'mt-4 grid gap-3 md:grid-cols-4',
+	schedulerHeader: 'mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]',
+	schedulerLayout: 'mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]',
+	updateLayout: 'mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]',
+	uploadLayout: 'grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end',
+	schedulerFields: 'grid gap-3 md:grid-cols-2 xl:grid-cols-5',
+	schedulerRow: 'grid gap-3 rounded-[18px] border border-slate-300/15 bg-slate-950/60 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center',
+	code: 'rounded-lg bg-sky-300/10 px-1.5 py-0.5 text-[0.95rem] leading-relaxed text-slate-200',
+	list: 'm-0 list-disc pl-[18px] text-[0.95rem] leading-relaxed text-slate-300',
+};
+
+function classNames(...values) {
+	return values.filter(Boolean).join(' ');
+}
+
+function badgeToneClass(tone) {
+	switch (tone) {
+	case 'ok':
+		return ui.badgeOk;
+	case 'warn':
+		return ui.badgeWarn;
+	case 'danger':
+		return ui.badgeDanger;
+	default:
+		return '';
+	}
+}
+
+function badgeClass(tone = '') {
+	return classNames(ui.badgeBase, badgeToneClass(tone));
+}
+
+function alertClass(tone = 'info') {
+	switch (tone) {
+	case 'warn':
+		return classNames(ui.alertBase, ui.alertWarn);
+	case 'error':
+		return classNames(ui.alertBase, ui.alertError);
+	case 'success':
+		return classNames(ui.alertBase, ui.alertSuccess);
+	default:
+		return ui.alertBase;
+	}
+}
+
+function noticeClass(tone = 'info', dashed = false) {
+	const base = dashed ? ui.placeholder : ui.noticeBase;
+	switch (tone) {
+	case 'warn':
+		return classNames(base, ui.alertWarn);
+	case 'error':
+		return classNames(base, ui.alertError);
+	case 'success':
+		return classNames(base, ui.alertSuccess);
+	default:
+		return base;
+	}
+}
+
+function buttonClass({ ghost = false, full = true } = {}) {
+	return classNames(ui.buttonBase, !full && 'w-auto', ghost && ui.buttonGhost);
+}
+
 function escapeHtml(value) {
 	return String(value)
 		.replaceAll('&', '&amp;')
@@ -117,21 +205,21 @@ function formatUtcMinute(normalizedUtcMinute) {
 function schedulerClockTone(clockState) {
 	switch (clockState) {
 	case 'trusted':
-		return 'badge--ok';
+		return 'ok';
 	case 'degraded':
-		return 'badge--warn';
+		return 'warn';
 	default:
-		return 'badge--danger';
+		return 'danger';
 	}
 }
 
 function relaySourceBadgeClass(source) {
 	switch (source) {
 	case 'manual-panel':
-		return 'badge--ok';
+		return 'ok';
 	case 'recovery-policy':
 	case 'safety-policy':
-		return 'badge--warn';
+		return 'warn';
 	default:
 		return '';
 	}
@@ -156,6 +244,7 @@ function setAlert(message, tone = 'info') {
 
 	elements.alert.textContent = message;
 	elements.alert.dataset.tone = tone;
+	elements.alert.className = alertClass(tone);
 }
 
 function setBusy(button, busy, label) {
@@ -191,7 +280,7 @@ function showLoginView(message, tone = 'info') {
 	elements.logoutButton?.setAttribute('disabled', 'disabled');
 	elements.refreshButton?.setAttribute('disabled', 'disabled');
 	elements.sessionChip.textContent = 'Authentication required';
-	elements.sessionChip.className = 'badge badge--warn';
+	elements.sessionChip.className = badgeClass('warn');
 	if (message) {
 		setAlert(message, tone);
 	}
@@ -204,7 +293,7 @@ function showDashboardView() {
 	elements.logoutButton?.removeAttribute('disabled');
 	elements.refreshButton?.removeAttribute('disabled');
 	elements.sessionChip.textContent = `Authenticated as ${state.sessionUsername || 'operator'}`;
-	elements.sessionChip.className = 'badge badge--ok';
+	elements.sessionChip.className = badgeClass('ok');
 }
 
 async function requestJson(url, options = {}) {
@@ -248,19 +337,19 @@ async function requestBinaryUpload(url, file) {
 function renderCard(title, eyebrow, rows, footer = '') {
 	const metrics = rows
 		.map(({ label, value }) => `
-			<div class="metric-row">
+			<div class="${ui.metricRow}">
 				<div>
-					<div class="metric-label">${escapeHtml(label)}</div>
+					<div class="${ui.metricLabel}">${escapeHtml(label)}</div>
 				</div>
-				<div class="metric-value">${escapeHtml(value)}</div>
+				<div class="${ui.metricValue}">${escapeHtml(value)}</div>
 			</div>
 		`)
 		.join('');
 
 	return `
-		<p class="card-eyebrow">${escapeHtml(eyebrow)}</p>
-		<h3>${escapeHtml(title)}</h3>
-		<div class="metric-list">${metrics}</div>
+		<p class="${ui.eyebrow}">${escapeHtml(eyebrow)}</p>
+		<h3 class="${ui.title}">${escapeHtml(title)}</h3>
+		<div class="${ui.metricList}">${metrics}</div>
 		${footer}
 	`;
 }
@@ -325,7 +414,7 @@ function updateFeedbackMarkup() {
 		return '';
 	}
 
-	return `<div class="update-feedback" data-tone="${escapeHtml(state.updateFeedback.tone)}">${escapeHtml(state.updateFeedback.message)}</div>`;
+	return `<div class="${noticeClass(state.updateFeedback.tone)}">${escapeHtml(state.updateFeedback.message)}</div>`;
 }
 
 function renderUpdateSurface(snapshot) {
@@ -336,7 +425,7 @@ function renderUpdateSurface(snapshot) {
 	if (!snapshot) {
 		elements.cards.update.innerHTML = renderCard('Firmware updates', 'Phase 8 OTA surface', [
 			{ label: 'State', value: 'Loading' },
-		], '<div class="placeholder-copy">Authenticated update routes will populate this surface once the device responds.</div>');
+		], `<div class="${ui.placeholder}">Authenticated update routes will populate this surface once the device responds.</div>`);
 		return;
 	}
 
@@ -355,80 +444,80 @@ function renderUpdateSurface(snapshot) {
 	const clearAvailable = snapshot.state && snapshot.state !== 'idle';
 	const rollbackDetected = Boolean(snapshot.lastResult?.rollbackDetected);
 	const badges = [
-		`<span class="badge ${applyReady ? 'badge--warn' : ''}">State ${escapeHtml(stateLabel)}</span>`,
-		`<span class="badge ${snapshot.imageConfirmed ? 'badge--ok' : 'badge--warn'}">Image ${snapshot.imageConfirmed ? 'Confirmed' : 'Unconfirmed'}</span>`,
-		`<span class="badge ${applyReady ? 'badge--warn' : 'badge--ok'}">Apply ${applyReady ? 'Ready' : 'Not ready'}</span>`,
-		`<span class="badge ${remoteBusy ? 'badge--warn' : ''}">Remote ${escapeHtml(remoteState)}</span>`,
-		rollbackDetected ? '<span class="badge badge--warn">Rollback flagged</span>' : '',
+		`<span class="${badgeClass(applyReady ? 'warn' : '')}">State ${escapeHtml(stateLabel)}</span>`,
+		`<span class="${badgeClass(snapshot.imageConfirmed ? 'ok' : 'warn')}">Image ${snapshot.imageConfirmed ? 'Confirmed' : 'Unconfirmed'}</span>`,
+		`<span class="${badgeClass(applyReady ? 'warn' : 'ok')}">Apply ${applyReady ? 'Ready' : 'Not ready'}</span>`,
+		`<span class="${badgeClass(remoteBusy ? 'warn' : '')}">Remote ${escapeHtml(remoteState)}</span>`,
+		rollbackDetected ? `<span class="${badgeClass('warn')}">Rollback flagged</span>` : '',
 	].filter(Boolean).join('');
 
 	elements.cards.update.innerHTML = `
-		<p class="card-eyebrow">Phase 8 OTA surface</p>
-		<div class="update-shell">
+		<p class="${ui.eyebrow}">Phase 8 OTA surface</p>
+		<div class="grid gap-[18px]">
 			<div>
-				<h3>Firmware updates</h3>
-				<p class="muted">Local uploads stream straight into the shared OTA pipeline, stage first, and only reboot after one explicit operator apply.</p>
+				<h3 class="${ui.title}">Firmware updates</h3>
+				<p class="${ui.muted}">Local uploads stream straight into the shared OTA pipeline, stage first, and only reboot after one explicit operator apply.</p>
 			</div>
-			<div class="relay-badge-row">${badges}</div>
-			<div class="update-warning" data-tone="${applyReady || snapshot.state === 'apply-requested' ? 'warn' : 'info'}">
+			<div class="${ui.rowFlex}">${badges}</div>
+			<div class="${noticeClass(applyReady || snapshot.state === 'apply-requested' ? 'warn' : 'info')}">
 				<strong>${escapeHtml(snapshot.pendingWarning || 'No staged firmware image is waiting.')}</strong>
-				<div class="update-note">${escapeHtml(snapshot.sessionWarning || 'Applying an update clears the current browser session after reboot.')}</div>
+				<div class="${ui.muted} mt-1.5">${escapeHtml(snapshot.sessionWarning || 'Applying an update clears the current browser session after reboot.')}</div>
 			</div>
-			<div class="update-summary-grid">
-				<div class="update-summary-card">
-					<span class="card-eyebrow">Current version</span>
-					<strong>${escapeHtml(currentVersion)}</strong>
-					<small>${snapshot.currentVersion?.available ? 'Running image from device truth' : 'Running image metadata unavailable'}</small>
+			<div class="${ui.summaryGrid}">
+				<div class="${ui.insetPanel}">
+					<span class="${ui.eyebrow}">Current version</span>
+					<strong class="mb-1.5 block text-base text-slate-50">${escapeHtml(currentVersion)}</strong>
+					<small class="${ui.muted}">${snapshot.currentVersion?.available ? 'Running image from device truth' : 'Running image metadata unavailable'}</small>
 				</div>
-				<div class="update-summary-card">
-					<span class="card-eyebrow">Staged version</span>
-					<strong>${escapeHtml(stagedVersion)}</strong>
-					<small>${snapshot.stagedVersion?.available ? 'Ready to apply after confirmation' : 'No staged image eligible for apply'}</small>
+				<div class="${ui.insetPanel}">
+					<span class="${ui.eyebrow}">Staged version</span>
+					<strong class="mb-1.5 block text-base text-slate-50">${escapeHtml(stagedVersion)}</strong>
+					<small class="${ui.muted}">${snapshot.stagedVersion?.available ? 'Ready to apply after confirmation' : 'No staged image eligible for apply'}</small>
 				</div>
-				<div class="update-summary-card">
-					<span class="card-eyebrow">Last result</span>
-					<strong>${escapeHtml(lastResultCode)}</strong>
-					<small>${escapeHtml(lastResultDetail)}</small>
+				<div class="${ui.insetPanel}">
+					<span class="${ui.eyebrow}">Last result</span>
+					<strong class="mb-1.5 block text-base text-slate-50">${escapeHtml(lastResultCode)}</strong>
+					<small class="${ui.muted}">${escapeHtml(lastResultDetail)}</small>
 				</div>
-				<div class="update-summary-card">
-					<span class="card-eyebrow">Staging bytes</span>
-					<strong>${escapeHtml(String(snapshot.lastResult?.bytesWritten || 0))}</strong>
-					<small>${rollbackDetected ? `Rollback reason ${snapshot.lastResult?.rollbackReason || 0}` : 'Latest OTA attempt byte count'}</small>
+				<div class="${ui.insetPanel}">
+					<span class="${ui.eyebrow}">Staging bytes</span>
+					<strong class="mb-1.5 block text-base text-slate-50">${escapeHtml(String(snapshot.lastResult?.bytesWritten || 0))}</strong>
+					<small class="${ui.muted}">${rollbackDetected ? `Rollback reason ${snapshot.lastResult?.rollbackReason || 0}` : 'Latest OTA attempt byte count'}</small>
 				</div>
 			</div>
 			${updateFeedbackMarkup()}
-			<div class="update-layout">
-				<div class="update-panel">
-					<p class="card-eyebrow">Stage local firmware</p>
-					<h3>Upload a newer signed image</h3>
-					<p class="update-note">The device rejects same-version reinstall and downgrade attempts before the staged image becomes apply-ready.</p>
-					<div class="update-upload-actions">
-						<div class="field">
-							<label for="update-file">Firmware image</label>
-							<input id="update-file" class="input" data-update-file type="file" accept=".bin,.hex,.img,application/octet-stream" ${state.updateBusy || snapshot.state === 'apply-requested' ? 'disabled' : ''}>
+			<div class="${ui.updateLayout}">
+				<div class="${ui.insetPanel}">
+					<p class="${ui.eyebrow}">Stage local firmware</p>
+					<h3 class="${ui.title} mb-2">Upload a newer signed image</h3>
+					<p class="${ui.muted}">The device rejects same-version reinstall and downgrade attempts before the staged image becomes apply-ready.</p>
+					<div class="${ui.uploadLayout}">
+						<div class="grid gap-2">
+							<label for="update-file" class="text-[0.95rem] leading-relaxed text-slate-100">Firmware image</label>
+							<input id="update-file" class="${ui.inputBase}" data-update-file type="file" accept=".bin,.hex,.img,application/octet-stream" ${state.updateBusy || snapshot.state === 'apply-requested' ? 'disabled' : ''}>
 						</div>
-						<button class="button" type="button" data-update-upload ${state.updateBusy || snapshot.state === 'apply-requested' ? 'disabled' : ''}>Stage local firmware</button>
+						<button class="${buttonClass({ full: false })}" type="button" data-update-upload ${state.updateBusy || snapshot.state === 'apply-requested' ? 'disabled' : ''}>Stage local firmware</button>
 					</div>
-					<div class="update-file-meta" data-update-file-meta>Choose a signed firmware image from this computer. Same-version and downgrade uploads are rejected.</div>
+					<div class="${ui.muted} mt-3" data-update-file-meta>Choose a signed firmware image from this computer. Same-version and downgrade uploads are rejected.</div>
 				</div>
-				<div class="update-panel">
-					<p class="card-eyebrow">GitHub Releases</p>
-					<h3>Remote update now</h3>
-					<p class="update-note">The device checks the latest stable release from <code>${escapeHtml(snapshot.remotePolicy?.githubOwner || 'lukasa1993')}/${escapeHtml(snapshot.remotePolicy?.githubRepo || 'L-Controller')}</code>, downloads the expected artifact through the same OTA pipeline, and only reboots if a newer image is applied.</p>
-					<div class="button-row">
-						<button class="button" type="button" data-update-now ${state.updateBusy || remoteBusy || snapshot.state !== 'idle' ? 'disabled' : ''}>${remoteBusy ? 'Checking GitHub release…' : 'Update now'}</button>
+				<div class="${ui.insetPanel}">
+					<p class="${ui.eyebrow}">GitHub Releases</p>
+					<h3 class="${ui.title} mb-2">Remote update now</h3>
+					<p class="${ui.muted}">The device checks the latest stable release from <code class="${ui.code}">${escapeHtml(snapshot.remotePolicy?.githubOwner || 'lukasa1993')}/${escapeHtml(snapshot.remotePolicy?.githubRepo || 'L-Controller')}</code>, downloads the expected artifact through the same OTA pipeline, and only reboots if a newer image is applied.</p>
+					<div class="${ui.rowFlex} mt-4">
+						<button class="${buttonClass({ full: false })}" type="button" data-update-now ${state.updateBusy || remoteBusy || snapshot.state !== 'idle' ? 'disabled' : ''}>${remoteBusy ? 'Checking GitHub release…' : 'Update now'}</button>
 					</div>
-					<div class="update-note">Automatic remote checks stay enabled every ${escapeHtml(String(snapshot.remotePolicy?.checkIntervalHours || 24))} hour(s) and retry on future cycles after failure.</div>
+					<div class="${ui.muted} mt-3">Automatic remote checks stay enabled every ${escapeHtml(String(snapshot.remotePolicy?.checkIntervalHours || 24))} hour(s) and retry on future cycles after failure.</div>
 				</div>
-				<div class="update-panel">
-					<p class="card-eyebrow">Apply or clear</p>
-					<h3>Explicit reboot boundary</h3>
-					<p class="update-note">Applying the staged update reboots the device, drops the panel connection, and requires a fresh login once startup completes.</p>
-					<div class="button-row">
-						<button class="button" type="button" data-update-apply ${state.updateBusy || !applyReady ? 'disabled' : ''}>Apply staged update</button>
-						<button class="button button--ghost" type="button" data-update-clear ${state.updateBusy || !clearAvailable ? 'disabled' : ''}>Clear staged image</button>
+				<div class="${ui.insetPanel}">
+					<p class="${ui.eyebrow}">Apply or clear</p>
+					<h3 class="${ui.title} mb-2">Explicit reboot boundary</h3>
+					<p class="${ui.muted}">Applying the staged update reboots the device, drops the panel connection, and requires a fresh login once startup completes.</p>
+					<div class="${ui.rowFlex} mt-4">
+						<button class="${buttonClass({ full: false })}" type="button" data-update-apply ${state.updateBusy || !applyReady ? 'disabled' : ''}>Apply staged update</button>
+						<button class="${buttonClass({ ghost: true, full: false })}" type="button" data-update-clear ${state.updateBusy || !clearAvailable ? 'disabled' : ''}>Clear staged image</button>
 					</div>
-					<div class="update-note">The rest of the dashboard remains usable while a staged image waits for explicit apply.</div>
+					<div class="${ui.muted} mt-3">The rest of the dashboard remains usable while a staged image waits for explicit apply.</div>
 				</div>
 			</div>
 		</div>
@@ -444,7 +533,7 @@ function updateNetworkChrome(network) {
 		connectivity === 'degraded-retrying';
 
 	elements.networkPill.textContent = label;
-	elements.networkPill.className = `badge ${degraded ? 'badge--warn' : 'badge--ok'}`;
+	elements.networkPill.className = badgeClass(degraded ? 'warn' : 'ok');
 }
 
 function relayFeedbackState(relay) {
@@ -488,23 +577,23 @@ function renderRelayCard(relay) {
 			? 'The control stays locked until live status refresh confirms the result.'
 			: 'One tap asks the local device to change the relay, then the panel refreshes from live status.';
 	const badgeMarkup = `
-		<div class="relay-badge-row">
-			<span class="badge ${relay.actualState ? 'badge--ok' : ''}">Actual ${escapeHtml(actualState)}</span>
-			<span class="badge ${sourceClass}">Source ${escapeHtml(humanizeHyphenated(relay.source))}</span>
-			${blocked ? '<span class="badge badge--warn">Blocked</span>' : ''}
-			${pending ? '<span class="badge badge--warn">Pending</span>' : ''}
+		<div class="${ui.rowFlex}">
+			<span class="${badgeClass(relay.actualState ? 'ok' : '')}">Actual ${escapeHtml(actualState)}</span>
+			<span class="${badgeClass(sourceClass)}">Source ${escapeHtml(humanizeHyphenated(relay.source))}</span>
+			${blocked ? `<span class="${badgeClass('warn')}">Blocked</span>` : ''}
+			${pending ? `<span class="${badgeClass('warn')}">Pending</span>` : ''}
 		</div>
 	`;
 	const noteMarkup = [
 		relay.safetyNote && relay.safetyNote !== 'none'
-			? `<div class="relay-note relay-note--info">Safety note: ${escapeHtml(relay.safetyNote)}</div>`
+			? `<div class="${noticeClass('info')}">Safety note: ${escapeHtml(relay.safetyNote)}</div>`
 			: '',
 		mismatch
-			? `<div class="relay-note relay-note--warn">Actual ${escapeHtml(actualState)} differs from remembered desired ${escapeHtml(desiredState)}.</div>`
+			? `<div class="${noticeClass('warn')}">Actual ${escapeHtml(actualState)} differs from remembered desired ${escapeHtml(desiredState)}.</div>`
 			: '',
 	].join('');
 	const feedbackMarkup = feedback
-		? `<div class="relay-feedback" data-tone="${escapeHtml(feedback.tone)}">${escapeHtml(feedback.message)}</div>`
+		? `<div class="${noticeClass(feedback.tone)}">${escapeHtml(feedback.message)}</div>`
 		: '';
 
 	elements.cards.relay.innerHTML = renderCard('Relay control', 'Phase 6 live surface', [
@@ -513,9 +602,9 @@ function renderRelayCard(relay) {
 		{ label: 'Control path', value: available ? 'Available' : 'Unavailable' },
 		{ label: 'Reboot policy', value: humanizeHyphenated(relay.rebootPolicy) },
 	], `${badgeMarkup}
-		<div class="relay-action">
-			<button class="button" type="button" data-relay-toggle ${pending || blocked || !available ? 'disabled' : ''}>${escapeHtml(buttonLabel)}</button>
-			<p class="relay-action-copy muted">${escapeHtml(actionCopy)}</p>
+		<div class="mt-4 grid gap-3">
+			<button class="${buttonClass()}" type="button" data-relay-toggle ${pending || blocked || !available ? 'disabled' : ''}>${escapeHtml(buttonLabel)}</button>
+			<p class="${ui.muted}">${escapeHtml(actionCopy)}</p>
 		</div>
 		${feedbackMarkup}
 		${noteMarkup}`);
@@ -593,10 +682,10 @@ function ensureSchedulerFormChoice(snapshot) {
 
 function schedulerSummaryCard(title, value, detail) {
 	return `
-		<div class="scheduler-summary-card">
-			<span class="card-eyebrow">${escapeHtml(title)}</span>
-			<strong>${escapeHtml(value)}</strong>
-			<small>${escapeHtml(detail)}</small>
+		<div class="${ui.insetPanel}">
+			<span class="${ui.eyebrow}">${escapeHtml(title)}</span>
+			<strong class="mb-1.5 block text-base text-slate-50">${escapeHtml(value)}</strong>
+			<small class="${ui.muted}">${escapeHtml(detail)}</small>
 		</div>
 	`;
 }
@@ -606,31 +695,31 @@ function schedulerFeedbackMarkup() {
 		return '';
 	}
 
-	return `<div class="scheduler-feedback" data-tone="${escapeHtml(state.schedulerFeedback.tone)}">${escapeHtml(state.schedulerFeedback.message)}</div>`;
+	return `<div class="${noticeClass(state.schedulerFeedback.tone)}">${escapeHtml(state.schedulerFeedback.message)}</div>`;
 }
 
 function renderSchedulerRows(snapshot) {
 	if (!snapshot.schedules?.length) {
-		return '<div class="scheduler-empty placeholder-copy">No saved schedules yet. Create one below to start the scheduler flow.</div>';
+		return `<div class="${ui.placeholder}">No saved schedules yet. Create one below to start the scheduler flow.</div>`;
 	}
 
 	return snapshot.schedules.map((schedule) => `
-		<div class="scheduler-row">
-			<div class="scheduler-row-copy">
-				<div class="scheduler-row-title">
+		<div class="${ui.schedulerRow}">
+			<div>
+				<div class="${ui.rowFlex}">
 					<strong>${escapeHtml(schedule.scheduleId)}</strong>
-					<span class="badge ${schedule.enabled ? 'badge--ok' : 'badge--warn'}">${schedule.enabled ? 'Enabled' : 'Disabled'}</span>
-					${schedule.isNextRun ? '<span class="badge badge--ok">Next run</span>' : ''}
+					<span class="${badgeClass(schedule.enabled ? 'ok' : 'warn')}">${schedule.enabled ? 'Enabled' : 'Disabled'}</span>
+					${schedule.isNextRun ? `<span class="${badgeClass('ok')}">Next run</span>` : ''}
 				</div>
-				<div class="scheduler-row-meta">
+				<div class="${classNames(ui.rowFlex, ui.muted)}">
 					<span>${escapeHtml(schedule.actionLabel)}</span>
-					<code>${escapeHtml(schedule.cronExpression)}</code>
+					<code class="${ui.code}">${escapeHtml(schedule.cronExpression)}</code>
 				</div>
 			</div>
-			<div class="scheduler-row-actions">
-				<button class="button button--ghost" type="button" data-scheduler-edit="${escapeHtml(schedule.scheduleId)}" ${state.schedulerBusy ? 'disabled' : ''}>Edit</button>
-				<button class="button button--ghost" type="button" data-scheduler-toggle="${escapeHtml(schedule.scheduleId)}" data-enabled="${schedule.enabled ? 'false' : 'true'}" ${state.schedulerBusy ? 'disabled' : ''}>${schedule.enabled ? 'Disable' : 'Enable'}</button>
-				<button class="button button--ghost" type="button" data-scheduler-delete="${escapeHtml(schedule.scheduleId)}" ${state.schedulerBusy ? 'disabled' : ''}>Delete</button>
+			<div class="${ui.rowFlex}">
+				<button class="${buttonClass({ ghost: true, full: false })}" type="button" data-scheduler-edit="${escapeHtml(schedule.scheduleId)}" ${state.schedulerBusy ? 'disabled' : ''}>Edit</button>
+				<button class="${buttonClass({ ghost: true, full: false })}" type="button" data-scheduler-toggle="${escapeHtml(schedule.scheduleId)}" data-enabled="${schedule.enabled ? 'false' : 'true'}" ${state.schedulerBusy ? 'disabled' : ''}>${schedule.enabled ? 'Disable' : 'Enable'}</button>
+				<button class="${buttonClass({ ghost: true, full: false })}" type="button" data-scheduler-delete="${escapeHtml(schedule.scheduleId)}" ${state.schedulerBusy ? 'disabled' : ''}>Delete</button>
 			</div>
 		</div>
 	`).join('');
@@ -638,11 +727,11 @@ function renderSchedulerRows(snapshot) {
 
 function renderSchedulerProblems(snapshot) {
 	if (!snapshot.problems?.length) {
-		return '<div class="placeholder-copy">No recent scheduler problems are recorded right now.</div>';
+		return `<div class="${ui.placeholder}">No recent scheduler problems are recorded right now.</div>`;
 	}
 
 	return `
-		<ul class="chrome-list scheduler-problems">
+		<ul class="${ui.list}">
 			${snapshot.problems.map((problem) => `
 				<li>
 					<strong>${escapeHtml(humanizeHyphenated(problem.code))}</strong>
@@ -667,52 +756,52 @@ function renderSchedulerForm(snapshot) {
 		: 'Create schedule';
 
 	return `
-		<div class="scheduler-panel">
-			<p class="card-eyebrow">${escapeHtml(formState.mode === 'edit' ? 'Edit schedule' : 'Create schedule')}</p>
-			<h3>${escapeHtml(heading)}</h3>
-			<form class="scheduler-form-grid" data-scheduler-form>
-				<div class="field">
-					<label for="schedule-id">Schedule ID</label>
-					<input id="schedule-id" class="input" name="scheduleId" value="${escapeHtml(formState.scheduleId)}" ${formState.mode === 'edit' ? 'readonly' : ''} required>
+		<div class="${ui.insetPanel}">
+			<p class="${ui.eyebrow}">${escapeHtml(formState.mode === 'edit' ? 'Edit schedule' : 'Create schedule')}</p>
+			<h3 class="${ui.title}">${escapeHtml(heading)}</h3>
+			<form class="${ui.gridGap3}" data-scheduler-form>
+				<div class="grid gap-2">
+					<label for="schedule-id" class="text-[0.95rem] leading-relaxed text-slate-100">Schedule ID</label>
+					<input id="schedule-id" class="${ui.inputBase}" name="scheduleId" value="${escapeHtml(formState.scheduleId)}" ${formState.mode === 'edit' ? 'readonly' : ''} required>
 				</div>
-				<div class="field">
-					<label for="schedule-action">Action</label>
-					<select id="schedule-action" class="input" name="actionKey">
+				<div class="grid gap-2">
+					<label for="schedule-action" class="text-[0.95rem] leading-relaxed text-slate-100">Action</label>
+					<select id="schedule-action" class="${ui.inputBase}" name="actionKey">
 						${actionChoices.map((choice) => `<option value="${escapeHtml(choice.key)}" ${choice.key === formState.actionKey ? 'selected' : ''}>${escapeHtml(choice.label)}</option>`).join('')}
 					</select>
 				</div>
-				<div class="scheduler-field-grid">
-					<div class="field">
-						<label for="cron-minute">Minute</label>
-						<input id="cron-minute" class="input" name="minute" value="${escapeHtml(formState.minute)}" placeholder="0" required>
+				<div class="${ui.schedulerFields}">
+					<div class="grid gap-2">
+						<label for="cron-minute" class="text-[0.95rem] leading-relaxed text-slate-100">Minute</label>
+						<input id="cron-minute" class="${ui.inputBase}" name="minute" value="${escapeHtml(formState.minute)}" placeholder="0" required>
 					</div>
-					<div class="field">
-						<label for="cron-hour">Hour</label>
-						<input id="cron-hour" class="input" name="hour" value="${escapeHtml(formState.hour)}" placeholder="*" required>
+					<div class="grid gap-2">
+						<label for="cron-hour" class="text-[0.95rem] leading-relaxed text-slate-100">Hour</label>
+						<input id="cron-hour" class="${ui.inputBase}" name="hour" value="${escapeHtml(formState.hour)}" placeholder="*" required>
 					</div>
-					<div class="field">
-						<label for="cron-dom">Day of month</label>
-						<input id="cron-dom" class="input" name="dayOfMonth" value="${escapeHtml(formState.dayOfMonth)}" placeholder="*" required>
+					<div class="grid gap-2">
+						<label for="cron-dom" class="text-[0.95rem] leading-relaxed text-slate-100">Day of month</label>
+						<input id="cron-dom" class="${ui.inputBase}" name="dayOfMonth" value="${escapeHtml(formState.dayOfMonth)}" placeholder="*" required>
 					</div>
-					<div class="field">
-						<label for="cron-month">Month</label>
-						<input id="cron-month" class="input" name="month" value="${escapeHtml(formState.month)}" placeholder="*" required>
+					<div class="grid gap-2">
+						<label for="cron-month" class="text-[0.95rem] leading-relaxed text-slate-100">Month</label>
+						<input id="cron-month" class="${ui.inputBase}" name="month" value="${escapeHtml(formState.month)}" placeholder="*" required>
 					</div>
-					<div class="field">
-						<label for="cron-dow">Day of week</label>
-						<input id="cron-dow" class="input" name="dayOfWeek" value="${escapeHtml(formState.dayOfWeek)}" placeholder="*" required>
+					<div class="grid gap-2">
+						<label for="cron-dow" class="text-[0.95rem] leading-relaxed text-slate-100">Day of week</label>
+						<input id="cron-dow" class="${ui.inputBase}" name="dayOfWeek" value="${escapeHtml(formState.dayOfWeek)}" placeholder="*" required>
 					</div>
 				</div>
-				<label class="scheduler-toggle">
+				<label class="inline-flex items-center gap-2.5 text-[0.95rem] leading-relaxed text-slate-100">
 					<input type="checkbox" name="enabled" ${formState.enabled ? 'checked' : ''}>
 					<span>Enabled immediately after save</span>
 				</label>
-				<div class="scheduler-help">
-					All schedule fields are explicit <code>UTC</code>. Preview: <code>${escapeHtml(cronPreview)}</code>
+				<div class="${ui.muted}">
+					All schedule fields are explicit <code class="${ui.code}">UTC</code>. Preview: <code class="${ui.code}">${escapeHtml(cronPreview)}</code>
 				</div>
-				<div class="button-row">
-					<button class="button" type="submit" ${state.schedulerBusy ? 'disabled' : ''}>${escapeHtml(primaryLabel)}</button>
-					${formState.mode === 'edit' ? `<button class="button button--ghost" type="button" data-scheduler-cancel ${state.schedulerBusy ? 'disabled' : ''}>Cancel edit</button>` : ''}
+				<div class="${ui.rowFlex}">
+					<button class="${buttonClass({ full: false })}" type="submit" ${state.schedulerBusy ? 'disabled' : ''}>${escapeHtml(primaryLabel)}</button>
+					${formState.mode === 'edit' ? `<button class="${buttonClass({ ghost: true, full: false })}" type="button" data-scheduler-cancel ${state.schedulerBusy ? 'disabled' : ''}>Cancel edit</button>` : ''}
 				</div>
 			</form>
 		</div>
@@ -727,7 +816,7 @@ function renderSchedulerSurface(snapshot) {
 	if (!snapshot) {
 		elements.cards.scheduler.innerHTML = renderCard('Schedule management', 'Phase 7 live surface', [
 			{ label: 'State', value: 'Loading' },
-		], '<div class="placeholder-copy">Authenticated schedule routes will populate this surface once the device responds.</div>');
+		], `<div class="${ui.placeholder}">Authenticated schedule routes will populate this surface once the device responds.</div>`);
 		return;
 	}
 
@@ -749,47 +838,47 @@ function renderSchedulerSurface(snapshot) {
 		: 'No recent scheduler problems';
 
 	elements.cards.scheduler.innerHTML = `
-		<p class="card-eyebrow">Phase 7 live surface</p>
-		<div class="scheduler-shell">
+		<p class="${ui.eyebrow}">Phase 7 live surface</p>
+		<div class="grid gap-[18px]">
 			<div>
-				<h3>Schedule management</h3>
-				<p class="muted">Create, edit, enable, disable, and delete UTC cron schedules without exposing internal action wiring. Manual relay control semantics stay unchanged.</p>
+				<h3 class="${ui.title}">Schedule management</h3>
+				<p class="${ui.muted}">Create, edit, enable, disable, and delete UTC cron schedules without exposing internal action wiring. Manual relay control semantics stay unchanged.</p>
 			</div>
-			<div class="scheduler-header">
-				<div class="scheduler-panel">
-					<p class="card-eyebrow">Clock and automation</p>
-					<div class="scheduler-badge-row">
-						<span class="badge ${escapeHtml(schedulerClockTone(snapshot.clockState))}">Clock ${escapeHtml(humanizeHyphenated(snapshot.clockState))}</span>
-						<span class="badge ${snapshot.automationActive ? 'badge--ok' : 'badge--warn'}">Automation ${snapshot.automationActive ? 'Active' : 'Inactive'}</span>
-						<span class="badge">UTC only</span>
+			<div class="${ui.schedulerHeader}">
+				<div class="${ui.insetPanel}">
+					<p class="${ui.eyebrow}">Clock and automation</p>
+					<div class="${ui.rowFlex}">
+						<span class="${badgeClass(schedulerClockTone(snapshot.clockState))}">Clock ${escapeHtml(humanizeHyphenated(snapshot.clockState))}</span>
+						<span class="${badgeClass(snapshot.automationActive ? 'ok' : 'warn')}">Automation ${snapshot.automationActive ? 'Active' : 'Inactive'}</span>
+						<span class="${badgeClass()}">UTC only</span>
 					</div>
-					<div class="scheduler-help">
+					<div class="${ui.muted}">
 						${escapeHtml(clockCopy)}${snapshot.degradedReason && snapshot.degradedReason !== 'none' ? ` · ${escapeHtml(humanizeHyphenated(snapshot.degradedReason))}` : ''}
 					</div>
 				</div>
-				<div class="scheduler-panel">
-					<p class="card-eyebrow">Scheduler history</p>
-					<div class="scheduler-help">${escapeHtml(historyCopy)}</div>
-					<div class="scheduler-help">${escapeHtml(automationCopy)}</div>
+				<div class="${ui.insetPanel}">
+					<p class="${ui.eyebrow}">Scheduler history</p>
+					<div class="${ui.muted}">${escapeHtml(historyCopy)}</div>
+					<div class="${ui.muted}">${escapeHtml(automationCopy)}</div>
 				</div>
 			</div>
-			<div class="scheduler-summary-grid">
+			<div class="${ui.summaryGrid}">
 				${schedulerSummaryCard('Next run', nextRunCopy, snapshot.nextRun?.available ? `${snapshot.nextRun.scheduleId} · ${snapshot.nextRun.actionKey}` : 'Trusted time is required before a next run can appear')}
 				${schedulerSummaryCard('Last result', lastResultCopy, snapshot.lastResult?.available ? `${snapshot.lastResult.scheduleId || 'scheduler'} · ${snapshot.lastResult.actionLabel}` : 'A due schedule minute must run before last result appears')}
 				${schedulerSummaryCard('Clock', clockCopy, snapshot.degradedReason && snapshot.degradedReason !== 'none' ? humanizeHyphenated(snapshot.degradedReason) : 'Scheduler uses future-only UTC baselines')}
 				${schedulerSummaryCard('Schedule counts', `${snapshot.enabledCount}/${snapshot.scheduleCount} enabled`, `Up to ${snapshot.maxSchedules} schedules in this phase`) }
 			</div>
 			${schedulerFeedbackMarkup()}
-			<div class="scheduler-layout">
-				<div class="scheduler-panel">
-					<p class="card-eyebrow">Saved schedules</p>
-					<div class="scheduler-help">Next run, create, edit, disable, and delete flows all refresh from live device truth after each mutation.</div>
-					<div class="scheduler-list">${renderSchedulerRows(snapshot)}</div>
+			<div class="${ui.schedulerLayout}">
+				<div class="${ui.insetPanel}">
+					<p class="${ui.eyebrow}">Saved schedules</p>
+					<div class="${ui.muted}">Next run, create, edit, disable, and delete flows all refresh from live device truth after each mutation.</div>
+					<div class="grid gap-3">${renderSchedulerRows(snapshot)}</div>
 				</div>
 				${renderSchedulerForm(snapshot)}
 			</div>
-			<div class="scheduler-panel">
-				<p class="card-eyebrow">Recent problems and history</p>
+			<div class="${ui.insetPanel}">
+				<p class="${ui.eyebrow}">Recent problems and history</p>
 				${renderSchedulerProblems(snapshot)}
 			</div>
 		</div>
@@ -803,7 +892,7 @@ function renderStatus(statusPayload, updatePayload = null) {
 
 	const networkLabel = connectivityLabels[statusPayload.network.connectivity] || statusPayload.network.connectivity;
 	const degradedCopy = statusPayload.network.connectivity === NETWORK_CONNECTIVITY_LAN_UP_UPSTREAM_DEGRADED
-		? '<div class="placeholder-copy">Local LAN access is healthy even though upstream internet reachability is degraded. The panel keeps rendering local status in this state.</div>'
+		? `<div class="${ui.placeholder}">Local LAN access is healthy even though upstream internet reachability is degraded. The panel keeps rendering local status in this state.</div>`
 		: '';
 
 	elements.cards.device.innerHTML = renderCard('Device shell', 'Device', [

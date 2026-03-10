@@ -8,545 +8,77 @@
 		name="description"
 		content="Local authenticated control panel for the LNH Nordic device.">
 	<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-	<style type="text/tailwindcss">
-		@theme {
-			--font-panel-body: "IBM Plex Mono", "SFMono-Regular", "SF Mono", ui-monospace, monospace;
-			--font-panel-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
-			--color-panel-text: #eff7ff;
-			--color-panel-muted: #9db6cb;
-			--color-panel-accent: #7dd3fc;
-		}
-
-		@layer base {
-			:root {
-				color-scheme: dark;
-			}
-
-			* {
-				box-sizing: border-box;
-			}
-
-			body {
-				@apply m-0 min-h-screen antialiased;
-				color: var(--color-panel-text);
-				font-family: var(--font-panel-body);
-				background:
-					radial-gradient(circle at top left, rgba(34, 211, 238, 0.12), transparent 24%),
-					radial-gradient(circle at 80% 10%, rgba(251, 191, 36, 0.12), transparent 18%),
-					linear-gradient(180deg, #040a10 0%, #071019 52%, #050b11 100%);
-			}
-
-			body::before {
-				content: "";
-				position: fixed;
-				inset: 0;
-				pointer-events: none;
-				background-image:
-					linear-gradient(rgba(125, 211, 252, 0.04) 1px, transparent 1px),
-					linear-gradient(90deg, rgba(125, 211, 252, 0.04) 1px, transparent 1px);
-				background-size: 28px 28px;
-				mask-image: radial-gradient(circle at center, black, transparent 88%);
-			}
-
-			h1,
-			h2,
-			h3 {
-				@apply m-0 font-semibold tracking-[-0.02em];
-				font-family: var(--font-panel-display);
-			}
-
-			h1 {
-				font-size: clamp(2.6rem, 5vw, 4.4rem);
-				line-height: 0.96;
-			}
-
-			h2 {
-				@apply text-[1.2rem];
-			}
-
-			h3 {
-				@apply text-base;
-			}
-
-			p,
-			li,
-			label,
-			input,
-			select,
-			button,
-			small,
-			span,
-			code {
-				@apply text-[0.95rem] leading-relaxed;
-			}
-		}
-
-		@layer components {
-			.shell {
-				@apply relative mx-auto max-w-[1360px] px-5 pt-8 pb-14;
-			}
-
-			.chrome,
-			.hero-stat-grid,
-			.status-grid {
-				@apply grid gap-4;
-			}
-
-			.hero,
-			.panel,
-			.card,
-			.command-bar {
-				@apply border;
-				border-color: rgba(155, 205, 255, 0.18);
-				background: rgba(10, 22, 35, 0.86);
-				backdrop-filter: blur(18px);
-				box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
-			}
-
-			.hero {
-				@apply grid gap-[18px] rounded-[28px] p-6;
-			}
-
-			.hero-grid {
-				@apply grid gap-[18px];
-			}
-
-			.overline {
-				@apply m-0 text-xs uppercase tracking-[0.34em];
-				color: var(--color-panel-accent);
-			}
-
-			.muted,
-			.scheduler-summary-card span,
-			.scheduler-summary-card small,
-			.update-summary-card span,
-			.update-summary-card small,
-			.scheduler-row-meta,
-			.scheduler-help,
-			.scheduler-empty,
-			.scheduler-problems li,
-			.update-note,
-			.update-file-meta {
-				color: var(--color-panel-muted);
-			}
-
-			.hidden {
-				display: none !important;
-			}
-
-			.scheduler-section,
-			.relay-action,
-			.scheduler-header,
-			.scheduler-layout,
-			.scheduler-summary-grid,
-			.update-summary-grid,
-			.update-layout {
-				@apply mt-4;
-			}
-
-			.scheduler-surface {
-				@apply min-h-80;
-			}
-
-			.card,
-			.panel {
-				@apply rounded-[24px] p-5;
-			}
-
-			.hero-note {
-				@apply grid content-start gap-3 rounded-[24px] border p-[22px];
-				border-color: rgba(123, 214, 255, 0.34);
-				background: linear-gradient(180deg, rgba(34, 211, 238, 0.12), rgba(8, 14, 22, 0.55));
-			}
-
-			.hero-note ul,
-			.card ul,
-			.chrome-list {
-				@apply m-0 pl-[18px];
-			}
-
-			.command-bar {
-				@apply flex flex-wrap items-center justify-between gap-3 rounded-full px-4 py-3;
-			}
-
-			.badge-row,
-			.toolbar,
-			.relay-badge-row,
-			.scheduler-badge-row,
-			.scheduler-row-actions,
-			.button-row,
-			.inline-fields,
-			.scheduler-row-title,
-			.scheduler-row-meta {
-				@apply flex flex-wrap items-center gap-2.5;
-			}
-
-			.badge,
-			.pill {
-				@apply inline-flex items-center gap-2 rounded-full border px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em];
-				border-color: rgba(155, 205, 255, 0.18);
-				background: rgba(8, 15, 24, 0.68);
-				color: var(--color-panel-text);
-			}
-
-			.badge--ok {
-				border-color: rgba(52, 211, 153, 0.35);
-				color: #b8ffe2;
-			}
-
-			.badge--warn {
-				border-color: rgba(251, 191, 36, 0.35);
-				color: #ffe7a6;
-			}
-
-			.badge--danger {
-				border-color: rgba(251, 113, 133, 0.35);
-				color: #ffd4da;
-			}
-
-			.form-grid,
-			.field,
-			.relay-action,
-			.scheduler-shell,
-			.scheduler-list,
-			.scheduler-problems,
-			.scheduler-form-grid,
-			.scheduler-field-grid,
-			.update-shell,
-			.update-layout,
-			.update-upload-actions,
-			.update-action-panel,
-			.metric-list {
-				@apply grid gap-3;
-			}
-
-			.form-grid {
-				@apply gap-[14px];
-			}
-
-			.field {
-				@apply gap-2;
-			}
-
-			.input,
-			.button {
-				@apply w-full rounded-[14px] border px-4 py-[14px];
-				border-color: rgba(155, 205, 255, 0.18);
-				background: rgba(5, 10, 17, 0.72);
-				color: var(--color-panel-text);
-			}
-
-			.input:focus {
-				outline: 2px solid rgba(34, 211, 238, 0.35);
-				outline-offset: 2px;
-				border-color: rgba(34, 211, 238, 0.45);
-			}
-
-			.button {
-				@apply cursor-pointer font-semibold uppercase tracking-[0.14em];
-				background: linear-gradient(135deg, rgba(34, 211, 238, 0.28), rgba(13, 22, 33, 0.96));
-				transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
-			}
-
-			.button:hover {
-				transform: translateY(-1px);
-				border-color: rgba(123, 214, 255, 0.34);
-			}
-
-			.button[disabled] {
-				opacity: 0.56;
-				cursor: wait;
-				transform: none;
-			}
-
-			.button--ghost {
-				@apply w-auto;
-				background: rgba(7, 16, 25, 0.72);
-			}
-
-			.alert {
-				@apply rounded-[18px] border px-[14px] py-3;
-				border-color: rgba(155, 205, 255, 0.18);
-				background: rgba(8, 15, 24, 0.75);
-				color: var(--color-panel-muted);
-			}
-
-			.alert[data-tone="error"] {
-				border-color: rgba(251, 113, 133, 0.35);
-				color: #ffd9df;
-			}
-
-			.alert[data-tone="success"] {
-				border-color: rgba(52, 211, 153, 0.35);
-				color: #cffff0;
-			}
-
-			.alert[data-tone="warn"] {
-				border-color: rgba(251, 191, 36, 0.35);
-				color: #ffe7a6;
-			}
-
-			.card-eyebrow {
-				@apply mb-3 text-[0.74rem] uppercase tracking-[0.18em];
-				color: var(--color-panel-accent);
-			}
-
-			.metric-list {
-				@apply mt-[14px] gap-2.5;
-			}
-
-			.metric-row {
-				@apply grid gap-4 pt-2.5;
-				grid-template-columns: minmax(0, 1fr) auto;
-				border-top: 1px solid rgba(157, 182, 203, 0.14);
-			}
-
-			.metric-row:first-child {
-				border-top: 0;
-				padding-top: 0;
-			}
-
-			.metric-label {
-				@apply text-[0.72rem] uppercase tracking-[0.12em];
-				color: var(--color-panel-muted);
-			}
-
-			.metric-value {
-				@apply text-right font-semibold;
-				color: var(--color-panel-text);
-			}
-
-			.placeholder-copy,
-			.scheduler-feedback,
-			.relay-note,
-			.relay-feedback,
-			.update-feedback,
-			.update-warning {
-				@apply rounded-[18px] border px-[14px] py-3;
-				border-color: rgba(125, 211, 252, 0.24);
-				background: linear-gradient(180deg, rgba(125, 211, 252, 0.08), rgba(7, 16, 25, 0));
-				color: #dff8ff;
-			}
-
-			.placeholder-copy {
-				@apply mt-4 border-dashed;
-				color: #d4eef8;
-			}
-
-			.scheduler-shell,
-			.update-shell {
-				@apply gap-[18px];
-			}
-
-			.scheduler-header {
-				@apply grid gap-4;
-			}
-
-			.scheduler-summary-grid,
-			.update-summary-grid {
-				@apply grid gap-3;
-			}
-
-			.scheduler-summary-card,
-			.scheduler-panel,
-			.update-summary-card,
-			.update-panel,
-			.scheduler-row {
-				@apply rounded-[18px] border p-4;
-			}
-
-			.scheduler-summary-card,
-			.scheduler-panel,
-			.update-summary-card,
-			.update-panel {
-				border-color: rgba(125, 211, 252, 0.18);
-				background: rgba(6, 12, 20, 0.55);
-			}
-
-			.scheduler-summary-card strong,
-			.update-summary-card strong,
-			.scheduler-row-title strong {
-				@apply block text-base;
-			}
-
-			.scheduler-row {
-				@apply gap-3;
-				border-color: rgba(157, 182, 203, 0.14);
-				background: rgba(8, 15, 24, 0.58);
-			}
-
-			.scheduler-row-meta code,
-			.scheduler-help code {
-				@apply rounded-lg px-1.5 py-0.5;
-				background: rgba(125, 211, 252, 0.1);
-			}
-
-			.scheduler-field-grid {
-				grid-template-columns: repeat(2, minmax(0, 1fr));
-			}
-
-			.scheduler-toggle {
-				@apply inline-flex items-center gap-2.5;
-			}
-
-			.scheduler-feedback[data-tone="warn"],
-			.relay-note--warn,
-			.relay-feedback[data-tone="warn"],
-			.update-feedback[data-tone="warn"],
-			.update-warning[data-tone="warn"] {
-				border-color: rgba(251, 191, 36, 0.3);
-				color: #ffe7a6;
-			}
-
-			.scheduler-feedback[data-tone="error"],
-			.relay-feedback[data-tone="error"],
-			.update-feedback[data-tone="error"] {
-				border-color: rgba(251, 113, 133, 0.34);
-				color: #ffd4da;
-			}
-
-			.scheduler-feedback[data-tone="success"],
-			.relay-feedback[data-tone="success"],
-			.update-feedback[data-tone="success"] {
-				border-color: rgba(52, 211, 153, 0.34);
-				color: #cffff0;
-			}
-
-			.update-warning strong,
-			.update-summary-card strong {
-				@apply mb-1.5;
-			}
-
-			.update-panel h3 {
-				@apply mb-2;
-			}
-
-			.update-upload-actions {
-				grid-template-columns: minmax(0, 1fr);
-			}
-		}
-
-		@media (min-width: 760px) {
-			.update-upload-actions {
-				grid-template-columns: minmax(0, 1fr) auto;
-				align-items: end;
-			}
-		}
-
-		@media (min-width: 860px) {
-			.status-grid {
-				grid-template-columns: repeat(2, minmax(0, 1fr));
-			}
-
-			.scheduler-summary-grid,
-			.update-summary-grid {
-				grid-template-columns: repeat(4, minmax(0, 1fr));
-			}
-
-			.scheduler-row {
-				grid-template-columns: minmax(0, 1fr) auto;
-				align-items: center;
-			}
-		}
-
-		@media (min-width: 980px) {
-			.hero-grid {
-				grid-template-columns: 1.5fr 0.9fr;
-			}
-
-			.scheduler-header {
-				grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
-			}
-
-			.scheduler-layout {
-				grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
-			}
-
-			.scheduler-field-grid {
-				grid-template-columns: repeat(5, minmax(0, 1fr));
-			}
-
-			.update-layout {
-				grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
-			}
-		}
-
-		@media (min-width: 1160px) {
-			.status-grid {
-				grid-template-columns: repeat(3, minmax(0, 1fr));
-			}
-		}
-		</style>
 	<script defer src="/main.js"></script>
 </head>
-<body>
-	<div class="shell chrome">
-		<header class="hero">
-			<div class="hero-grid">
+<body class="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_24%),radial-gradient(circle_at_80%_10%,rgba(251,191,36,0.12),transparent_18%),linear-gradient(180deg,#040a10_0%,#071019_52%,#050b11_100%)] text-slate-50 antialiased">
+	<div aria-hidden="true" class="pointer-events-none fixed inset-0 bg-[linear-gradient(rgba(125,211,252,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(125,211,252,0.04)_1px,transparent_1px)] bg-[size:28px_28px] [mask-image:radial-gradient(circle_at_center,black,transparent_88%)]"></div>
+	<div class="relative mx-auto grid max-w-[1360px] gap-[18px] px-5 pt-8 pb-14 font-mono">
+		<header class="grid gap-[18px] rounded-[28px] border border-sky-100/15 bg-slate-950/55 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]">
+			<div class="grid gap-[18px] xl:grid-cols-[1.5fr_0.9fr]">
 				<div class="space-y-4">
-					<p class="overline">Local Authenticated Panel</p>
-					<h1>LNH Nordic Mission Console</h1>
-					<p class="muted max-w-3xl">
+					<p class="m-0 text-xs uppercase tracking-[0.34em] text-sky-300">Local Authenticated Panel</p>
+					<h1 class="m-0 font-serif text-[clamp(2.6rem,5vw,4.4rem)] font-semibold leading-[0.96] tracking-[-0.02em]">LNH Nordic Mission Console</h1>
+					<p class="max-w-3xl text-[0.95rem] leading-relaxed text-slate-300">
 						This panel stays local to the LAN, trusts the firmware as the source of truth,
 						and now exposes authenticated relay control, dedicated scheduling, and staged firmware updates that only apply after an explicit operator confirmation.
 					</p>
-					<div class="badge-row">
-						<span id="session-chip" class="badge">Session bootstrap pending</span>
-						<span id="network-pill" class="badge">Status not loaded</span>
+					<div class="flex flex-wrap items-center gap-2.5">
+						<span id="session-chip" class="inline-flex items-center gap-2 rounded-full border border-sky-100/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100">Session bootstrap pending</span>
+						<span id="network-pill" class="inline-flex items-center gap-2 rounded-full border border-sky-100/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100">Status not loaded</span>
 					</div>
 				</div>
-				<aside class="hero-note">
-						<p class="overline">Phase 8 Boundary</p>
-						<h2>Relay, scheduling, and explicit OTA apply</h2>
-						<ul class="chrome-list muted">
-							<li>Single local operator account with cookie-backed server sessions</li>
-							<li>One relay-centric manual toggle still backed by the protected status and relay APIs</li>
-							<li>Dedicated schedule create, edit, enable, disable, and delete flow using UTC cron input</li>
-							<li>Firmware upload stages first, shows pending-update truth, and only reboots after explicit apply</li>
-						</ul>
+				<aside class="grid content-start gap-3 rounded-[24px] border border-sky-300/35 bg-[linear-gradient(180deg,rgba(34,211,238,0.12),rgba(8,14,22,0.55))] p-[22px]">
+					<p class="m-0 text-xs uppercase tracking-[0.34em] text-sky-300">Phase 8 Boundary</p>
+					<h2 class="m-0 font-serif text-[1.2rem] font-semibold tracking-[-0.02em]">Relay, scheduling, and explicit OTA apply</h2>
+					<ul class="m-0 list-disc pl-[18px] text-[0.95rem] leading-relaxed text-slate-300">
+						<li>Single local operator account with cookie-backed server sessions</li>
+						<li>One relay-centric manual toggle still backed by the protected status and relay APIs</li>
+						<li>Dedicated schedule create, edit, enable, disable, and delete flow using UTC cron input</li>
+						<li>Firmware upload stages first, shows pending-update truth, and only reboots after explicit apply</li>
+					</ul>
 				</aside>
 			</div>
 		</header>
 
-		<div class="command-bar">
-			<div class="toolbar">
-				<span class="pill">Server truth sessions only</span>
-				<span class="pill">Tailwind v4 browser runtime</span>
+		<div class="flex flex-wrap items-center justify-between gap-3 rounded-full border border-sky-100/15 bg-slate-950/55 px-4 py-3 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]">
+			<div class="flex flex-wrap items-center gap-2.5">
+				<span class="inline-flex items-center gap-2 rounded-full border border-sky-100/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100">Server truth sessions only</span>
+				<span class="inline-flex items-center gap-2 rounded-full border border-sky-100/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100">Tailwind v4 browser runtime</span>
 			</div>
-			<div class="toolbar">
-				<button id="refresh-button" class="button button--ghost" type="button">Refresh status</button>
-				<button id="logout-button" class="button button--ghost" type="button">Logout</button>
+			<div class="flex flex-wrap items-center gap-2.5">
+				<button id="refresh-button" class="inline-flex w-auto items-center justify-center rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] font-semibold uppercase tracking-[0.14em] text-slate-50 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 disabled:cursor-wait disabled:opacity-60" type="button">Refresh status</button>
+				<button id="logout-button" class="inline-flex w-auto items-center justify-center rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] font-semibold uppercase tracking-[0.14em] text-slate-50 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 disabled:cursor-wait disabled:opacity-60" type="button">Logout</button>
 			</div>
 		</div>
 
-		<section id="panel-alert" class="alert" data-tone="info">
+		<section id="panel-alert" class="rounded-[18px] border border-sky-300/25 bg-[linear-gradient(180deg,rgba(125,211,252,0.08),rgba(7,16,25,0))] px-[14px] py-3 text-[0.95rem] leading-relaxed text-sky-50">
 			Waiting for the session bootstrap to confirm whether this browser is already authenticated.
 		</section>
 
-		<section id="login-view" class="panel">
-			<div class="grid gap-6 md:grid-cols-[1.15fr,0.85fr]">
+		<section id="login-view" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]">
+			<div class="grid gap-6 md:grid-cols-[1.15fr_0.85fr]">
 				<div class="space-y-4">
-					<p class="overline">Authentication</p>
-					<h2>Login-first shell</h2>
-					<p class="muted">
+					<p class="m-0 text-xs uppercase tracking-[0.34em] text-sky-300">Authentication</p>
+					<h2 class="m-0 font-serif text-[1.2rem] font-semibold tracking-[-0.02em]">Login-first shell</h2>
+					<p class="text-[0.95rem] leading-relaxed text-slate-300">
 						A valid session survives refresh and in-panel navigation, but the firmware clears all
 						RAM sessions on reboot. Use the configured local admin credentials to continue.
 					</p>
-					<form id="login-form" class="form-grid">
-						<div class="field">
-							<label for="login-username">Username</label>
-							<input id="login-username" class="input" name="username" autocomplete="username" required>
+					<form id="login-form" class="grid gap-[14px]">
+						<div class="grid gap-2">
+							<label for="login-username" class="text-[0.95rem] leading-relaxed text-slate-100">Username</label>
+							<input id="login-username" class="w-full rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] leading-relaxed text-slate-50 outline-none placeholder:text-slate-500 focus:border-cyan-300/45 focus:ring-2 focus:ring-cyan-300/35" name="username" autocomplete="username" required>
 						</div>
-						<div class="field">
-							<label for="login-password">Password</label>
-							<input id="login-password" class="input" name="password" type="password" autocomplete="current-password" required>
+						<div class="grid gap-2">
+							<label for="login-password" class="text-[0.95rem] leading-relaxed text-slate-100">Password</label>
+							<input id="login-password" class="w-full rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] leading-relaxed text-slate-50 outline-none placeholder:text-slate-500 focus:border-cyan-300/45 focus:ring-2 focus:ring-cyan-300/35" name="password" type="password" autocomplete="current-password" required>
 						</div>
-						<button id="login-submit" class="button" type="submit">Authenticate locally</button>
+						<button id="login-submit" class="inline-flex w-full items-center justify-center rounded-2xl border border-sky-100/20 bg-[linear-gradient(135deg,rgba(34,211,238,0.28),rgba(13,22,33,0.96))] px-4 py-[14px] text-[0.95rem] font-semibold uppercase tracking-[0.14em] text-slate-50 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 disabled:cursor-wait disabled:opacity-60" type="submit">Authenticate locally</button>
 					</form>
 				</div>
-				<div class="card">
-					<p class="card-eyebrow">Operator checklist</p>
-					<ul class="chrome-list muted">
+				<div class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]">
+					<p class="mb-3 text-[0.74rem] uppercase tracking-[0.18em] text-sky-300">Operator checklist</p>
+					<ul class="m-0 list-disc pl-[18px] text-[0.95rem] leading-relaxed text-slate-300">
 						<li>Unauthenticated status requests stay denied until login.</li>
 						<li>Wrong-password retries cool down briefly instead of locking permanently.</li>
 						<li>Concurrent browsers can stay signed in independently.</li>
@@ -557,17 +89,21 @@
 		</section>
 
 		<section id="dashboard-view" class="hidden">
-			<div class="status-grid">
-				<article id="device-card" class="card"></article>
-				<article id="network-card" class="card"></article>
-				<article id="recovery-card" class="card"></article>
-				<article id="relay-card" class="card"></article>
-				<article id="update-card" class="card"></article>
+			<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+				<article id="device-card" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
+				<article id="network-card" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
+				<article id="recovery-card" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
+				<article id="relay-card" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
+				<article id="update-card" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
 			</div>
-			<div class="scheduler-section">
-				<article id="scheduler-card" class="card scheduler-surface"></article>
+			<div class="mt-[18px]">
+				<article id="scheduler-card" class="min-h-80 rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
 			</div>
 		</section>
+
+		<div aria-hidden="true" class="hidden border-emerald-400/35 text-emerald-100 border-amber-300/35 text-amber-100 border-rose-400/35 text-rose-100 border-amber-300/30 text-emerald-50 rounded-[18px] border-sky-200/20 bg-slate-950/60 p-4 rounded-lg bg-sky-300/10 px-1.5 py-0.5 text-slate-200 border-dashed text-sky-100 border-slate-300/15 text-slate-400 text-right mt-[14px] gap-2.5 pt-2.5 first:border-t-0 first:pt-0 mt-1.5 mb-1.5 mt-3 mt-4 block text-base md:grid-cols-4 md:grid-cols-2 md:items-end md:grid-cols-[minmax(0,1fr)_auto] md:items-center xl:grid-cols-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)] xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] grid-cols-[minmax(0,1fr)_auto]">
+			tailwind safelist
+		</div>
 	</div>
 </body>
 </html>
