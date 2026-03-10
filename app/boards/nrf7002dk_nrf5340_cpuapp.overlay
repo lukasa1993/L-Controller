@@ -1,0 +1,16 @@
+#include <zephyr/dt-bindings/gpio/gpio.h>
+
+/ {
+	aliases {
+		relay0 = &relay0;
+	};
+
+	relay_outputs {
+		compatible = "gpio-leds";
+
+		relay0: relay_0 {
+			gpios = <&gpio1 11 GPIO_ACTIVE_HIGH>;
+			label = "Relay 0";
+		};
+	};
+};

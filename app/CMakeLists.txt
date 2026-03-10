@@ -16,6 +16,7 @@ set(APP_SOURCES
 	${APP_SOURCE_ROOT}/panel/panel_http.c
 	${APP_SOURCE_ROOT}/panel/panel_status.c
 	${APP_SOURCE_ROOT}/persistence/persistence.c
+	${APP_SOURCE_ROOT}/relay/relay.c
 	${APP_SOURCE_ROOT}/recovery/recovery.c
 )
 
