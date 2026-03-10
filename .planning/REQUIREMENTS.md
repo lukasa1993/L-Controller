@@ -43,7 +43,7 @@ Requirements for the initial release. Each maps to roadmap phases.
 - [ ] **ACT-02**: Manual panel commands and scheduled jobs execute through the same action engine path
 - [ ] **RELAY-01**: Authenticated operator can activate the first relay from the panel
 - [ ] **RELAY-02**: Authenticated operator can deactivate the first relay from the panel
-- [ ] **RELAY-03**: Relay returns to a defined safe state on boot and fault recovery
+- [x] **RELAY-03**: Relay returns to a defined safe state on boot and fault recovery
 
 ### Scheduling
 
@@ -119,7 +119,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ACT-02 | Phase 6 | Pending |
 | RELAY-01 | Phase 6 | Pending |
 | RELAY-02 | Phase 6 | Pending |
-| RELAY-03 | Phase 6 | Pending |
+| RELAY-03 | Phase 6 | Complete |
 | SCHED-01 | Phase 7 | Pending |
 | SCHED-02 | Phase 7 | Pending |
 | SCHED-03 | Phase 7 | Pending |

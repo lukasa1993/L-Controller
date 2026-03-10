@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 5
-current_phase_name: Local Control Panel
-current_plan: 3
+current_phase: 6
+current_phase_name: Action Engine & Relay Control
+current_plan: 2
 status: executing
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-03-09T15:59:48.859Z"
-last_activity: 2026-03-09 — Completed 05-02 auth sessions and protected status API
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-03-10T03:42:59.672Z"
+last_activity: 2026-03-10
 progress:
   total_phases: 8
   completed_phases: 4
-  total_plans: 14
-  completed_plans: 13
-  percent: 93
+  total_plans: 16
+  completed_plans: 14
+  percent: 88
 ---
 
 # Project State
@@ -24,29 +24,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Core value:** The device must reliably and safely execute configured local control actions—even through Wi-Fi disruption or subsystem faults—without unnecessary operator intervention.
-**Current focus:** Local Control Panel
+**Current focus:** Action Engine & Relay Control
 
 ## Current Position
 
-**Current Phase:** 5
-**Current Phase Name:** Local Control Panel
-**Current Plan:** 3
+**Current Phase:** 6
+**Current Phase Name:** Action Engine & Relay Control
+**Current Plan:** 2
 **Total Plans in Phase:** 3
 **Status:** Ready to execute next plan
-**Last Activity:** 2026-03-09 — Completed 05-02 auth sessions and protected status API
-**Last Activity Description:** Completed 05-02 auth sessions and protected status API
+**Last Activity:** 2026-03-10 — Completed 06-01 relay runtime ownership and startup policy
+**Last Activity Description:** Completed 06-01 relay runtime ownership and startup policy
 
-Phase: 5 of 8 (Local Control Panel) — in progress
-Plan: 3 of 3 in current phase
+Phase: 6 of 8 (Action Engine & Relay Control) — in progress
+Plan: 2 of 3 in current phase
 Status: Ready to execute next plan
-Last activity: 2026-03-09 — Completed 05-02 auth sessions and protected status API
+Last activity: 2026-03-10 — Completed 06-01 relay runtime ownership and startup policy
 
-Progress: [█████████░] 93%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
+- Total plans completed: 14
 - Average duration: 69.2 min
 - Total execution time: 15.0 hours
 
@@ -73,6 +73,7 @@ Progress: [█████████░] 93%
 | Phase 04 P03 | 4h 15m | 3 tasks | 7 files |
 | Phase 05-local-control-panel P01 | 3 min | 3 tasks | 11 files |
 | Phase 05-local-control-panel P02 | 5 min | 3 tasks | 11 files |
+| Phase 06-action-engine-relay-control P01 | 3 min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -128,6 +129,9 @@ Recent decisions affecting current work:
 - [Phase 05]: Panel auth uses a fixed-size mutex-guarded RAM session table with opaque sid cookies so sessions survive refresh and navigation but are invalidated on reboot. — This matches the locked browser behavior while keeping trust on the firmware side and avoiding persistent tokens.
 - [Phase 05]: Phase 5 exposes only the exact auth trio plus one protected aggregate /api/status endpoint; control, configuration, scheduling, and update routes stay intentionally unavailable. — A minimal exact-path API is simpler to secure now and leaves future control surfaces clearly deferred to later phases.
 - [Phase 05]: Unauthorized session and status requests clear stale sid cookies so browsers recover cleanly after reboot or logout. — Clearing stale cookies avoids confusing half-authenticated browser state after the firmware invalidates all RAM sessions at boot.
+- [Phase 06-action-engine-relay-control]: The board mapping for relay 0 lives behind a relay0 devicetree alias so callers stay hardware-agnostic.
+- [Phase 06-action-engine-relay-control]: The relay runtime preserves remembered desired state even when boot or recovery policy forces the applied state off.
+- [Phase 06-action-engine-relay-control]: Boot initializes recovery breadcrumbs before the relay service so startup policy can distinguish ordinary reboots from recovery resets.
 
 ### Pending Todos
 
@@ -140,6 +144,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T15:41:27.461Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-03-10T03:42:59.670Z
+Stopped at: Completed 06-01-PLAN.md
 Resume file: None

@@ -110,7 +110,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 06-01: Implement the relay driver abstraction and safe-state policy
+- [x] 06-01: Implement the relay driver abstraction and safe-state policy
 - [ ] 06-02: Implement the generic action model and execution pipeline
 - [ ] 06-03: Wire panel/API relay commands through the action engine and validate end-to-end behavior
 
