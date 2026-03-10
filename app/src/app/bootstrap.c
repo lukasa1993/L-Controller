@@ -242,6 +242,12 @@ int app_boot(struct app_context *app_context)
 		return ret;
 	}
 
+	ret = action_dispatcher_init(&app_context->actions, app_context);
+	if (ret != 0) {
+		LOG_ERR("Failed to initialize action dispatcher: %d", ret);
+		return ret;
+	}
+
 	log_relay_runtime_status(app_context);
 
 	ret = panel_auth_service_init(&app_context->panel_auth, app_context);

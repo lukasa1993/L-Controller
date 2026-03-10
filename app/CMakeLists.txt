@@ -9,6 +9,7 @@ set(APP_SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(APP_SOURCES
 	${APP_SOURCE_ROOT}/main.c
 	${APP_SOURCE_ROOT}/app/bootstrap.c
+	${APP_SOURCE_ROOT}/actions/actions.c
 	${APP_SOURCE_ROOT}/network/network_supervisor.c
 	${APP_SOURCE_ROOT}/network/wifi_lifecycle.c
 	${APP_SOURCE_ROOT}/network/reachability.c
