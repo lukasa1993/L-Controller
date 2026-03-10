@@ -7,7 +7,7 @@ current_phase_name: ota lifecycle
 current_plan: Complete
 status: completed
 stopped_at: Completed 08-03-PLAN.md
-last_updated: "2026-03-10T19:30:25Z"
+last_updated: "2026-03-10T19:55:37Z"
 last_activity: 2026-03-10
 progress:
   total_phases: 8
@@ -34,12 +34,12 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 **Total Plans in Phase:** 3
 **Status:** Milestone complete
 **Last Activity:** 2026-03-10
-**Last Activity Description:** Quick task 4 added app/VERSION for a 0.0.0+1 OTA test build; build, live upload, and explicit apply passed, but the device did not reappear on LAN after reboot so post-boot confirmation remains blocked
+**Last Activity Description:** Quick task 5 replaced the long panel dashboard with an actions-first shell, added dedicated page routes for overview, schedules, and updates, and moved relay feedback to a targeted optimistic refresh flow; static/build verification passed but live browser smoke still needs a real panel target
 
 Phase: 8 of 8 (ota lifecycle) — completed
 Plan: 3 of 3
 Status: Milestone complete
-Last activity: 2026-03-10 — Quick task 4 added app/VERSION for a 0.0.0+1 OTA test build; build, live upload, and explicit apply passed, but the device did not reappear on LAN after reboot so post-boot confirmation remains blocked
+Last activity: 2026-03-10 — Quick task 5 replaced the long panel dashboard with an actions-first shell, added dedicated page routes for overview, schedules, and updates, and moved relay feedback to a targeted optimistic refresh flow; static/build verification passed but live browser smoke still needs a real panel target
 
 Progress: [██████████] 100%
 
@@ -162,6 +162,7 @@ Recent decisions affecting current work:
 - [Phase 08]: Explicit apply requests the MCUboot test upgrade and schedules a delayed reboot so the operator receives a response before the browser session drops.
 - [Quick task 01]: The embedded panel now loads Tailwind through the requested `@tailwindcss/browser@4` runtime, uses utility-only markup plus an HTML safelist for JS-rendered utility tokens, and the firmware asset pipeline Bun-minifies `main.js` before generating `main.js.gz.inc`.
 - [Quick task 04]: The repo now derives the default MCUboot signing version from `app/VERSION`, so ad hoc local OTA test builds can stay minimal by bumping only `VERSION_TWEAK`.
+- [Quick task 05]: The protected panel now lands on an actions-first shell at `/`, serves dedicated overview/schedules/updates routes, and keeps a future-output rail ready while multi-relay GPIO support remains deferred.
 
 ### Pending Todos
 
@@ -181,6 +182,7 @@ None yet.
 | 2 | Build, flash, and add a Playwright login smoke that verifies the first authenticated page is the dashboard. | 2026-03-10 | 25cb217 | Verified | [2-build-flash-and-add-a-playwright-login-s](./quick/2-build-flash-and-add-a-playwright-login-s/) |
 | 3 | Make a dedicated login page with proper redirect-on-success using a Tailwind Plus paid HTML login flow. | 2026-03-10 | 86e469d | Partial verification | [3-make-dedicated-login-page-with-proper-re](./quick/3-make-dedicated-login-page-with-proper-re/) |
 | 4 | test ota update build next version with minimal changes and update with ota | 2026-03-10 | f780aa0 | Gaps | [4-test-ota-update-build-next-version-with-](./quick/4-test-ota-update-build-next-version-with-/) |
+| 5 | simplify dashboard into page navigation with actions first, fix panel flicker/reload experience, and prepare UI path for future multi-relay GPIO configuration | 2026-03-10 | 66de52f | Partial verification | [5-simplify-dashboard-into-page-navigation-](./quick/5-simplify-dashboard-into-page-navigation-/) |
 
 ## Session Continuity
 
