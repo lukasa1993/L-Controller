@@ -5,9 +5,9 @@ milestone_name: milestone
 current_phase: 8
 current_phase_name: ota lifecycle
 current_plan: 3
-status: executing
-stopped_at: Completed 08-02-PLAN.md
-last_updated: "2026-03-10T09:51:40.815Z"
+status: checkpoint
+stopped_at: Awaiting Phase 8 OTA hardware verification for 08-03
+last_updated: "2026-03-10T10:37:29Z"
 last_activity: 2026-03-10
 progress:
   total_phases: 8
@@ -32,14 +32,14 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 **Current Phase Name:** ota lifecycle
 **Current Plan:** 3
 **Total Plans in Phase:** 3
-**Status:** Ready to execute
+**Status:** Checkpoint pending
 **Last Activity:** 2026-03-10
-**Last Activity Description:** Completed 08-02 local OTA upload and prepared 08-03
+**Last Activity Description:** Implemented 08-03 remote OTA flow and awaiting Phase 8 device verification
 
 Phase: 8 of 8 (ota lifecycle) — execution
 Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-03-10 — Completed 08-02 local OTA upload and prepared 08-03
+Status: Checkpoint pending
+Last activity: 2026-03-10 — Implemented 08-03 remote OTA flow and awaiting Phase 8 device verification
 
 Progress: [██████████] 95%
 
