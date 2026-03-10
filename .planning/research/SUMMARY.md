@@ -11,7 +11,7 @@ This milestone should not introduce a new platform. The repo already has the rig
 
 The safest design is to keep hardware knowledge in firmware through a compile-time output registry and let operator-managed actions reference approved logical bindings. Research across the current codebase and official Zephyr GPIO, Settings, and NVS guidance points in the same direction: do not treat arbitrary raw GPIO strings as trusted runtime truth, do not split manual and scheduled action catalogs, and do not let migration leave hidden built-in relay paths alive.
 
-The highest-risk areas are migration from `relay0.on` / `relay0.off`, schedule integrity when actions are edited or deleted, and flash wear from noisy persistence writes. The roadmap should therefore start with the binding model and migration rules before shipping panel CRUD.
+The highest-risk areas are migration from `relay0.on` / `relay0.off`, schedule integrity when actions are edited or deleted, and flash wear from noisy persistence writes. The roadmap should still start with the binding model and migration rules, but the user has explicitly capped the milestone at one or two phases, so the plan should collapse adjacent work instead of spreading it across three small phases.
 
 ## Key Findings
 
@@ -69,39 +69,34 @@ The new architecture boundary is an output registry plus an action catalog servi
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure:
+Based on research and the explicit user constraint, suggested phase structure:
 
-### Phase 9: Output Binding Model and Migration
-**Rationale:** safe hardware binding and schema migration must exist before operators can manage actions
-**Delivers:** output registry, persistence schema changes, boot validation, and legacy relay-action migration policy
-**Addresses:** validation-before-use, migration, hidden built-in removal
-**Avoids:** unsafe raw GPIO config and half-migrated runtime behavior
+### Phase 9: Binding Model, Migration, and Action Catalog Surface
+**Rationale:** safe hardware binding, persistence rules, and the operator-managed catalog need to land together so the milestone does not sprawl
+**Delivers:** output registry, persistence schema changes, legacy relay-action migration policy, authenticated action CRUD routes, and the Actions page management UI
+**Addresses:** validation-before-use, migration, hidden built-in removal, shared catalog truth
+**Avoids:** unsafe raw GPIO config and a half-migrated UI/API surface
 
-### Phase 10: Action Catalog CRUD and Shared UI/API Projection
-**Rationale:** once the data model is safe, the panel needs a real operator-managed catalog surface
-**Delivers:** authenticated action CRUD routes, Actions page management UI, dynamic schedule action choices, and dependency-aware edit/delete rules
-**Uses:** existing panel/auth stack and persistence boundary
-**Implements:** one shared catalog for Actions and Schedules
-
-### Phase 11: Runtime Integration and Verification
-**Rationale:** configured actions are only complete once manual control, schedules, migration, and hardware execution all use the same truth
-**Delivers:** dispatcher/runtime integration, schedule execution validation, and end-to-end browser/device verification
-**Uses:** existing dispatcher, scheduler, relay runtime, and validation scripts
+### Phase 10: Schedule Integration, Runtime Wiring, and Verification
+**Rationale:** once the catalog is real, schedules and runtime execution must prove they consume the same configured truth
+**Delivers:** dynamic schedule action choices, dependency-aware edit/delete behavior, dispatcher/runtime integration, and end-to-end browser/device verification
+**Uses:** existing scheduler, dispatcher, relay runtime, and validation scripts
+**Implements:** one execution path for configured actions
 
 ### Phase Ordering Rationale
 
-- Binding and migration rules come first because they constrain every later UI/API decision.
-- CRUD and shared projection come second because Actions and Schedules must evolve together.
-- Runtime verification comes last because it depends on the final catalog, schedule, and migration contract.
+- Binding, migration, and operator CRUD are grouped because the user wants a 1-2 phase milestone, not a longer staircase of micro-phases.
+- Schedule integration and runtime verification stay together because both depend on the final catalog contract.
+- If execution risk is lower than expected, the roadmap can collapse further to a single phase, but it should not expand past two.
 
 ### Research Flags
 
 Phases likely needing deeper research during planning:
 - **Phase 9:** exact migration behavior from built-in relay IDs to configured actions
-- **Phase 11:** final executable-action model for schedule/manual control if one configured relay resource yields multiple operations
+- **Phase 10:** final executable-action model for schedule/manual control if one configured relay resource yields multiple operations
 
 Phases with standard patterns:
-- **Phase 10:** CRUD, protected routes, and snapshot projection follow established repo patterns
+- **Phase 9:** CRUD, protected routes, and snapshot projection follow established repo patterns once the binding model is decided
 
 ## Confidence Assessment
 

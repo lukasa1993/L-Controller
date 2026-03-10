@@ -1,95 +1,65 @@
 # Requirements: LNH Nordic
 
-**Defined:** 2026-03-08
-**Core Value:** The device must reliably and safely execute configured local control actions—even through Wi-Fi disruption or subsystem faults—without unnecessary operator intervention.
+**Defined:** 2026-03-11
+**Core Value:** The device must reliably and safely execute configured local control actions even through Wi-Fi disruption or subsystem faults without unnecessary operator intervention.
 
-## v1 Requirements
+## v1.1 Requirements
 
-Requirements for the initial release. Each maps to roadmap phases.
+Requirements for milestone v1.1 Action Configuration Flow.
 
-### Platform Foundation
+### Action Management
 
-- [x] **PLAT-01**: Firmware is organized into separate modules for bootstrap, networking, recovery, HTTP/auth, actions, scheduling, persistence, OTA, and relay control
-- [x] **PLAT-02**: `main.c` acts only as startup orchestration and does not contain subsystem business logic
-- [x] **PLAT-03**: Shared subsystem interfaces use explicit data structures and avoid hidden global state
+- [ ] **ACT-03**: Authenticated operator can create a relay action with a unique operator-safe action ID and display name
+- [ ] **ACT-04**: Authenticated operator can view configured relay actions with name, enabled state, binding summary, and usability status
+- [ ] **ACT-05**: Authenticated operator can edit an existing relay action's name, output binding, and enabled state
+- [ ] **ACT-06**: Authenticated operator can delete a relay action only through a flow that preserves schedule integrity
+- [ ] **ACT-07**: Actions page manual control executes selected configured actions rather than fixed built-in relay commands
+- [ ] **ACT-08**: Device exposes one shared configured action catalog to both Actions and Schedules surfaces
 
-### Networking & Recovery
+### Output Binding and Safety
 
-- [x] **NET-01**: Device can connect at boot using predefined build-time Wi-Fi credentials
-- [x] **NET-02**: Device can automatically recover from transient Wi-Fi disconnects without a full reboot
-- [x] **NET-03**: Device exposes current connectivity state and last network failure state to the local admin panel
-- [x] **REC-01**: Device supervises critical execution paths with watchdog logic
-- [x] **REC-02**: Device triggers a full restart only after confirmed unrecoverable subsystem failure or watchdog starvation
+- [ ] **BIND-01**: Authenticated operator can bind a relay action to an approved GPIO-backed output definition known to firmware
+- [ ] **BIND-02**: Device rejects relay actions with invalid or unsafe output bindings before they become usable
+- [ ] **BIND-03**: Unconfigured, invalid, or disabled relay actions are not executable from the Actions page
+- [ ] **BIND-04**: Unconfigured, invalid, or disabled relay actions are not selectable for new or edited schedules
 
-### Authentication & Panel
+### Scheduling Integration
 
-- [x] **AUTH-01**: Operator can log in with a single local username/password
-- [x] **AUTH-02**: Unauthenticated users cannot access control, configuration, scheduling, or update endpoints
-- [x] **AUTH-03**: Authenticated operator can log out and browser session state behaves predictably across page navigation
-- [x] **PANEL-01**: Device serves a local HTTP admin panel composed of authored HTML and JavaScript assets
-- [x] **PANEL-02**: Panel uses Tailwind Play CDN styling without generating UI markup in C
-- [x] **PANEL-03**: Panel shows current device, Wi-Fi, relay, scheduler, and update status
+- [ ] **SCHED-05**: Schedule create and edit flows list configured relay actions from the shared action catalog
+- [ ] **SCHED-06**: Device blocks or explicitly remediates schedule changes that would leave a schedule referencing a missing or unusable action
+- [ ] **SCHED-07**: Scheduled executions continue to dispatch through the same canonical action ID path used by manual execution
 
-### Configuration & Persistence
+### Migration and Persistence
 
-- [x] **CFG-01**: Device persists local authentication configuration across reboots
-- [x] **CFG-02**: Device persists relay and action configuration across reboots
-- [x] **CFG-03**: Device persists schedules across reboots
-- [x] **CFG-04**: Device validates persisted configuration on boot and falls back safely if data is corrupt or incompatible
+- [ ] **MIGR-01**: Device safely handles persisted legacy `relay0.on` and `relay0.off` action references during migration to configured actions
+- [ ] **MIGR-02**: Device safely handles persisted schedule references to legacy built-in relay actions during migration
+- [ ] **MIGR-03**: Action configuration changes persist across reboot and boot-time validation never causes hidden fallback execution of removed built-in actions
 
-### Actions & Relay Control
-
-- [x] **ACT-01**: Device supports a generic action definition model that can be extended beyond relay control later
-- [x] **ACT-02**: Manual panel commands and scheduled jobs execute through the same action engine path
-- [x] **RELAY-01**: Authenticated operator can activate the first relay from the panel
-- [x] **RELAY-02**: Authenticated operator can deactivate the first relay from the panel
-- [x] **RELAY-03**: Relay returns to a defined safe state on boot and fault recovery
-
-### Scheduling
-
-- [x] **SCHED-01**: Operator can create cron-style schedules for relay actions
-- [x] **SCHED-02**: Operator can enable, disable, edit, and delete saved schedules
-- [x] **SCHED-03**: Scheduled relay actions execute locally without requiring external services
-- [x] **SCHED-04**: Device defines deterministic behavior for reboot, missed jobs, and time resynchronization
-
-### Updates
-
-- [x] **OTA-01**: Authenticated operator can upload a firmware update locally through the panel or local API
-- [x] **OTA-02**: Device can be configured to pull an update from a remote endpoint
-- [x] **OTA-03**: Device stages firmware updates using a bootloader-backed process with rollback on failed boot
-- [x] **OTA-04**: Device marks a new firmware image permanent only after a healthy post-update boot
-
-## v2 Requirements
-
-### Observability
-
-- **OBS-01**: Operator can view historical event and audit logs from the panel
-- **OBS-02**: Device can export structured operational diagnostics for support workflows
+## Future Requirements
 
 ### Hardware Expansion
 
 - **RELAY-04**: Device can manage multiple relay channels
 - **RELAY-05**: Device can assign schedules and actions to specific relay channels independently
 
-### Integrations
+### Broader Action Types
 
-- **INTG-01**: Device can execute non-relay actions through future SDK or integration adapters
-- **INTG-02**: Operator can configure integration credentials and settings from the panel
+- **ACT-09**: Device can execute non-relay actions through future SDK or integration adapters
+- **ACT-10**: Operator can configure non-relay action types through the same shared action-management flow
 
-### Access Model
+### Action Operations
 
-- **AUTH-04**: Device supports more than one operator account
-- **AUTH-05**: Device supports role-based permissions
+- **OBS-01**: Operator can see which schedules depend on each configured action before editing or deleting it
+- **OBS-02**: Operator can trigger a safe test action or diagnostic preview for a configured output
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Public internet exposure of the admin panel | v1 is intentionally local-LAN-only over HTTP |
-| Runtime Wi-Fi onboarding UI | Wi-Fi credentials remain build-time configured for the first release |
-| Embedded scripting engine for arbitrary user logic | Too much safety and validation complexity for the first release |
-| Multi-user account administration | Single-user admin flow is sufficient for v1 |
-| Third-party SDK action implementations | Framework first; actual integrations come after the core stack is proven |
+| Arbitrary raw GPIO discovery or free-form pin entry from the panel | Firmware must keep hardware bindings explicit and safe |
+| Non-relay action implementations | This milestone only establishes the shared configuration flow |
+| Bulk action templates or import/export | Not required to prove the core configurable-action model |
+| Public internet or cloud-backed action management | Panel remains local-LAN only |
 
 ## Traceability
 
@@ -97,43 +67,28 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PLAT-01 | Phase 1 | Complete |
-| PLAT-02 | Phase 1 | Complete |
-| PLAT-03 | Phase 1 | Complete |
-| NET-01 | Phase 2 | Complete |
-| NET-02 | Phase 2 | Complete |
-| NET-03 | Phase 2 | Complete |
-| REC-01 | Phase 3 | Complete |
-| REC-02 | Phase 3 | Complete |
-| CFG-01 | Phase 4 | Complete |
-| CFG-02 | Phase 4 | Complete |
-| CFG-03 | Phase 4 | Complete |
-| CFG-04 | Phase 4 | Complete |
-| AUTH-01 | Phase 5 | Complete |
-| AUTH-02 | Phase 5 | Complete |
-| AUTH-03 | Phase 5 | Complete |
-| PANEL-01 | Phase 5 | Complete |
-| PANEL-02 | Phase 5 | Complete |
-| PANEL-03 | Phase 5 | Complete |
-| ACT-01 | Phase 6 | Complete |
-| ACT-02 | Phase 6 | Complete |
-| RELAY-01 | Phase 6 | Complete |
-| RELAY-02 | Phase 6 | Complete |
-| RELAY-03 | Phase 6 | Complete |
-| SCHED-01 | Phase 7 | Complete |
-| SCHED-02 | Phase 7 | Complete |
-| SCHED-03 | Phase 7 | Complete |
-| SCHED-04 | Phase 7 | Complete |
-| OTA-01 | Phase 8 | Complete |
-| OTA-02 | Phase 8 | Complete |
-| OTA-03 | Phase 8 | Complete |
-| OTA-04 | Phase 8 | Complete |
+| ACT-03 | TBD | Pending |
+| ACT-04 | TBD | Pending |
+| ACT-05 | TBD | Pending |
+| ACT-06 | TBD | Pending |
+| ACT-07 | TBD | Pending |
+| ACT-08 | TBD | Pending |
+| BIND-01 | TBD | Pending |
+| BIND-02 | TBD | Pending |
+| BIND-03 | TBD | Pending |
+| BIND-04 | TBD | Pending |
+| SCHED-05 | TBD | Pending |
+| SCHED-06 | TBD | Pending |
+| SCHED-07 | TBD | Pending |
+| MIGR-01 | TBD | Pending |
+| MIGR-02 | TBD | Pending |
+| MIGR-03 | TBD | Pending |
 
 **Coverage:**
-- v1 requirements: 31 total
-- Mapped to phases: 31
-- Unmapped: 0 ✓
+- v1.1 requirements: 16 total
+- Mapped to phases: 0
+- Unmapped: 16
 
 ---
-*Requirements defined: 2026-03-08*
-*Last updated: 2026-03-10 after Phase 5 backfill completion*
+*Requirements defined: 2026-03-11*
+*Last updated: 2026-03-11 after milestone v1.1 definition*
