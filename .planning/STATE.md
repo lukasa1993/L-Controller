@@ -7,7 +7,7 @@ current_phase_name: ota lifecycle
 current_plan: Complete
 status: completed
 stopped_at: Completed 08-03-PLAN.md
-last_updated: "2026-03-10T18:03:47Z"
+last_updated: "2026-03-10T18:24:03Z"
 last_activity: 2026-03-10
 progress:
   total_phases: 8
@@ -34,12 +34,12 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 **Total Plans in Phase:** 3
 **Status:** Milestone complete
 **Last Activity:** 2026-03-10
-**Last Activity Description:** Quick task 1 tightened to utility-only Tailwind panel
+**Last Activity Description:** Quick task 2 added a real-device Playwright login smoke; live LAN discovery still needs review
 
 Phase: 8 of 8 (ota lifecycle) — completed
 Plan: 3 of 3
 Status: Milestone complete
-Last activity: 2026-03-10 — Quick task 1 tightened to utility-only Tailwind panel
+Last activity: 2026-03-10 — Quick task 2 added a real-device Playwright login smoke; live LAN discovery still needs review
 
 Progress: [██████████] 100%
 
@@ -170,12 +170,14 @@ None yet.
 
 - OTA and scheduling need deeper phase-specific decisions during later discussion/planning
 - Zephyr still emits non-fatal MBEDTLS Kconfig warnings during configuration, though `./scripts/validate.sh` and `./scripts/build.sh` complete successfully.
+- Quick task 2 still needs a live device follow-up because the flashed board did not expose the panel on `192.168.19.0/24` during the Playwright verification window.
 
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Status | Directory |
 |---|-------------|------|--------|--------|-----------|
 | 1 | Tailwind v4 utility-only panel and Bun-minified embedded panel JS | 2026-03-10 | cfc4541 | Verified | [1-make-sure-our-html-styles-are-only-tailw](./quick/1-make-sure-our-html-styles-are-only-tailw/) |
+| 2 | Build, flash, and add a Playwright login smoke that verifies the first authenticated page is the dashboard. | 2026-03-10 | 570ae58 | Needs Review | [2-build-flash-and-add-a-playwright-login-s](./quick/2-build-flash-and-add-a-playwright-login-s/) |
 
 ## Session Continuity
 
