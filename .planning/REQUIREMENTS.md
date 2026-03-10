@@ -56,8 +56,8 @@ Requirements for the initial release. Each maps to roadmap phases.
 
 - [ ] **OTA-01**: Authenticated operator can upload a firmware update locally through the panel or local API
 - [ ] **OTA-02**: Device can be configured to pull an update from a remote endpoint
-- [ ] **OTA-03**: Device stages firmware updates using a bootloader-backed process with rollback on failed boot
-- [ ] **OTA-04**: Device marks a new firmware image permanent only after a healthy post-update boot
+- [x] **OTA-03**: Device stages firmware updates using a bootloader-backed process with rollback on failed boot
+- [x] **OTA-04**: Device marks a new firmware image permanent only after a healthy post-update boot
 
 ## v2 Requirements
 
@@ -126,8 +126,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SCHED-04 | Phase 7 | Complete |
 | OTA-01 | Phase 8 | Pending |
 | OTA-02 | Phase 8 | Pending |
-| OTA-03 | Phase 8 | Pending |
-| OTA-04 | Phase 8 | Pending |
+| OTA-03 | Phase 8 | Complete |
+| OTA-04 | Phase 8 | Complete |
 
 **Coverage:**
 - v1 requirements: 31 total

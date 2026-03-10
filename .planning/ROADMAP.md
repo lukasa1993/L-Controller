@@ -142,7 +142,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 08-01: Enable MCUboot/sysbuild, partitioning, and staged-image plumbing
+- [x] 08-01: Enable MCUboot/sysbuild, partitioning, and staged-image plumbing
 - [ ] 08-02: Implement authenticated local upload and staged image validation flow
 - [ ] 08-03: Implement remote-pull orchestration plus confirm/rollback handling
 
@@ -160,4 +160,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Local Control Panel | 2/3 | In Progress | - |
 | 6. Action Engine & Relay Control | 3/3 | Complete | 2026-03-10 |
 | 7. Scheduling | 3/3 | Complete | 2026-03-10 |
-| 8. OTA Lifecycle | 0/3 | Not started | - |
+| 8. OTA Lifecycle | 1/3 | In Progress|  |

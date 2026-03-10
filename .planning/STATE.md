@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 8
 current_phase_name: ota lifecycle
-current_plan: Not started
-status: planning
-stopped_at: Completed 07-03-PLAN.md
-last_updated: "2026-03-10T07:46:18.321Z"
+current_plan: 2
+status: execution
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-03-10T09:16:39.919Z"
 last_activity: 2026-03-10
 progress:
   total_phases: 8
   completed_phases: 6
-  total_plans: 19
-  completed_plans: 19
-  percent: 100
+  total_plans: 22
+  completed_plans: 20
+  percent: 91
 ---
 
 # Project State
@@ -30,18 +30,18 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Current Phase:** 8
 **Current Phase Name:** ota lifecycle
-**Current Plan:** Not started
+**Current Plan:** 2
 **Total Plans in Phase:** 3
-**Status:** Ready to plan
+**Status:** Ready to execute
 **Last Activity:** 2026-03-10
-**Last Activity Description:** Phase 07 complete, transitioned to Phase 8
+**Last Activity Description:** Completed 08-01 OTA foundation and prepared 08-02
 
-Phase: 8 of 8 (ota lifecycle) — planning
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-03-10 — Phase 07 complete, transitioned to Phase 8
+Phase: 8 of 8 (ota lifecycle) — execution
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-03-10 — Completed 08-01 OTA foundation and prepared 08-02
 
-Progress: [██████████] 100%
+Progress: [█████████░] 91%
 
 ## Performance Metrics
 
@@ -79,6 +79,7 @@ Progress: [██████████] 100%
 | Phase 07-scheduling P01 | 10m | 3 tasks | 10 files |
 | Phase 07 P02 | 13 min | 4 tasks | 12 files |
 | Phase 07-scheduling P03 | 6min | 4 tasks | 10 files |
+| Phase 08 P01 | 22 min | 3 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -152,6 +153,9 @@ Recent decisions affecting current work:
 - [Phase 07-scheduling]: Authenticated schedule management stays on exact /api/schedules routes with thin handlers while the scheduler and dispatcher remain the runtime owners.
 - [Phase 07-scheduling]: The operator UI shows public action keys and labels instead of raw internal action IDs while still refreshing from server truth after every schedule mutation.
 - [Phase 07-scheduling]: Phase 7 completion remains build-first and only closes after the documented browser/curl/device checklist is explicitly approved.
+- [Phase 08]: The nRF7002DK OTA foundation uses mcuboot_secondary on MX25R64 external flash so the app keeps nearly the full internal slot.
+- [Phase 08]: OTA metadata stays in a dedicated typed persistence section keyed by PERSISTENCE_NVS_ID_OTA without disturbing auth, relay, or schedule sections.
+- [Phase 08]: All future update entrypoints must share ota_service staging and apply helpers so same-version and downgrade gating cannot diverge by caller.
 
 ### Pending Todos
 
@@ -164,6 +168,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T07:32:37.928Z
-Stopped at: Completed 07-03-PLAN.md
+Last session: 2026-03-10T09:16:39.917Z
+Stopped at: Completed 08-01-PLAN.md
 Resume file: None
