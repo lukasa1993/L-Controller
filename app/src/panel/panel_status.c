@@ -474,7 +474,12 @@ int panel_status_render_schedule_snapshot_json(struct app_context *app_context,
 		}
 	}
 
-	return panel_status_append(buffer, buffer_len, &offset, "]}");
+	ret = panel_status_append(buffer, buffer_len, &offset, "]}");
+	if (ret != 0) {
+		return ret;
+	}
+
+	return (int)offset;
 }
 
 int panel_status_render_json(struct app_context *app_context,

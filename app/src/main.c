@@ -5,9 +5,10 @@
 
 LOG_MODULE_REGISTER(app, CONFIG_LOG_DEFAULT_LEVEL);
 
+static struct app_context app_context;
+
 int main(void)
 {
-	struct app_context app_context = {0};
 	int ret;
 
 	ret = app_boot(&app_context);
