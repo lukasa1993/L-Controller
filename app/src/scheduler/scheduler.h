@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include <zephyr/kernel.h>
@@ -122,6 +123,8 @@ const char *scheduler_degraded_reason_text(enum scheduler_degraded_reason reason
 const char *scheduler_last_result_code_text(
 	enum scheduler_last_result_code code);
 
+const char *scheduler_problem_code_text(enum scheduler_problem_code code);
+
 int scheduler_cron_validate_expression(const char *expression);
 
 int scheduler_schedule_table_validate(
@@ -145,6 +148,13 @@ int scheduler_service_acquire_trusted_time(struct scheduler_service *service,
 int scheduler_service_handle_clock_correction(
 	struct scheduler_service *service,
 	int64_t corrected_utc_epoch_seconds);
+
+int scheduler_service_copy_snapshot(
+	const struct scheduler_service *service,
+	struct scheduler_runtime_status *status_out,
+	struct scheduler_problem_record *problems_out,
+	size_t problem_capacity,
+	uint32_t *problem_count_out);
 
 const struct scheduler_runtime_status *scheduler_service_get_status(
 	const struct scheduler_service *service);

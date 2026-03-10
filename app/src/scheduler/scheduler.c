@@ -1288,6 +1288,25 @@ const char *scheduler_last_result_code_text(enum scheduler_last_result_code code
 	}
 }
 
+const char *scheduler_problem_code_text(enum scheduler_problem_code code)
+{
+	switch (code) {
+	case SCHEDULER_PROBLEM_BACKWARD_UTC_CLOCK_JUMP:
+		return "backward-utc-clock-jump";
+	case SCHEDULER_PROBLEM_NORMALIZED_UTC_MINUTE_CORRECTED:
+		return "normalized-utc-minute-corrected";
+	case SCHEDULER_PROBLEM_FUTURE_ONLY_BASELINE_APPLIED:
+		return "future-only-baseline-applied";
+	case SCHEDULER_PROBLEM_TRUSTED_CLOCK_UNAVAILABLE:
+		return "trusted-clock-unavailable";
+	case SCHEDULER_PROBLEM_ACTION_DISPATCH_FAILED:
+		return "action-dispatch-failed";
+	case SCHEDULER_PROBLEM_NONE:
+	default:
+		return "none";
+	}
+}
+
 int scheduler_cron_validate_expression(const char *expression)
 {
 	struct scheduler_cron_matcher cron;
@@ -1445,6 +1464,44 @@ int scheduler_service_handle_clock_correction(
 	scheduler_apply_future_only_baseline_locked(service, normalized_utc_minute,
 					 problem_code);
 	k_mutex_unlock(&service->lock);
+
+	return 0;
+}
+
+int scheduler_service_copy_snapshot(
+	const struct scheduler_service *service,
+	struct scheduler_runtime_status *status_out,
+	struct scheduler_problem_record *problems_out,
+	size_t problem_capacity,
+	uint32_t *problem_count_out)
+{
+	struct scheduler_service *mutable_service = (struct scheduler_service *)service;
+	uint32_t copied_count = 0U;
+	uint32_t index;
+
+	if (service == NULL || status_out == NULL) {
+		return -EINVAL;
+	}
+
+	k_mutex_lock(&mutable_service->lock, K_FOREVER);
+	*status_out = mutable_service->status;
+
+	if (problems_out != NULL && problem_capacity > 0U) {
+		copied_count = MIN(mutable_service->status.problem_count, problem_capacity);
+		for (index = 0U; index < copied_count; ++index) {
+			uint32_t problem_index =
+				(mutable_service->problem_head + ARRAY_SIZE(mutable_service->problems) -
+				 1U - index) %
+				ARRAY_SIZE(mutable_service->problems);
+
+			problems_out[index] = mutable_service->problems[problem_index];
+		}
+	}
+	k_mutex_unlock(&mutable_service->lock);
+
+	if (problem_count_out != NULL) {
+		*problem_count_out = copied_count;
+	}
 
 	return 0;
 }

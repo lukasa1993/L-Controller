@@ -1,8 +1,12 @@
 #include <errno.h>
+#include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <zephyr/net/net_ip.h>
+#include <zephyr/sys/util.h>
 
+#include "actions/actions.h"
 #include "app/app_context.h"
 #include "network/network_supervisor.h"
 #include "panel/panel_status.h"
@@ -14,17 +18,45 @@ static const char *panel_status_json_bool(bool value)
 	return value ? "true" : "false";
 }
 
-static uint32_t panel_status_enabled_schedule_count(const struct persisted_schedule_table *schedule)
+static int panel_status_append(char *buffer,
+				      size_t buffer_len,
+				      size_t *offset,
+				      const char *format,
+				      ...)
 {
-	uint32_t enabled_count = 0;
+	va_list args;
+	int written;
 
-	for (uint32_t index = 0; index < schedule->count && index < PERSISTED_SCHEDULE_MAX_COUNT; ++index) {
-		if (schedule->entries[index].enabled) {
-			enabled_count++;
-		}
+	if (buffer == NULL || offset == NULL || format == NULL || *offset >= buffer_len) {
+		return -EINVAL;
 	}
 
-	return enabled_count;
+	va_start(args, format);
+	written = vsnprintf(buffer + *offset, buffer_len - *offset, format, args);
+	va_end(args);
+	if (written < 0 || (size_t)written >= buffer_len - *offset) {
+		return -ENOMEM;
+	}
+
+	*offset += (size_t)written;
+	return 0;
+}
+
+static const char *panel_status_scheduler_action_label(const char *action_id)
+{
+	if (action_id == NULL || action_id[0] == '\0') {
+		return "none";
+	}
+
+	if (strcmp(action_id, action_dispatcher_builtin_relay_action_id(true)) == 0) {
+		return "Relay On";
+	}
+
+	if (strcmp(action_id, action_dispatcher_builtin_relay_action_id(false)) == 0) {
+		return "Relay Off";
+	}
+
+	return "Unknown Action";
 }
 
 static const char *panel_status_relay_note_text(const char *note)
@@ -50,6 +82,113 @@ static const char *panel_status_relay_blocked_reason(const struct relay_runtime_
 	return "Relay runtime is unavailable.";
 }
 
+static int panel_status_render_scheduler_json(struct app_context *app_context,
+					      char *buffer,
+					      size_t buffer_len)
+{
+	struct scheduler_runtime_status scheduler_status;
+	struct scheduler_problem_record problems[SCHEDULER_PROBLEM_HISTORY_CAPACITY];
+	uint32_t copied_problem_count = 0U;
+	size_t offset = 0U;
+	uint32_t index;
+	int ret;
+
+	ret = scheduler_service_copy_snapshot(&app_context->scheduler,
+					     &scheduler_status,
+					     problems,
+					     ARRAY_SIZE(problems),
+					     &copied_problem_count);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = panel_status_append(
+		buffer,
+		buffer_len,
+		&offset,
+		"{"
+		"\"implemented\":%s,"
+		"\"utcOnly\":%s,"
+		"\"minuteResolutionOnly\":%s,"
+		"\"clockTrusted\":%s,"
+		"\"automationActive\":%s,"
+		"\"clockState\":\"%s\","
+		"\"degradedReason\":\"%s\","
+		"\"scheduleCount\":%u,"
+		"\"enabledCount\":%u,"
+		"\"nextRun\":{"
+		"\"available\":%s,"
+		"\"normalizedUtcMinute\":%lld,"
+		"\"scheduleId\":\"%s\","
+		"\"actionLabel\":\"%s\""
+		"},"
+		"\"lastResult\":{"
+		"\"available\":%s,"
+		"\"code\":\"%s\","
+		"\"errorCode\":%d,"
+		"\"normalizedUtcMinute\":%lld,"
+		"\"scheduleId\":\"%s\","
+		"\"actionLabel\":\"%s\""
+		"},"
+		"\"problemCount\":%u,"
+		"\"problems\":[",
+		panel_status_json_bool(scheduler_status.implemented),
+		panel_status_json_bool(scheduler_status.utc_only),
+		panel_status_json_bool(scheduler_status.minute_resolution_only),
+		panel_status_json_bool(scheduler_status.clock_state ==
+				      SCHEDULER_CLOCK_TRUST_STATE_TRUSTED),
+		panel_status_json_bool(scheduler_status.automation_active),
+		scheduler_clock_trust_state_text(scheduler_status.clock_state),
+		scheduler_degraded_reason_text(scheduler_status.degraded_reason),
+		scheduler_status.schedule_count,
+		scheduler_status.enabled_schedule_count,
+		panel_status_json_bool(scheduler_status.next_run.available),
+		(long long)scheduler_status.next_run.normalized_utc_minute,
+		scheduler_status.next_run.schedule_id,
+		panel_status_scheduler_action_label(scheduler_status.next_run.action_id),
+		panel_status_json_bool(scheduler_status.last_result.available),
+		scheduler_last_result_code_text(scheduler_status.last_result.code),
+		scheduler_status.last_result.error_code,
+		(long long)scheduler_status.last_result.normalized_utc_minute,
+		scheduler_status.last_result.schedule_id,
+		panel_status_scheduler_action_label(scheduler_status.last_result.action_id),
+		scheduler_status.problem_count);
+	if (ret != 0) {
+		return ret;
+	}
+
+	for (index = 0U; index < copied_problem_count; ++index) {
+		ret = panel_status_append(
+			buffer,
+			buffer_len,
+			&offset,
+			"%s{"
+			"\"code\":\"%s\","
+			"\"errorCode\":%d,"
+			"\"normalizedUtcMinute\":%lld,"
+			"\"scheduleId\":\"%s\","
+			"\"actionLabel\":\"%s\""
+			"}",
+			index == 0U ? "" : ",",
+			scheduler_problem_code_text(problems[index].code),
+			problems[index].error_code,
+			(long long)problems[index].normalized_utc_minute,
+			problems[index].schedule_id,
+			panel_status_scheduler_action_label(problems[index].action_id));
+		if (ret != 0) {
+			return ret;
+		}
+	}
+
+	return panel_status_append(
+		buffer,
+		buffer_len,
+		&offset,
+		"],"
+		"\"placeholder\":\"Schedule management UI arrives in Phase 7 plan 3 while this runtime state is already live.\""
+		"}");
+}
+
 int panel_status_render_json(struct app_context *app_context,
 				     char *buffer,
 				     size_t buffer_len)
@@ -61,7 +200,7 @@ int panel_status_render_json(struct app_context *app_context,
 	const char *relay_safety_note = "none";
 	const char *relay_blocked_reason = "none";
 	char ipv4_address[NET_IPV4_ADDR_LEN] = "";
-	uint32_t enabled_schedule_count;
+	char scheduler_json[3072] = "";
 	const char *reset_trigger = "none";
 	const char *reset_failure_stage = "none";
 	const char *reset_connectivity = "not-ready";
@@ -87,6 +226,13 @@ int panel_status_render_json(struct app_context *app_context,
 		return ret;
 	}
 
+	ret = panel_status_render_scheduler_json(app_context,
+					 scheduler_json,
+					 sizeof(scheduler_json));
+	if (ret != 0) {
+		return ret;
+	}
+
 	if (network_status.ipv4_bound) {
 		(void)net_addr_ntop(AF_INET,
 				   &network_status.leased_ipv4,
@@ -107,8 +253,6 @@ int panel_status_render_json(struct app_context *app_context,
 		reset_reason = reset_cause->reason;
 	}
 
-	enabled_schedule_count =
-		panel_status_enabled_schedule_count(&app_context->persisted_config.schedule);
 	relay_status = relay_service_get_status(&app_context->relay);
 	if (relay_status != NULL) {
 		relay_implemented = relay_status->implemented;
@@ -143,10 +287,7 @@ int panel_status_render_json(struct app_context *app_context,
 		"\"pending\":%s,\"pendingReason\":\"none\",\"blocked\":%s,"
 		"\"blockedReason\":\"%s\",\"rebootPolicy\":\"%s\""
 		"},"
-		"\"scheduler\":{"
-		"\"implemented\":false,\"scheduleCount\":%u,\"enabledCount\":%u,"
-		"\"placeholder\":\"Scheduling arrives in Phase 7.\""
-		"},"
+		"\"scheduler\":%s,"
 		"\"update\":{"
 		"\"implemented\":false,"
 		"\"placeholder\":\"Firmware update workflows arrive in Phase 8.\""
@@ -181,8 +322,7 @@ int panel_status_render_json(struct app_context *app_context,
 		panel_status_json_bool(relay_blocked),
 		relay_blocked_reason,
 		persisted_relay_reboot_policy_text(app_context->persisted_config.relay.reboot_policy),
-		app_context->persisted_config.schedule.count,
-		enabled_schedule_count);
+		scheduler_json);
 	if (written < 0 || (size_t)written >= buffer_len) {
 		return -ENOMEM;
 	}
