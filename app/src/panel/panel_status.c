@@ -70,6 +70,107 @@ static bool panel_status_relay_blocked(const struct relay_runtime_status *status
 	return status == NULL || !status->implemented || !status->available;
 }
 
+static void panel_status_format_ota_version(const struct persisted_ota_version *version,
+					    char *buffer,
+					    size_t buffer_len)
+{
+	if (buffer == NULL || buffer_len == 0U) {
+		return;
+	}
+
+	if (version == NULL || !version->available) {
+		snprintf(buffer, buffer_len, "Unavailable");
+		return;
+	}
+
+	snprintf(buffer,
+		 buffer_len,
+		 "%u.%u.%u+%u",
+		 version->major,
+		 version->minor,
+		 version->revision,
+		 version->build_num);
+}
+
+static const char *panel_status_ota_pending_warning(const struct ota_runtime_status *status)
+{
+	if (status == NULL) {
+		return "Firmware update status is unavailable.";
+	}
+
+	switch (status->state) {
+	case PERSISTED_OTA_STATE_STAGING:
+		return "Upload staging is in progress.";
+	case PERSISTED_OTA_STATE_STAGED:
+		return "A staged firmware image is waiting for explicit apply.";
+	case PERSISTED_OTA_STATE_APPLY_REQUESTED:
+		return "A staged firmware image has been queued for reboot.";
+	case PERSISTED_OTA_STATE_IDLE:
+	default:
+		return "No staged firmware image is waiting.";
+	}
+}
+
+static int panel_status_render_update_json(struct app_context *app_context,
+					   char *buffer,
+					   size_t buffer_len)
+{
+	struct ota_runtime_status ota_status;
+	char current_version[24];
+	char staged_version[24];
+	size_t offset = 0U;
+	int ret;
+
+	if (app_context == NULL || buffer == NULL || buffer_len == 0U) {
+		return -EINVAL;
+	}
+
+	ret = ota_service_copy_snapshot(&app_context->ota, &ota_status);
+	if (ret != 0) {
+		return ret;
+	}
+
+	panel_status_format_ota_version(&ota_status.current_version,
+					 current_version,
+					 sizeof(current_version));
+	panel_status_format_ota_version(&ota_status.staged_version,
+					 staged_version,
+					 sizeof(staged_version));
+
+	return panel_status_append(
+		buffer,
+		buffer_len,
+		&offset,
+		"{"
+		"\"implemented\":%s,"
+		"\"state\":\"%s\","
+		"\"imageConfirmed\":%s,"
+		"\"currentVersion\":\"%s\","
+		"\"currentVersionAvailable\":%s,"
+		"\"stagedVersion\":\"%s\","
+		"\"stagedVersionAvailable\":%s,"
+		"\"lastResult\":\"%s\","
+		"\"lastResultRecorded\":%s,"
+		"\"rollback\":{\"detected\":%s,\"reason\":%d},"
+		"\"applyReady\":%s,"
+		"\"pendingWarning\":\"%s\""
+		"}",
+		panel_status_json_bool(ota_status.implemented),
+		persistence_ota_state_text(ota_status.state),
+		panel_status_json_bool(ota_status.image_confirmed),
+		current_version,
+		panel_status_json_bool(ota_status.current_version.available),
+		staged_version,
+		panel_status_json_bool(ota_status.staged_version.available),
+		persistence_ota_last_result_text(ota_status.last_attempt.result),
+		panel_status_json_bool(ota_status.last_attempt.recorded),
+		panel_status_json_bool(ota_status.last_attempt.rollback_detected),
+		ota_status.last_attempt.rollback_reason,
+		panel_status_json_bool(ota_status.state == PERSISTED_OTA_STATE_STAGED &&
+				       ota_status.staged_version.available),
+		panel_status_ota_pending_warning(&ota_status));
+}
+
 static const char *panel_status_relay_blocked_reason(const struct relay_runtime_status *status)
 {
 	if (!panel_status_relay_blocked(status)) {
@@ -367,6 +468,7 @@ int panel_status_render_json(struct app_context *app_context,
 	const char *relay_blocked_reason = "none";
 	char ipv4_address[NET_IPV4_ADDR_LEN] = "";
 	char scheduler_json[4096] = "";
+	char update_json[1024] = "";
 	const char *reset_trigger = "none";
 	const char *reset_failure_stage = "none";
 	const char *reset_connectivity = "not-ready";
@@ -395,6 +497,13 @@ int panel_status_render_json(struct app_context *app_context,
 	ret = panel_status_render_scheduler_json(app_context,
 					 scheduler_json,
 					 sizeof(scheduler_json));
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = panel_status_render_update_json(app_context,
+					      update_json,
+					      sizeof(update_json));
 	if (ret != 0) {
 		return ret;
 	}
@@ -454,10 +563,7 @@ int panel_status_render_json(struct app_context *app_context,
 		"\"blockedReason\":\"%s\",\"rebootPolicy\":\"%s\""
 		"},"
 		"\"scheduler\":%s,"
-		"\"update\":{"
-		"\"implemented\":false,"
-		"\"placeholder\":\"Firmware update workflows arrive in Phase 8.\""
-		"}"
+		"\"update\":%s"
 		"}",
 		app_context->config.board_name,
 		app_context->config.panel.port,
@@ -488,7 +594,8 @@ int panel_status_render_json(struct app_context *app_context,
 		panel_status_json_bool(relay_blocked),
 		relay_blocked_reason,
 		persisted_relay_reboot_policy_text(app_context->persisted_config.relay.reboot_policy),
-		scheduler_json);
+		scheduler_json,
+		update_json);
 	if (written < 0 || (size_t)written >= buffer_len) {
 		return -ENOMEM;
 	}
