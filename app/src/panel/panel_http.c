@@ -922,6 +922,14 @@ static const char *panel_http_update_last_result_detail(
 		return "Downgrade uploads are blocked in this phase.";
 	case PERSISTED_OTA_LAST_RESULT_REJECTED_INVALID_IMAGE:
 		return "The uploaded firmware did not validate as a newer MCUboot image.";
+	case PERSISTED_OTA_LAST_RESULT_REMOTE_UP_TO_DATE:
+		return "GitHub Releases did not expose a newer stable firmware image for this device.";
+	case PERSISTED_OTA_LAST_RESULT_REMOTE_CHECK_FAILED:
+		return "The device could not fetch or stage the GitHub Release artifact.";
+	case PERSISTED_OTA_LAST_RESULT_CONFIRMED:
+		return "The booted test image survived the healthy stable window and is now permanent.";
+	case PERSISTED_OTA_LAST_RESULT_ROLLED_BACK:
+		return "The test image did not confirm and MCUboot reverted to the previous firmware.";
 	case PERSISTED_OTA_LAST_RESULT_NONE:
 	default:
 		return "No firmware update result is recorded yet.";
@@ -942,6 +950,8 @@ static const char *panel_http_update_pending_warning(
 		return "A staged firmware image is waiting. Applying it will reboot the device and clear this browser session.";
 	case PERSISTED_OTA_STATE_APPLY_REQUESTED:
 		return "The staged firmware image has been queued for reboot. This browser session will be cleared when the device restarts.";
+	case PERSISTED_OTA_STATE_PENDING_CONFIRM:
+		return "The device is running a test image and will only confirm it after the APP_READY stable window completes.";
 	case PERSISTED_OTA_STATE_IDLE:
 	default:
 		return "No staged firmware image is currently waiting for apply.";
@@ -2835,7 +2845,7 @@ static int panel_update_clear_handler(struct http_client_ctx *client,
 			route_ctx->response_body,
 			sizeof(route_ctx->response_body),
 			"apply-in-progress",
-			"The staged firmware image is already queued for reboot and cannot be cleared now.");
+			"The device is already rebooting or waiting to confirm a test image and cannot clear OTA state now.");
 	}
 
 	if (ret != 0) {

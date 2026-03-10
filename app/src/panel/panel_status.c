@@ -92,6 +92,21 @@ static void panel_status_format_ota_version(const struct persisted_ota_version *
 		 version->build_num);
 }
 
+static const char *panel_status_ota_remote_state_text(enum ota_remote_job_state state)
+{
+	switch (state) {
+	case OTA_REMOTE_JOB_CHECKING:
+		return "checking";
+	case OTA_REMOTE_JOB_DOWNLOADING:
+		return "downloading";
+	case OTA_REMOTE_JOB_APPLYING:
+		return "applying";
+	case OTA_REMOTE_JOB_IDLE:
+	default:
+		return "idle";
+	}
+}
+
 static const char *panel_status_ota_pending_warning(const struct ota_runtime_status *status)
 {
 	if (status == NULL) {
@@ -105,6 +120,8 @@ static const char *panel_status_ota_pending_warning(const struct ota_runtime_sta
 		return "A staged firmware image is waiting for explicit apply.";
 	case PERSISTED_OTA_STATE_APPLY_REQUESTED:
 		return "A staged firmware image has been queued for reboot.";
+	case PERSISTED_OTA_STATE_PENDING_CONFIRM:
+		return "The device is running a test image and will confirm it after the healthy stable window.";
 	case PERSISTED_OTA_STATE_IDLE:
 	default:
 		return "No staged firmware image is waiting.";
@@ -144,6 +161,8 @@ static int panel_status_render_update_json(struct app_context *app_context,
 		"{"
 		"\"implemented\":%s,"
 		"\"state\":\"%s\","
+		"\"remoteBusy\":%s,"
+		"\"remoteState\":\"%s\","
 		"\"imageConfirmed\":%s,"
 		"\"currentVersion\":\"%s\","
 		"\"currentVersionAvailable\":%s,"
@@ -157,6 +176,8 @@ static int panel_status_render_update_json(struct app_context *app_context,
 		"}",
 		panel_status_json_bool(ota_status.implemented),
 		persistence_ota_state_text(ota_status.state),
+		panel_status_json_bool(ota_status.remote_busy),
+		panel_status_ota_remote_state_text(ota_status.remote_state),
 		panel_status_json_bool(ota_status.image_confirmed),
 		current_version,
 		panel_status_json_bool(ota_status.current_version.available),

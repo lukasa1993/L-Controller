@@ -32,6 +32,7 @@ struct ota_service {
 	struct app_context *app_context;
 	struct k_mutex lock;
 	struct flash_img_context stage_context;
+	struct k_work_delayable confirm_work;
 	struct k_work_delayable remote_work;
 	struct k_work_delayable reboot_work;
 	struct k_sem remote_done_sem;
@@ -57,3 +58,4 @@ int ota_service_finish_staging(struct ota_service *service);
 int ota_service_clear_staged_image(struct ota_service *service);
 int ota_service_request_apply(struct ota_service *service);
 int ota_service_request_remote_update(struct ota_service *service);
+int ota_service_notify_app_ready(struct ota_service *service);

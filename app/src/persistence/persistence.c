@@ -155,6 +155,8 @@ const char *persistence_ota_state_text(enum persisted_ota_state state)
 		return "staged";
 	case PERSISTED_OTA_STATE_APPLY_REQUESTED:
 		return "apply-requested";
+	case PERSISTED_OTA_STATE_PENDING_CONFIRM:
+		return "pending-confirm";
 	default:
 		return "unknown";
 	}
@@ -184,6 +186,10 @@ const char *persistence_ota_last_result_text(
 		return "remote-up-to-date";
 	case PERSISTED_OTA_LAST_RESULT_REMOTE_CHECK_FAILED:
 		return "remote-check-failed";
+	case PERSISTED_OTA_LAST_RESULT_CONFIRMED:
+		return "confirmed";
+	case PERSISTED_OTA_LAST_RESULT_ROLLED_BACK:
+		return "rolled-back";
 	default:
 		return "unknown";
 	}
@@ -208,6 +214,7 @@ static bool persisted_ota_state_valid(enum persisted_ota_state state)
 	case PERSISTED_OTA_STATE_STAGING:
 	case PERSISTED_OTA_STATE_STAGED:
 	case PERSISTED_OTA_STATE_APPLY_REQUESTED:
+	case PERSISTED_OTA_STATE_PENDING_CONFIRM:
 		return true;
 	default:
 		return false;
@@ -228,6 +235,8 @@ static bool persisted_ota_last_result_valid(
 	case PERSISTED_OTA_LAST_RESULT_REJECTED_INVALID_IMAGE:
 	case PERSISTED_OTA_LAST_RESULT_REMOTE_UP_TO_DATE:
 	case PERSISTED_OTA_LAST_RESULT_REMOTE_CHECK_FAILED:
+	case PERSISTED_OTA_LAST_RESULT_CONFIRMED:
+	case PERSISTED_OTA_LAST_RESULT_ROLLED_BACK:
 		return true;
 	default:
 		return false;

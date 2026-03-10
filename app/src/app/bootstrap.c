@@ -451,6 +451,7 @@ int app_boot(struct app_context *app_context)
 		return ret;
 	}
 
+	(void)ota_service_notify_app_ready(&app_context->ota);
 	LOG_INF("APP_READY");
 	return 0;
 }

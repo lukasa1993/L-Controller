@@ -62,6 +62,8 @@ static void ota_service_set_remote_state_locked(struct ota_service *service,
 static int ota_service_fetch_github_release(struct ota_service *service,
 					    struct ota_github_release_info *release_out);
 static int ota_service_run_remote_update(struct ota_service *service, bool manual_trigger);
+static void ota_service_reconcile_boot_state_locked(struct ota_service *service);
+static void ota_service_confirm_work_handler(struct k_work *work);
 static void ota_service_remote_work_handler(struct k_work *work);
 static void ota_service_reboot_work_handler(struct k_work *work);
 
@@ -74,6 +76,14 @@ static void ota_attempt_clear(struct persisted_ota_attempt *attempt)
 {
 	memset(attempt, 0, sizeof(*attempt));
 	attempt->result = PERSISTED_OTA_LAST_RESULT_NONE;
+}
+
+static bool ota_version_matches(const struct persisted_ota_version *left,
+				const struct persisted_ota_version *right)
+{
+	return left != NULL && right != NULL && left->available && right->available &&
+	       left->major == right->major && left->minor == right->minor &&
+	       left->revision == right->revision && left->build_num == right->build_num;
 }
 
 static bool ota_string_ends_with(const char *value, const char *suffix)
@@ -624,6 +634,24 @@ static int ota_service_record_remote_result_locked(
 	return ota_service_update_state_locked(service, PERSISTED_OTA_STATE_IDLE, NULL, &attempt);
 }
 
+static int ota_service_record_boot_result_locked(
+	struct ota_service *service,
+	enum persisted_ota_last_result_code result,
+	int error_code,
+	const struct persisted_ota_version *version,
+	bool rollback_detected,
+	int rollback_reason)
+{
+	struct persisted_ota_attempt attempt = ota_make_attempt(result,
+								error_code,
+								0U,
+								version);
+
+	attempt.rollback_detected = rollback_detected;
+	attempt.rollback_reason = rollback_reason;
+	return ota_service_update_state_locked(service, PERSISTED_OTA_STATE_IDLE, NULL, &attempt);
+}
+
 static void ota_service_schedule_next_auto_check(struct ota_service *service, k_timeout_t delay)
 {
 	if (service == NULL) {
@@ -631,6 +659,50 @@ static void ota_service_schedule_next_auto_check(struct ota_service *service, k_
 	}
 
 	k_work_reschedule(&service->remote_work, delay);
+}
+
+static void ota_service_reconcile_boot_state_locked(struct ota_service *service)
+{
+	const struct persisted_ota *persisted;
+
+	if (service == NULL) {
+		return;
+	}
+
+	persisted = &service->app_context->persisted_config.ota;
+	if ((persisted->state != PERSISTED_OTA_STATE_APPLY_REQUESTED &&
+	     persisted->state != PERSISTED_OTA_STATE_PENDING_CONFIRM) ||
+	    !persisted->last_attempt.version.available) {
+		return;
+	}
+
+	if (ota_version_matches(&service->status.current_version, &persisted->last_attempt.version)) {
+		if (service->status.image_confirmed) {
+			(void)ota_service_record_boot_result_locked(
+				service,
+				PERSISTED_OTA_LAST_RESULT_CONFIRMED,
+				0,
+				&service->status.current_version,
+				false,
+				0);
+			return;
+		}
+
+		(void)ota_service_update_state_locked(service,
+						      PERSISTED_OTA_STATE_PENDING_CONFIRM,
+						      &service->status.current_version,
+						      &persisted->last_attempt);
+		return;
+	}
+
+	if (service->status.current_version.available) {
+		(void)ota_service_record_boot_result_locked(service,
+							    PERSISTED_OTA_LAST_RESULT_ROLLED_BACK,
+							    -ECANCELED,
+							    &persisted->last_attempt.version,
+							    true,
+							    -ECANCELED);
+	}
 }
 
 static int ota_service_record_stage_failure_locked(
@@ -668,6 +740,7 @@ int ota_service_init(struct ota_service *service, struct app_context *app_contex
 	ota_singleton_service = service;
 	k_mutex_init(&service->lock);
 	k_sem_init(&service->remote_done_sem, 0, 1);
+	k_work_init_delayable(&service->confirm_work, ota_service_confirm_work_handler);
 	k_work_init_delayable(&service->remote_work, ota_service_remote_work_handler);
 	k_work_init_delayable(&service->reboot_work, ota_service_reboot_work_handler);
 	service->remote_download_result = 0;
@@ -682,6 +755,9 @@ int ota_service_init(struct ota_service *service, struct app_context *app_contex
 		(void)ota_service_save_persisted_locked(service, &persisted);
 		k_mutex_unlock(&service->lock);
 	}
+	k_mutex_lock(&service->lock, K_FOREVER);
+	ota_service_reconcile_boot_state_locked(service);
+	k_mutex_unlock(&service->lock);
 
 	downloader_cfg.buf = service->remote_download_buffer;
 	downloader_cfg.buf_size = sizeof(service->remote_download_buffer);
@@ -801,6 +877,17 @@ static int ota_service_run_remote_update(struct ota_service *service, bool manua
 
 	if (service == NULL) {
 		return -EINVAL;
+	}
+
+	if (!service->remote_downloader_ready) {
+		k_mutex_lock(&service->lock, K_FOREVER);
+		(void)ota_service_record_remote_result_locked(service,
+							    PERSISTED_OTA_LAST_RESULT_REMOTE_CHECK_FAILED,
+							    -ENOSYS,
+							    0U,
+							    NULL);
+		k_mutex_unlock(&service->lock);
+		return -ENOSYS;
 	}
 
 	k_mutex_lock(&service->lock, K_FOREVER);
@@ -977,6 +1064,41 @@ static void ota_service_remote_work_handler(struct k_work *work)
 	}
 
 	ota_service_schedule_next_auto_check(service, next_delay);
+}
+
+static void ota_service_confirm_work_handler(struct k_work *work)
+{
+	struct k_work_delayable *delayable = CONTAINER_OF(work, struct k_work_delayable, work);
+	struct ota_service *service = CONTAINER_OF(delayable, struct ota_service, confirm_work);
+	struct persisted_ota_version current_version;
+	int ret;
+
+	k_mutex_lock(&service->lock, K_FOREVER);
+	if (service->status.state != PERSISTED_OTA_STATE_PENDING_CONFIRM ||
+	    service->status.image_confirmed ||
+	    !ota_version_matches(&service->status.current_version,
+				 &service->app_context->persisted_config.ota.last_attempt.version)) {
+		k_mutex_unlock(&service->lock);
+		return;
+	}
+
+	current_version = service->status.current_version;
+	k_mutex_unlock(&service->lock);
+
+	ret = boot_write_img_confirmed();
+	if (ret != 0) {
+		LOG_ERR("Failed to confirm booted image after stable window: %d", ret);
+		return;
+	}
+
+	k_mutex_lock(&service->lock, K_FOREVER);
+	(void)ota_service_record_boot_result_locked(service,
+							    PERSISTED_OTA_LAST_RESULT_CONFIRMED,
+							    0,
+							    &current_version,
+							    false,
+							    0);
+	k_mutex_unlock(&service->lock);
 }
 
 static void ota_service_reboot_work_handler(struct k_work *work)
@@ -1161,7 +1283,8 @@ int ota_service_clear_staged_image(struct ota_service *service)
 	}
 
 	k_mutex_lock(&service->lock, K_FOREVER);
-	if (service->status.state == PERSISTED_OTA_STATE_APPLY_REQUESTED) {
+	if (service->status.state == PERSISTED_OTA_STATE_APPLY_REQUESTED ||
+	    service->status.state == PERSISTED_OTA_STATE_PENDING_CONFIRM) {
 		k_mutex_unlock(&service->lock);
 		return -EBUSY;
 	}
@@ -1268,5 +1391,23 @@ int ota_service_request_remote_update(struct ota_service *service)
 	k_mutex_unlock(&service->lock);
 
 	ota_service_schedule_next_auto_check(service, K_NO_WAIT);
+	return 0;
+}
+
+int ota_service_notify_app_ready(struct ota_service *service)
+{
+	if (service == NULL) {
+		return -EINVAL;
+	}
+
+	k_mutex_lock(&service->lock, K_FOREVER);
+	if (service->status.state == PERSISTED_OTA_STATE_PENDING_CONFIRM &&
+	    !service->status.image_confirmed) {
+		k_work_reschedule(&service->confirm_work,
+				  K_MSEC(MAX(service->app_context->config.ota.confirm_stable_window_ms,
+					     1000)));
+	}
+	k_mutex_unlock(&service->lock);
+
 	return 0;
 }
