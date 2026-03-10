@@ -44,19 +44,20 @@ static int panel_status_append(char *buffer,
 
 static const char *panel_status_scheduler_action_label(const char *action_id)
 {
+	const char *label = action_dispatcher_public_action_label(action_id);
+
 	if (action_id == NULL || action_id[0] == '\0') {
 		return "none";
 	}
 
-	if (strcmp(action_id, action_dispatcher_builtin_relay_action_id(true)) == 0) {
-		return "Relay On";
-	}
+	return label != NULL ? label : "Unknown Action";
+}
 
-	if (strcmp(action_id, action_dispatcher_builtin_relay_action_id(false)) == 0) {
-		return "Relay Off";
-	}
+static const char *panel_status_scheduler_action_key(const char *action_id)
+{
+	const char *key = action_dispatcher_public_action_key(action_id);
 
-	return "Unknown Action";
+	return key != NULL ? key : "none";
 }
 
 static const char *panel_status_relay_note_text(const char *note)
@@ -120,6 +121,7 @@ static int panel_status_render_scheduler_json(struct app_context *app_context,
 		"\"available\":%s,"
 		"\"normalizedUtcMinute\":%lld,"
 		"\"scheduleId\":\"%s\","
+		"\"actionKey\":\"%s\","
 		"\"actionLabel\":\"%s\""
 		"},"
 		"\"lastResult\":{"
@@ -128,6 +130,7 @@ static int panel_status_render_scheduler_json(struct app_context *app_context,
 		"\"errorCode\":%d,"
 		"\"normalizedUtcMinute\":%lld,"
 		"\"scheduleId\":\"%s\","
+		"\"actionKey\":\"%s\","
 		"\"actionLabel\":\"%s\""
 		"},"
 		"\"problemCount\":%u,"
@@ -145,12 +148,14 @@ static int panel_status_render_scheduler_json(struct app_context *app_context,
 		panel_status_json_bool(scheduler_status.next_run.available),
 		(long long)scheduler_status.next_run.normalized_utc_minute,
 		scheduler_status.next_run.schedule_id,
+		panel_status_scheduler_action_key(scheduler_status.next_run.action_id),
 		panel_status_scheduler_action_label(scheduler_status.next_run.action_id),
 		panel_status_json_bool(scheduler_status.last_result.available),
 		scheduler_last_result_code_text(scheduler_status.last_result.code),
 		scheduler_status.last_result.error_code,
 		(long long)scheduler_status.last_result.normalized_utc_minute,
 		scheduler_status.last_result.schedule_id,
+		panel_status_scheduler_action_key(scheduler_status.last_result.action_id),
 		panel_status_scheduler_action_label(scheduler_status.last_result.action_id),
 		scheduler_status.problem_count);
 	if (ret != 0) {
@@ -167,6 +172,7 @@ static int panel_status_render_scheduler_json(struct app_context *app_context,
 			"\"errorCode\":%d,"
 			"\"normalizedUtcMinute\":%lld,"
 			"\"scheduleId\":\"%s\","
+			"\"actionKey\":\"%s\","
 			"\"actionLabel\":\"%s\""
 			"}",
 			index == 0U ? "" : ",",
@@ -174,6 +180,7 @@ static int panel_status_render_scheduler_json(struct app_context *app_context,
 			problems[index].error_code,
 			(long long)problems[index].normalized_utc_minute,
 			problems[index].schedule_id,
+			panel_status_scheduler_action_key(problems[index].action_id),
 			panel_status_scheduler_action_label(problems[index].action_id));
 		if (ret != 0) {
 			return ret;
@@ -185,13 +192,172 @@ static int panel_status_render_scheduler_json(struct app_context *app_context,
 		buffer_len,
 		&offset,
 		"],"
-		"\"placeholder\":\"Schedule management UI arrives in Phase 7 plan 3 while this runtime state is already live.\""
+		"\"placeholder\":\"Schedule management is now available from the dedicated scheduler surface.\""
 		"}");
 }
 
+int panel_status_render_schedule_snapshot_json(struct app_context *app_context,
+					       char *buffer,
+					       size_t buffer_len)
+{
+	struct scheduler_runtime_status scheduler_status;
+	struct scheduler_problem_record problems[SCHEDULER_PROBLEM_HISTORY_CAPACITY];
+	const struct persisted_schedule_table *schedule_table;
+	uint32_t copied_problem_count = 0U;
+	uint32_t copied_schedule_count;
+	size_t offset = 0U;
+	uint32_t index;
+	int ret;
+
+	if (app_context == NULL || buffer == NULL || buffer_len == 0U) {
+		return -EINVAL;
+	}
+
+	ret = scheduler_service_copy_snapshot(&app_context->scheduler,
+					     &scheduler_status,
+					     problems,
+					     ARRAY_SIZE(problems),
+					     &copied_problem_count);
+	if (ret != 0) {
+		return ret;
+	}
+
+	schedule_table = &app_context->persisted_config.schedule;
+	copied_schedule_count = MIN(schedule_table->count, PERSISTED_SCHEDULE_MAX_COUNT);
+
+	ret = panel_status_append(
+		buffer,
+		buffer_len,
+		&offset,
+		"{"
+		"\"implemented\":%s,"
+		"\"timezone\":\"UTC\","
+		"\"utcOnly\":%s,"
+		"\"minuteResolutionOnly\":%s,"
+		"\"clockTrusted\":%s,"
+		"\"automationActive\":%s,"
+		"\"clockState\":\"%s\","
+		"\"degradedReason\":\"%s\","
+		"\"scheduleCount\":%u,"
+		"\"enabledCount\":%u,"
+		"\"maxSchedules\":%u,"
+		"\"problemHistoryCapacity\":%u,"
+		"\"nextRun\":{"
+		"\"available\":%s,"
+		"\"normalizedUtcMinute\":%lld,"
+		"\"scheduleId\":\"%s\","
+		"\"actionKey\":\"%s\","
+		"\"actionLabel\":\"%s\""
+		"},"
+		"\"lastResult\":{"
+		"\"available\":%s,"
+		"\"code\":\"%s\","
+		"\"errorCode\":%d,"
+		"\"normalizedUtcMinute\":%lld,"
+		"\"scheduleId\":\"%s\","
+		"\"actionKey\":\"%s\","
+		"\"actionLabel\":\"%s\""
+		"},"
+		"\"problemCount\":%u,"
+		"\"actionChoices\":["
+		"{\"key\":\"relay-on\",\"label\":\"Relay On\"},"
+		"{\"key\":\"relay-off\",\"label\":\"Relay Off\"}"
+		"],"
+		"\"problems\":[",
+		panel_status_json_bool(scheduler_status.implemented),
+		panel_status_json_bool(scheduler_status.utc_only),
+		panel_status_json_bool(scheduler_status.minute_resolution_only),
+		panel_status_json_bool(scheduler_status.clock_state ==
+				      SCHEDULER_CLOCK_TRUST_STATE_TRUSTED),
+		panel_status_json_bool(scheduler_status.automation_active),
+		scheduler_clock_trust_state_text(scheduler_status.clock_state),
+		scheduler_degraded_reason_text(scheduler_status.degraded_reason),
+		scheduler_status.schedule_count,
+		scheduler_status.enabled_schedule_count,
+		PERSISTED_SCHEDULE_MAX_COUNT,
+		SCHEDULER_PROBLEM_HISTORY_CAPACITY,
+		panel_status_json_bool(scheduler_status.next_run.available),
+		(long long)scheduler_status.next_run.normalized_utc_minute,
+		scheduler_status.next_run.schedule_id,
+		panel_status_scheduler_action_key(scheduler_status.next_run.action_id),
+		panel_status_scheduler_action_label(scheduler_status.next_run.action_id),
+		panel_status_json_bool(scheduler_status.last_result.available),
+		scheduler_last_result_code_text(scheduler_status.last_result.code),
+		scheduler_status.last_result.error_code,
+		(long long)scheduler_status.last_result.normalized_utc_minute,
+		scheduler_status.last_result.schedule_id,
+		panel_status_scheduler_action_key(scheduler_status.last_result.action_id),
+		panel_status_scheduler_action_label(scheduler_status.last_result.action_id),
+		scheduler_status.problem_count);
+	if (ret != 0) {
+		return ret;
+	}
+
+	for (index = 0U; index < copied_problem_count; ++index) {
+		ret = panel_status_append(
+			buffer,
+			buffer_len,
+			&offset,
+			"%s{"
+			"\"code\":\"%s\","
+			"\"errorCode\":%d,"
+			"\"normalizedUtcMinute\":%lld,"
+			"\"scheduleId\":\"%s\","
+			"\"actionKey\":\"%s\","
+			"\"actionLabel\":\"%s\""
+			"}",
+			index == 0U ? "" : ",",
+			scheduler_problem_code_text(problems[index].code),
+			problems[index].error_code,
+			(long long)problems[index].normalized_utc_minute,
+			problems[index].schedule_id,
+			panel_status_scheduler_action_key(problems[index].action_id),
+			panel_status_scheduler_action_label(problems[index].action_id));
+		if (ret != 0) {
+			return ret;
+		}
+	}
+
+	ret = panel_status_append(buffer, buffer_len, &offset, "],\"schedules\":[");
+	if (ret != 0) {
+		return ret;
+	}
+
+	for (index = 0U; index < copied_schedule_count; ++index) {
+		const struct persisted_schedule *schedule = &schedule_table->entries[index];
+		const bool is_next_run = scheduler_status.next_run.available &&
+			strcmp(schedule->schedule_id, scheduler_status.next_run.schedule_id) == 0;
+
+		ret = panel_status_append(
+			buffer,
+			buffer_len,
+			&offset,
+			"%s{"
+			"\"scheduleId\":\"%s\","
+			"\"enabled\":%s,"
+			"\"cronExpression\":\"%s\","
+			"\"actionKey\":\"%s\","
+			"\"actionLabel\":\"%s\","
+			"\"isNextRun\":%s"
+			"}",
+			index == 0U ? "" : ",",
+			schedule->schedule_id,
+			panel_status_json_bool(schedule->enabled),
+			schedule->cron_expression,
+			panel_status_scheduler_action_key(schedule->action_id),
+			panel_status_scheduler_action_label(schedule->action_id),
+			panel_status_json_bool(is_next_run));
+		if (ret != 0) {
+			return ret;
+		}
+	}
+
+	return panel_status_append(buffer, buffer_len, &offset, "]}");
+}
+
 int panel_status_render_json(struct app_context *app_context,
-				     char *buffer,
-				     size_t buffer_len)
+			     char *buffer,
+			     size_t buffer_len)
 {
 	struct network_supervisor_status network_status;
 	const struct relay_runtime_status *relay_status;
@@ -200,7 +366,7 @@ int panel_status_render_json(struct app_context *app_context,
 	const char *relay_safety_note = "none";
 	const char *relay_blocked_reason = "none";
 	char ipv4_address[NET_IPV4_ADDR_LEN] = "";
-	char scheduler_json[3072] = "";
+	char scheduler_json[4096] = "";
 	const char *reset_trigger = "none";
 	const char *reset_failure_stage = "none";
 	const char *reset_connectivity = "not-ready";

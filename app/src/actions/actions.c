@@ -14,6 +14,10 @@ LOG_MODULE_DECLARE(app, CONFIG_LOG_DEFAULT_LEVEL);
 
 static const char relay_builtin_off_action_id[] = "relay0.off";
 static const char relay_builtin_on_action_id[] = "relay0.on";
+static const char relay_public_off_action_key[] = "relay-off";
+static const char relay_public_on_action_key[] = "relay-on";
+static const char relay_public_off_action_label[] = "Relay Off";
+static const char relay_public_on_action_label[] = "Relay On";
 
 static void action_dispatch_catalog_copy(
 	const struct persisted_action_catalog *catalog,
@@ -238,6 +242,57 @@ const char *action_dispatch_result_text(enum action_dispatch_result_code code)
 const char *action_dispatcher_builtin_relay_action_id(bool desired_state)
 {
 	return desired_state ? relay_builtin_on_action_id : relay_builtin_off_action_id;
+}
+
+const char *action_dispatcher_public_action_key(const char *action_id)
+{
+	if (action_id == NULL || action_id[0] == '\0') {
+		return NULL;
+	}
+
+	if (strcmp(action_id, relay_builtin_on_action_id) == 0) {
+		return relay_public_on_action_key;
+	}
+
+	if (strcmp(action_id, relay_builtin_off_action_id) == 0) {
+		return relay_public_off_action_key;
+	}
+
+	return NULL;
+}
+
+const char *action_dispatcher_public_action_label(const char *action_id)
+{
+	if (action_id == NULL || action_id[0] == '\0') {
+		return NULL;
+	}
+
+	if (strcmp(action_id, relay_builtin_on_action_id) == 0) {
+		return relay_public_on_action_label;
+	}
+
+	if (strcmp(action_id, relay_builtin_off_action_id) == 0) {
+		return relay_public_off_action_label;
+	}
+
+	return NULL;
+}
+
+const char *action_dispatcher_action_id_from_public_key(const char *public_key)
+{
+	if (public_key == NULL || public_key[0] == '\0') {
+		return NULL;
+	}
+
+	if (strcmp(public_key, relay_public_on_action_key) == 0) {
+		return relay_builtin_on_action_id;
+	}
+
+	if (strcmp(public_key, relay_public_off_action_key) == 0) {
+		return relay_builtin_off_action_id;
+	}
+
+	return NULL;
 }
 
 int action_dispatcher_init(struct action_dispatcher *dispatcher,
