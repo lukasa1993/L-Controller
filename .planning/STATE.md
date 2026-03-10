@@ -1,47 +1,47 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-current_phase: 08
-current_phase_name: ota lifecycle
-current_plan: Complete
-status: completed
-stopped_at: Completed 08-03-PLAN.md
-last_updated: "2026-03-10T19:55:37Z"
-last_activity: 2026-03-10
+milestone: v1.1
+milestone_name: action configuration flow
+current_phase: "-"
+current_phase_name: defining requirements
+current_plan: "-"
+status: defining requirements
+stopped_at: Starting milestone v1.1
+last_updated: "2026-03-10T21:45:15Z"
+last_activity: 2026-03-11
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 22
-  completed_plans: 22
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-08)
+See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** The device must reliably and safely execute configured local control actions—even through Wi-Fi disruption or subsystem faults—without unnecessary operator intervention.
-**Current focus:** milestone complete
+**Current focus:** milestone v1.1 definition
 
 ## Current Position
 
-**Current Phase:** 08
-**Current Phase Name:** ota lifecycle
-**Current Plan:** Complete
-**Total Plans in Phase:** 3
-**Status:** Milestone complete
-**Last Activity:** 2026-03-10
-**Last Activity Description:** Quick task 5 replaced the long panel dashboard with an actions-first shell, added dedicated page routes for overview, schedules, and updates, and moved relay feedback to a targeted optimistic refresh flow; static/build verification passed but live browser smoke still needs a real panel target
+**Current Phase:** Not started
+**Current Phase Name:** defining requirements
+**Current Plan:** -
+**Total Plans in Phase:** -
+**Status:** Defining requirements
+**Last Activity:** 2026-03-11
+**Last Activity Description:** Started milestone v1.1 to replace built-in relay actions with configurable relay actions that are created, named, GPIO-bound, then exposed under Actions and Schedules only after successful configuration
 
-Phase: 8 of 8 (ota lifecycle) — completed
-Plan: 3 of 3
-Status: Milestone complete
-Last activity: 2026-03-10 — Quick task 5 replaced the long panel dashboard with an actions-first shell, added dedicated page routes for overview, schedules, and updates, and moved relay feedback to a targeted optimistic refresh flow; static/build verification passed but live browser smoke still needs a real panel target
+Phase: Not started (defining requirements)
+Plan: -
+Status: Defining requirements
+Last activity: 2026-03-11 — Started milestone v1.1 to deliver configurable relay actions that become visible under Actions and selectable from Schedules only after successful configuration and validation
 
-Progress: [██████████] 100%
+Progress: [----------] 0%
 
 ## Performance Metrics
 
@@ -170,7 +170,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- OTA and scheduling need deeper phase-specific decisions during later discussion/planning
+- Configurable action flow needs explicit decisions about GPIO binding validation, persistence migration for existing built-in action IDs, and how schedules behave when referenced actions are edited or removed
 - Zephyr still emits non-fatal MBEDTLS Kconfig warnings during configuration, though `./scripts/validate.sh` and `./scripts/build.sh` complete successfully.
 - Quick task 4 proved staging and apply for `0.0.0+1`, but the device did not return to the panel after reboot and the preferred serial console port is currently locked by another `miniterm` process.
 
