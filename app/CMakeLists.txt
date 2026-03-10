@@ -37,6 +37,7 @@ set(PANEL_ASSET_GENERATED_DIR ${ZEPHYR_BINARY_DIR}/include/generated/panel)
 set(PANEL_ASSET_BUILD_DIR ${ZEPHYR_BINARY_DIR}/panel-assets)
 set(PANEL_INDEX_HTML_SOURCE ${PANEL_ASSET_SOURCE_DIR}/index.html)
 set(PANEL_LOGIN_HTML_SOURCE ${PANEL_ASSET_SOURCE_DIR}/login.html)
+set(PANEL_CSS_SOURCE ${PANEL_ASSET_SOURCE_DIR}/panel.css)
 set(PANEL_MAIN_JS_SOURCE ${PANEL_ASSET_SOURCE_DIR}/main.js)
 set(PANEL_MAIN_JS_MINIFIED ${PANEL_ASSET_BUILD_DIR}/main.min.js)
 
@@ -73,6 +74,13 @@ generate_inc_file_for_target(
 	app
 	${PANEL_LOGIN_HTML_SOURCE}
 	${PANEL_ASSET_GENERATED_DIR}/login.html.gz.inc
+	--gzip
+)
+
+generate_inc_file_for_target(
+	app
+	${PANEL_CSS_SOURCE}
+	${PANEL_ASSET_GENERATED_DIR}/panel.css.gz.inc
 	--gzip
 )
 

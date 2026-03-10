@@ -147,6 +147,10 @@ static const uint8_t login_html_gz[] = {
 #include "panel/login.html.gz.inc"
 };
 
+static const uint8_t panel_css_gz[] = {
+#include "panel/panel.css.gz.inc"
+};
+
 static const uint8_t main_js_gz[] = {
 #include "panel/main.js.gz.inc"
 };
@@ -189,6 +193,17 @@ static struct http_resource_detail_static panel_shell_login_resource_detail = {
 	},
 	.static_data = login_html_gz,
 	.static_data_len = sizeof(login_html_gz),
+};
+
+static struct http_resource_detail_static panel_shell_panel_css_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_STATIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
+		.content_encoding = "gzip",
+		.content_type = "text/css",
+	},
+	.static_data = panel_css_gz,
+	.static_data_len = sizeof(panel_css_gz),
 };
 
 static struct http_resource_detail_static panel_shell_main_js_resource_detail = {
@@ -445,6 +460,8 @@ HTTP_RESOURCE_DEFINE(panel_shell_updates_resource, panel_http_service, "/updates
 		     &panel_shell_index_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_login_resource, panel_http_service, "/login",
 		     &panel_shell_login_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_shell_panel_css_resource, panel_http_service, "/panel.css",
+		     &panel_shell_panel_css_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_main_js_resource, panel_http_service, "/main.js",
 		     &panel_shell_main_js_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_auth_login_resource, panel_http_service, "/api/auth/login",

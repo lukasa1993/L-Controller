@@ -2,12 +2,15 @@
   "name": "lnh-nordic-panel-smoke",
   "private": true,
   "scripts": {
+    "build:panel-css": "tailwindcss -i app/src/panel/assets/panel.tailwind.css -o app/src/panel/assets/panel.css --minify",
     "playwright:install": "playwright install chromium",
     "playwright:discover": "node tests/helpers/panel-target.js",
     "test:panel": "playwright test",
     "test:panel:list": "playwright test --list"
   },
   "devDependencies": {
-    "@playwright/test": "^1.55.1"
+    "@playwright/test": "^1.55.1",
+    "@tailwindcss/cli": "^4.2.1",
+    "tailwindcss": "^4.2.1"
   }
 }
