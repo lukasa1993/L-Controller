@@ -7,7 +7,7 @@ current_phase_name: ota lifecycle
 current_plan: Complete
 status: completed
 stopped_at: Completed 08-03-PLAN.md
-last_updated: "2026-03-10T16:09:10.982Z"
+last_updated: "2026-03-10T17:38:40Z"
 last_activity: 2026-03-10
 progress:
   total_phases: 8
@@ -34,12 +34,12 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 **Total Plans in Phase:** 3
 **Status:** Milestone complete
 **Last Activity:** 2026-03-10
-**Last Activity Description:** Phase 08 complete
+**Last Activity Description:** Quick task 1 verified locally
 
 Phase: 8 of 8 (ota lifecycle) — completed
 Plan: 3 of 3
 Status: Milestone complete
-Last activity: 2026-03-10 — Phase 08 complete
+Last activity: 2026-03-10 — Quick task 1 verified locally
 
 Progress: [██████████] 100%
 
@@ -160,6 +160,7 @@ Recent decisions affecting current work:
 - [Phase 08]: Kept `/api/status` compact and moved detailed OTA truth plus mutations onto the exact `/api/update` route family.
 - [Phase 08]: Streaming local OTA upload validates captured `Content-Type` and `Content-Length` headers and writes chunks through `ota_service` instead of buffering firmware in RAM.
 - [Phase 08]: Explicit apply requests the MCUboot test upgrade and schedules a delayed reboot so the operator receives a response before the browser session drops.
+- [Quick task 01]: The embedded panel now loads Tailwind through the requested `@tailwindcss/browser@4` runtime, and the firmware asset pipeline Bun-minifies `main.js` before generating `main.js.gz.inc`.
 
 ### Pending Todos
 
@@ -169,6 +170,12 @@ None yet.
 
 - OTA and scheduling need deeper phase-specific decisions during later discussion/planning
 - Zephyr still emits non-fatal MBEDTLS Kconfig warnings during configuration, though `./scripts/validate.sh` and `./scripts/build.sh` complete successfully.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Status | Directory |
+|---|-------------|------|--------|--------|-----------|
+| 1 | Tailwind v4 panel styles and Bun-minified embedded panel JS | 2026-03-10 | cc46351 | Verified | [1-make-sure-our-html-styles-are-only-tailw](./quick/1-make-sure-our-html-styles-are-only-tailw/) |
 
 ## Session Continuity
 
