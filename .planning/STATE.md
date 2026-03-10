@@ -7,7 +7,7 @@ current_phase_name: ota lifecycle
 current_plan: Complete
 status: completed
 stopped_at: Completed 08-03-PLAN.md
-last_updated: "2026-03-10T18:39:21Z"
+last_updated: "2026-03-10T19:01:42Z"
 last_activity: 2026-03-10
 progress:
   total_phases: 8
@@ -34,12 +34,12 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 **Total Plans in Phase:** 3
 **Status:** Milestone complete
 **Last Activity:** 2026-03-10
-**Last Activity Description:** Quick task 2 verified on device after fixing stack overflows and the empty /api/schedules body
+**Last Activity Description:** Quick task 3 split the dashboard and login routes; build, flash, and mocked success-redirect verification passed, while live success login remained blocked by persisted device credentials
 
 Phase: 8 of 8 (ota lifecycle) — completed
 Plan: 3 of 3
 Status: Milestone complete
-Last activity: 2026-03-10 — Quick task 2 verified on device after fixing stack overflows and the empty /api/schedules body
+Last activity: 2026-03-10 — Quick task 3 split the dashboard and login routes; build, flash, and mocked success-redirect verification passed, while live success login remained blocked by persisted device credentials
 
 Progress: [██████████] 100%
 
@@ -170,6 +170,7 @@ None yet.
 
 - OTA and scheduling need deeper phase-specific decisions during later discussion/planning
 - Zephyr still emits non-fatal MBEDTLS Kconfig warnings during configuration, though `./scripts/validate.sh` and `./scripts/build.sh` complete successfully.
+- The currently flashed board rejects the local overlay admin credentials, so any new live success-path login verification needs the device's persisted admin credential or a deliberate auth reset.
 
 ### Quick Tasks Completed
 
@@ -177,6 +178,7 @@ None yet.
 |---|-------------|------|--------|--------|-----------|
 | 1 | Tailwind v4 utility-only panel and Bun-minified embedded panel JS | 2026-03-10 | cfc4541 | Verified | [1-make-sure-our-html-styles-are-only-tailw](./quick/1-make-sure-our-html-styles-are-only-tailw/) |
 | 2 | Build, flash, and add a Playwright login smoke that verifies the first authenticated page is the dashboard. | 2026-03-10 | 25cb217 | Verified | [2-build-flash-and-add-a-playwright-login-s](./quick/2-build-flash-and-add-a-playwright-login-s/) |
+| 3 | Make a dedicated login page with proper redirect-on-success using a Tailwind Plus paid HTML login flow. | 2026-03-10 | 86e469d | Partial verification | [3-make-dedicated-login-page-with-proper-re](./quick/3-make-dedicated-login-page-with-proper-re/) |
 
 ## Session Continuity
 
