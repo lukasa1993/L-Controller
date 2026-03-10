@@ -29,3 +29,9 @@ int ota_service_init(struct ota_service *service, struct app_context *app_contex
 const struct ota_runtime_status *ota_service_get_status(const struct ota_service *service);
 int ota_service_copy_snapshot(const struct ota_service *service,
 			      struct ota_runtime_status *status_out);
+int ota_service_begin_staging(struct ota_service *service);
+int ota_service_write_chunk(struct ota_service *service,
+			    const uint8_t *data,
+			    size_t data_len);
+int ota_service_finish_staging(struct ota_service *service);
+int ota_service_request_apply(struct ota_service *service);
