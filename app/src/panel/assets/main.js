@@ -50,6 +50,11 @@ const routes = {
 	scheduleSetEnabled: '/api/schedules/set-enabled',
 };
 
+const pages = {
+	dashboard: 'dashboard',
+	login: 'login',
+};
+
 const connectivityLabels = {
 	healthy: 'Healthy',
 	connecting: 'Connecting',
@@ -79,6 +84,10 @@ const elements = {
 		update: document.getElementById('update-card'),
 	},
 };
+
+const currentPage = document.body?.dataset.panelPage === pages.login ? pages.login : pages.dashboard;
+const flashStorageKey = 'lnh-panel-flash';
+const SESSION_EXPIRED_MESSAGE = 'The device no longer trusts this browser session. Log in again.';
 
 const ui = {
 	badgeBase: 'inline-flex items-center gap-2 rounded-full border border-sky-100/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100',
@@ -262,8 +271,89 @@ function resetSchedulerForm(overrides = {}) {
 	state.schedulerForm = createSchedulerFormState(overrides);
 }
 
+function isLoginPage() {
+	return currentPage === pages.login;
+}
+
+function stashFlashMessage(message, tone = 'info') {
+	if (!message) {
+		return;
+	}
+
+	try {
+		window.sessionStorage.setItem(flashStorageKey, JSON.stringify({ message, tone }));
+	} catch (error) {
+		// Ignore storage failures in constrained browsers.
+	}
+}
+
+function consumeFlashMessage() {
+	try {
+		const rawValue = window.sessionStorage.getItem(flashStorageKey);
+		if (!rawValue) {
+			return null;
+		}
+
+		window.sessionStorage.removeItem(flashStorageKey);
+		const parsed = JSON.parse(rawValue);
+		if (!parsed || typeof parsed.message !== 'string') {
+			return null;
+		}
+
+		return {
+			message: parsed.message,
+			tone: parsed.tone || 'info',
+		};
+	} catch (error) {
+		return null;
+	}
+}
+
+function normalizeNextPath(rawValue) {
+	const candidate = String(rawValue || '').trim();
+	if (!candidate.startsWith('/') || candidate.startsWith('//')) {
+		return '/';
+	}
+
+	try {
+		const parsed = new URL(candidate, window.location.origin);
+		const normalized = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+		if (parsed.origin !== window.location.origin || normalized.startsWith('/api/') ||
+			normalized === '/login' || normalized.startsWith('/login?')) {
+			return '/';
+		}
+
+		return normalized || '/';
+	} catch (error) {
+		return '/';
+	}
+}
+
+function currentPath() {
+	return normalizeNextPath(`${window.location.pathname}${window.location.search}${window.location.hash}`);
+}
+
+function requestedNextPath() {
+	return normalizeNextPath(new URL(window.location.href).searchParams.get('next') || '/');
+}
+
+function loginPath(nextPath = '/') {
+	const url = new URL('/login', window.location.origin);
+	const safeNextPath = normalizeNextPath(nextPath);
+	if (safeNextPath !== '/') {
+		url.searchParams.set('next', safeNextPath);
+	}
+
+	return `${url.pathname}${url.search}`;
+}
+
+function navigateTo(path) {
+	window.location.assign(path);
+}
+
 function showLoginView(message, tone = 'info') {
 	state.authenticated = false;
+	state.sessionUsername = '';
 	state.status = null;
 	state.scheduleSnapshot = null;
 	state.updateSnapshot = null;
@@ -275,12 +365,20 @@ function showLoginView(message, tone = 'info') {
 	setSchedulerFeedback(null);
 	setUpdateFeedback(null);
 	resetSchedulerForm();
+	if (!isLoginPage()) {
+		stashFlashMessage(message, tone);
+		navigateTo(loginPath(currentPath()));
+		return;
+	}
+
 	elements.loginView?.classList.remove('hidden');
 	elements.dashboardView?.classList.add('hidden');
 	elements.logoutButton?.setAttribute('disabled', 'disabled');
 	elements.refreshButton?.setAttribute('disabled', 'disabled');
-	elements.sessionChip.textContent = 'Authentication required';
-	elements.sessionChip.className = badgeClass('warn');
+	if (elements.sessionChip) {
+		elements.sessionChip.textContent = 'Authentication required';
+		elements.sessionChip.className = badgeClass('warn');
+	}
 	if (message) {
 		setAlert(message, tone);
 	}
@@ -292,8 +390,10 @@ function showDashboardView() {
 	elements.dashboardView?.classList.remove('hidden');
 	elements.logoutButton?.removeAttribute('disabled');
 	elements.refreshButton?.removeAttribute('disabled');
-	elements.sessionChip.textContent = `Authenticated as ${state.sessionUsername || 'operator'}`;
-	elements.sessionChip.className = badgeClass('ok');
+	if (elements.sessionChip) {
+		elements.sessionChip.textContent = `Authenticated as ${state.sessionUsername || 'operator'}`;
+		elements.sessionChip.className = badgeClass('ok');
+	}
 }
 
 async function requestJson(url, options = {}) {
@@ -531,6 +631,10 @@ function updateNetworkChrome(network) {
 	const label = connectivityLabels[connectivity] || connectivity;
 	const degraded = connectivity === NETWORK_CONNECTIVITY_LAN_UP_UPSTREAM_DEGRADED ||
 		connectivity === 'degraded-retrying';
+
+	if (!elements.networkPill) {
+		return;
+	}
 
 	elements.networkPill.textContent = label;
 	elements.networkPill.className = badgeClass(degraded ? 'warn' : 'ok');
@@ -889,6 +993,9 @@ function renderStatus(statusPayload, updatePayload = null) {
 	state.status = statusPayload;
 	state.updateSnapshot = updatePayload;
 	updateNetworkChrome(statusPayload.network);
+	if (!elements.cards.device || !elements.cards.network || !elements.cards.recovery || !elements.cards.relay) {
+		return;
+	}
 
 	const networkLabel = connectivityLabels[statusPayload.network.connectivity] || statusPayload.network.connectivity;
 	const degradedCopy = statusPayload.network.connectivity === NETWORK_CONNECTIVITY_LAN_UP_UPSTREAM_DEGRADED
@@ -929,7 +1036,7 @@ async function refreshDashboard({ silent = false } = {}) {
 	try {
 		const statusResult = await requestJson(routes.status, { method: 'GET' });
 		if (statusResult.response.status === 401) {
-			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
 			return false;
 		}
 
@@ -939,7 +1046,7 @@ async function refreshDashboard({ silent = false } = {}) {
 
 		const updateResult = await requestJson(routes.updateStatus, { method: 'GET' });
 		if (updateResult.response.status === 401) {
-			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
 			return false;
 		}
 
@@ -949,7 +1056,7 @@ async function refreshDashboard({ silent = false } = {}) {
 
 		const schedulesResult = await requestJson(routes.schedules, { method: 'GET' });
 		if (schedulesResult.response.status === 401) {
-			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
 			return false;
 		}
 
@@ -994,7 +1101,7 @@ async function handleRelayToggle() {
 		});
 
 		if (response.status === 401) {
-			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
 			return;
 		}
 
@@ -1041,7 +1148,7 @@ async function runSchedulerMutation(route, payload) {
 		});
 
 		if (response.status === 401) {
-			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
 			return false;
 		}
 
@@ -1157,7 +1264,7 @@ async function handleUpdateUpload() {
 		const { response, data } = await requestBinaryUpload(routes.updateUpload, file);
 
 		if (response.status === 401) {
-			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
 			return;
 		}
 
@@ -1195,7 +1302,7 @@ async function handleUpdateNow() {
 		const { response, data } = await requestJson(routes.updateNow, { method: 'POST' });
 
 		if (response.status === 401) {
-			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
 			return;
 		}
 
@@ -1241,7 +1348,7 @@ async function handleUpdateClear() {
 		const { response, data } = await requestJson(routes.updateClear, { method: 'POST' });
 
 		if (response.status === 401) {
-			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
 			return;
 		}
 
@@ -1296,7 +1403,7 @@ async function handleUpdateApply() {
 		const { response, data } = await requestJson(routes.updateApply, { method: 'POST' });
 
 		if (response.status === 401) {
-			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
 			return;
 		}
 
@@ -1329,17 +1436,25 @@ async function handleUpdateApply() {
 }
 
 async function bootstrapSession() {
-	setAlert('Checking whether this browser already has a valid local session…', 'info');
+	const flash = consumeFlashMessage();
+	const defaultLoginMessage = 'Log in with the configured local admin credentials to unlock protected status.';
+	const unavailableMessage = 'The panel could not confirm session state yet. Try logging in once the device is reachable.';
+
+	setAlert(flash?.message || 'Checking whether this browser already has a valid local session…', flash?.tone || 'info');
 	try {
 		const { response, data } = await requestJson(routes.session, { method: 'GET' });
 		if (response.ok && data?.authenticated) {
 			state.sessionUsername = data.username || 'operator';
+			if (isLoginPage()) {
+				navigateTo(requestedNextPath());
+				return;
+			}
 			await refreshDashboard({ silent: true });
 			return;
 		}
-		showLoginView('Log in with the configured local admin credentials to unlock protected status.', 'info');
+		showLoginView(flash?.message || defaultLoginMessage, flash?.tone || 'info');
 	} catch (error) {
-		showLoginView('The panel could not confirm session state yet. Try logging in once the device is reachable.', 'warn');
+		showLoginView(flash?.message || unavailableMessage, flash?.tone || 'warn');
 	}
 }
 
@@ -1365,7 +1480,9 @@ async function handleLogin(event) {
 		if (response.ok && data?.authenticated) {
 			state.sessionUsername = username;
 			elements.loginForm?.reset();
-			await refreshDashboard({ silent: false });
+			setBusy(elements.loginSubmit, true, 'Redirecting…');
+			setAlert('Authentication accepted. Opening the protected dashboard…', 'success');
+			navigateTo(requestedNextPath());
 			return;
 		}
 

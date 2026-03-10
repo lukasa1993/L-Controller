@@ -35,7 +35,7 @@ The same credentials are used for browser login and the `curl` verification flow
 
 ### Playwright login smoke
 
-The repo now includes a Playwright smoke for the Phase 5+ login shell. It is intended for the flashed device only: it submits the real panel login form and only passes once the authenticated dashboard replaces the login view and protected cards such as `Device shell` and `Connectivity` render.
+The repo now includes a Playwright smoke for the dedicated `/login` flow. It is intended for the flashed device only: it starts at `/`, confirms the unauthenticated redirect to `/login`, submits the real panel login form, and only passes once the authenticated dashboard renders protected cards such as `Device shell` and `Connectivity`.
 
 Install the browser-test dependencies once:
 
@@ -115,7 +115,7 @@ Use this blocking device checklist before Phase 8 approval:
 1. Re-run `./scripts/validate.sh` and keep the automated `./scripts/build.sh` path green.
 2. Flash the latest image with `./scripts/flash.sh`.
 3. Open the live device log with `./scripts/console.sh`, note the device IP, and confirm the ready-state, relay, scheduler, and OTA markers appear.
-4. Log in to the panel and confirm the dedicated update surface shows current version, staged version truth, last result, and pending warnings before testing.
+4. Log in through the dedicated `/login` route and confirm the dashboard update surface shows current version, staged version truth, last result, and pending warnings before testing.
 5. Upload a newer signed firmware image locally and confirm it stages successfully without rebooting until the explicit apply action is used.
 6. Attempt one same-version upload and one older-version upload, and confirm both are rejected with clear operator feedback and no unsafe staged image remains.
 7. Trigger apply for the newer staged image, confirm the browser disconnects during reboot, and confirm a fresh login is required after the device returns.

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>LNH Nordic Login</title>
+	<meta
+		name="description"
+		content="Dedicated local login page for the LNH Nordic mission console.">
+	<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+	<script defer src="/main.js"></script>
+</head>
+<body data-panel-page="login" class="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.18),transparent_24%),radial-gradient(circle_at_85%_12%,rgba(251,191,36,0.16),transparent_18%),linear-gradient(160deg,#020617_0%,#08111e_45%,#0f172a_100%)] text-slate-50 antialiased">
+	<div class="min-h-screen lg:grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+		<section id="login-view" class="relative isolate flex min-h-screen flex-col justify-between overflow-hidden px-6 py-8 sm:px-10 lg:px-14 lg:py-10">
+			<div aria-hidden="true" class="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(125,211,252,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(125,211,252,0.05)_1px,transparent_1px)] bg-[size:26px_26px] [mask-image:radial-gradient(circle_at_center,black,transparent_82%)]"></div>
+			<div aria-hidden="true" class="pointer-events-none absolute -top-24 left-10 h-64 w-64 rounded-full bg-cyan-400/20 blur-3xl"></div>
+			<div aria-hidden="true" class="pointer-events-none absolute bottom-0 right-0 h-72 w-72 rounded-full bg-amber-300/12 blur-3xl"></div>
+
+			<div class="relative flex flex-wrap items-center justify-between gap-3">
+				<div>
+					<p class="m-0 text-xs uppercase tracking-[0.34em] text-cyan-300">Dedicated Login Route</p>
+					<h1 class="mt-3 font-serif text-[clamp(2.5rem,5vw,4.4rem)] font-semibold leading-[0.94] tracking-[-0.03em]">Mission console access</h1>
+				</div>
+				<span id="session-chip" class="inline-flex items-center gap-2 rounded-full border border-cyan-200/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100">Awaiting local auth</span>
+			</div>
+
+			<div class="relative mx-auto flex w-full max-w-xl flex-1 flex-col justify-center py-10">
+				<div class="space-y-5">
+					<p class="text-xs uppercase tracking-[0.32em] text-cyan-300">Tailwind Plus split-screen adapted</p>
+					<h2 class="font-serif text-[clamp(2rem,4vw,3.6rem)] font-semibold leading-[0.98] tracking-[-0.03em] text-slate-50">Sign in to unlock the protected dashboard.</h2>
+					<p class="max-w-lg text-[1rem] leading-relaxed text-slate-300">
+						Use the locally configured admin credentials. On success, the browser returns to the requested control surface instead of leaving you inside a mixed login shell.
+					</p>
+				</div>
+
+				<section id="panel-alert" class="mt-8 rounded-[24px] border border-cyan-300/20 bg-slate-950/55 px-5 py-4 text-[0.95rem] leading-relaxed text-sky-50 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]">
+					Checking whether this browser already has a valid local session…
+				</section>
+
+				<div class="mt-8 rounded-[32px] border border-sky-100/15 bg-slate-950/60 p-6 shadow-[0_30px_90px_rgba(0,0,0,0.38)] backdrop-blur-[20px] sm:p-8">
+					<form id="login-form" class="grid gap-6">
+						<div class="grid gap-2">
+							<label for="login-username" class="text-sm font-medium text-slate-100">Username</label>
+							<input id="login-username" class="w-full rounded-2xl border border-sky-100/15 bg-white/5 px-4 py-3 text-base text-slate-50 outline-none placeholder:text-slate-500 focus:border-cyan-300/45 focus:ring-2 focus:ring-cyan-300/35" name="username" autocomplete="username" placeholder="Local admin username" required>
+						</div>
+						<div class="grid gap-2">
+							<div class="flex items-center justify-between gap-3">
+								<label for="login-password" class="text-sm font-medium text-slate-100">Password</label>
+								<span class="text-sm font-medium text-cyan-300">Stored on the device build</span>
+							</div>
+							<input id="login-password" class="w-full rounded-2xl border border-sky-100/15 bg-white/5 px-4 py-3 text-base text-slate-50 outline-none placeholder:text-slate-500 focus:border-cyan-300/45 focus:ring-2 focus:ring-cyan-300/35" name="password" type="password" autocomplete="current-password" placeholder="Current password" required>
+						</div>
+						<div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+							<p class="text-sm leading-relaxed text-slate-400">
+								Session cookies stay device-local and disappear after reboot. A successful login redirects you back to the dashboard automatically.
+							</p>
+							<button id="login-submit" class="inline-flex w-full items-center justify-center rounded-2xl border border-cyan-200/20 bg-[linear-gradient(135deg,rgba(34,211,238,0.3),rgba(37,99,235,0.38),rgba(8,15,28,0.94))] px-4 py-3 text-sm font-semibold uppercase tracking-[0.16em] text-white transition duration-150 ease-out hover:-translate-y-px hover:border-cyan-300/45 disabled:cursor-wait disabled:opacity-60 disabled:translate-y-0 sm:w-auto sm:min-w-56" type="submit">Authenticate locally</button>
+						</div>
+					</form>
+				</div>
+
+				<div class="mt-8 grid gap-4 sm:grid-cols-2">
+					<div class="rounded-[24px] border border-sky-100/15 bg-slate-950/50 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.3)] backdrop-blur-[18px]">
+						<p class="text-[0.72rem] uppercase tracking-[0.18em] text-cyan-300">Redirect contract</p>
+						<ul class="mt-3 list-disc space-y-2 pl-5 text-[0.95rem] leading-relaxed text-slate-300">
+							<li>Protected dashboard requests bounce here before any relay or OTA data is shown.</li>
+							<li>Successful login returns to the original local path, defaulting to the root dashboard.</li>
+						</ul>
+					</div>
+					<div class="rounded-[24px] border border-sky-100/15 bg-slate-950/50 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.3)] backdrop-blur-[18px]">
+						<p class="text-[0.72rem] uppercase tracking-[0.18em] text-cyan-300">Operator notes</p>
+						<ul class="mt-3 list-disc space-y-2 pl-5 text-[0.95rem] leading-relaxed text-slate-300">
+							<li>Wrong-password retries cool down briefly instead of locking permanently.</li>
+							<li>Device reboot clears all in-RAM sessions and forces a fresh login.</li>
+						</ul>
+					</div>
+				</div>
+			</div>
+
+			<p class="relative m-0 max-w-lg text-sm leading-relaxed text-slate-400">
+				Local LAN only. The firmware remains the source of truth for relay, schedule, and firmware-update state even after the browser returns from this sign-in flow.
+			</p>
+
+			<div aria-hidden="true" class="hidden border-emerald-400/35 text-emerald-100 border-amber-300/35 text-amber-100 border-rose-400/35 text-rose-100 border-amber-300/30 text-emerald-50 rounded-[18px] border-sky-200/20 bg-slate-950/60 p-4 rounded-lg bg-sky-300/10 px-1.5 py-0.5 text-slate-200 border-dashed text-sky-100 border-slate-300/15 text-slate-400 text-right mt-[14px] gap-2.5 pt-2.5 first:border-t-0 first:pt-0 mt-1.5 mb-1.5 mt-3 mt-4 block text-base md:grid-cols-4 md:grid-cols-2 md:items-end md:grid-cols-[minmax(0,1fr)_auto] md:items-center xl:grid-cols-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)] xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] grid-cols-[minmax(0,1fr)_auto]">
+				tailwind safelist
+			</div>
+		</section>
+
+		<aside class="relative hidden overflow-hidden border-l border-sky-100/10 bg-[linear-gradient(160deg,rgba(8,47,73,0.82),rgba(15,23,42,0.92),rgba(12,74,110,0.68))] px-10 py-12 lg:flex lg:flex-col lg:justify-between">
+			<div aria-hidden="true" class="absolute inset-0 bg-[radial-gradient(circle_at_30%_25%,rgba(125,211,252,0.16),transparent_22%),radial-gradient(circle_at_70%_62%,rgba(250,204,21,0.16),transparent_18%),linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:auto,auto,28px_28px,28px_28px] opacity-80"></div>
+			<div class="relative space-y-4">
+				<p class="text-xs uppercase tracking-[0.34em] text-cyan-300">Protected surfaces</p>
+				<h2 class="font-serif text-[clamp(2.4rem,4vw,4rem)] font-semibold leading-[0.96] tracking-[-0.03em] text-white">Authenticate once, then work from firmware truth.</h2>
+				<p class="max-w-xl text-[1.05rem] leading-relaxed text-slate-200/85">
+					The dedicated login route keeps the dashboard clean, protects relay and OTA operations from mixed state, and returns the operator to the exact local surface they asked for.
+				</p>
+			</div>
+
+			<div class="relative grid gap-4">
+				<div class="rounded-[28px] border border-cyan-200/18 bg-slate-950/45 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.32)] backdrop-blur-[18px]">
+					<p class="text-[0.72rem] uppercase tracking-[0.18em] text-cyan-300">What unlocks after login</p>
+					<div class="mt-4 grid gap-3 text-[0.98rem] leading-relaxed text-slate-100">
+						<div class="rounded-[20px] border border-sky-100/12 bg-white/5 p-4">
+							<p class="m-0 font-semibold">Relay control</p>
+							<p class="mt-2 m-0 text-slate-300">Manual desired-state changes stay guarded behind live session checks.</p>
+						</div>
+						<div class="rounded-[20px] border border-sky-100/12 bg-white/5 p-4">
+							<p class="m-0 font-semibold">Schedule management</p>
+							<p class="mt-2 m-0 text-slate-300">Create, edit, enable, disable, and delete UTC schedules from the protected panel.</p>
+						</div>
+						<div class="rounded-[20px] border border-sky-100/12 bg-white/5 p-4">
+							<p class="m-0 font-semibold">OTA apply flow</p>
+							<p class="mt-2 m-0 text-slate-300">Stage firmware, inspect status, then explicitly apply and re-authenticate after reboot.</p>
+						</div>
+					</div>
+				</div>
+
+				<div class="rounded-[28px] border border-amber-200/18 bg-[linear-gradient(180deg,rgba(250,204,21,0.12),rgba(15,23,42,0.38))] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.32)] backdrop-blur-[18px]">
+					<p class="text-[0.72rem] uppercase tracking-[0.18em] text-amber-200">Session boundary</p>
+					<p class="mt-4 text-[1rem] leading-relaxed text-slate-100">
+						All browser sessions are RAM-only on the device. Reboot, logout, or expired auth sends the browser back through this route before protected status renders again.
+					</p>
+				</div>
+			</div>
+		</aside>
+	</div>
+</body>
+</html>

@@ -10,7 +10,7 @@
 	<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 	<script defer src="/main.js"></script>
 </head>
-<body class="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_24%),radial-gradient(circle_at_80%_10%,rgba(251,191,36,0.12),transparent_18%),linear-gradient(180deg,#040a10_0%,#071019_52%,#050b11_100%)] text-slate-50 antialiased">
+<body data-panel-page="dashboard" class="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_24%),radial-gradient(circle_at_80%_10%,rgba(251,191,36,0.12),transparent_18%),linear-gradient(180deg,#040a10_0%,#071019_52%,#050b11_100%)] text-slate-50 antialiased">
 	<div aria-hidden="true" class="pointer-events-none fixed inset-0 bg-[linear-gradient(rgba(125,211,252,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(125,211,252,0.04)_1px,transparent_1px)] bg-[size:28px_28px] [mask-image:radial-gradient(circle_at_center,black,transparent_88%)]"></div>
 	<div class="relative mx-auto grid max-w-[1360px] gap-[18px] px-5 pt-8 pb-14 font-mono">
 		<header class="grid gap-[18px] rounded-[28px] border border-sky-100/15 bg-slate-950/55 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]">
@@ -28,13 +28,13 @@
 					</div>
 				</div>
 				<aside class="grid content-start gap-3 rounded-[24px] border border-sky-300/35 bg-[linear-gradient(180deg,rgba(34,211,238,0.12),rgba(8,14,22,0.55))] p-[22px]">
-					<p class="m-0 text-xs uppercase tracking-[0.34em] text-sky-300">Phase 8 Boundary</p>
-					<h2 class="m-0 font-serif text-[1.2rem] font-semibold tracking-[-0.02em]">Relay, scheduling, and explicit OTA apply</h2>
+					<p class="m-0 text-xs uppercase tracking-[0.34em] text-sky-300">Protected Dashboard</p>
+					<h2 class="m-0 font-serif text-[1.2rem] font-semibold tracking-[-0.02em]">Redirect-driven access with live firmware truth</h2>
 					<ul class="m-0 list-disc pl-[18px] text-[0.95rem] leading-relaxed text-slate-300">
-						<li>Single local operator account with cookie-backed server sessions</li>
-						<li>One relay-centric manual toggle still backed by the protected status and relay APIs</li>
-						<li>Dedicated schedule create, edit, enable, disable, and delete flow using UTC cron input</li>
-						<li>Firmware upload stages first, shows pending-update truth, and only reboots after explicit apply</li>
+						<li>Unauthenticated visits bounce to the dedicated `/login` route before protected data loads</li>
+						<li>Successful local authentication returns the browser straight back to the requested dashboard path</li>
+						<li>Expired sessions redirect back to login instead of leaving a mixed shell behind</li>
+						<li>Protected relay, scheduler, and OTA surfaces still refresh only from the device APIs</li>
 					</ul>
 				</aside>
 			</div>
@@ -46,46 +46,13 @@
 				<span class="inline-flex items-center gap-2 rounded-full border border-sky-100/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100">Tailwind v4 browser runtime</span>
 			</div>
 			<div class="flex flex-wrap items-center gap-2.5">
-				<button id="refresh-button" class="inline-flex w-auto items-center justify-center rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] font-semibold uppercase tracking-[0.14em] text-slate-50 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 disabled:cursor-wait disabled:opacity-60" type="button">Refresh status</button>
-				<button id="logout-button" class="inline-flex w-auto items-center justify-center rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] font-semibold uppercase tracking-[0.14em] text-slate-50 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 disabled:cursor-wait disabled:opacity-60" type="button">Logout</button>
+				<button id="refresh-button" class="inline-flex w-auto items-center justify-center rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] font-semibold uppercase tracking-[0.14em] text-slate-50 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 disabled:cursor-wait disabled:opacity-60" type="button" disabled>Refresh status</button>
+				<button id="logout-button" class="inline-flex w-auto items-center justify-center rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] font-semibold uppercase tracking-[0.14em] text-slate-50 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 disabled:cursor-wait disabled:opacity-60" type="button" disabled>Logout</button>
 			</div>
 		</div>
 
 		<section id="panel-alert" class="rounded-[18px] border border-sky-300/25 bg-[linear-gradient(180deg,rgba(125,211,252,0.08),rgba(7,16,25,0))] px-[14px] py-3 text-[0.95rem] leading-relaxed text-sky-50">
-			Waiting for the session bootstrap to confirm whether this browser is already authenticated.
-		</section>
-
-		<section id="login-view" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]">
-			<div class="grid gap-6 md:grid-cols-[1.15fr_0.85fr]">
-				<div class="space-y-4">
-					<p class="m-0 text-xs uppercase tracking-[0.34em] text-sky-300">Authentication</p>
-					<h2 class="m-0 font-serif text-[1.2rem] font-semibold tracking-[-0.02em]">Login-first shell</h2>
-					<p class="text-[0.95rem] leading-relaxed text-slate-300">
-						A valid session survives refresh and in-panel navigation, but the firmware clears all
-						RAM sessions on reboot. Use the configured local admin credentials to continue.
-					</p>
-					<form id="login-form" class="grid gap-[14px]">
-						<div class="grid gap-2">
-							<label for="login-username" class="text-[0.95rem] leading-relaxed text-slate-100">Username</label>
-							<input id="login-username" class="w-full rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] leading-relaxed text-slate-50 outline-none placeholder:text-slate-500 focus:border-cyan-300/45 focus:ring-2 focus:ring-cyan-300/35" name="username" autocomplete="username" required>
-						</div>
-						<div class="grid gap-2">
-							<label for="login-password" class="text-[0.95rem] leading-relaxed text-slate-100">Password</label>
-							<input id="login-password" class="w-full rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] leading-relaxed text-slate-50 outline-none placeholder:text-slate-500 focus:border-cyan-300/45 focus:ring-2 focus:ring-cyan-300/35" name="password" type="password" autocomplete="current-password" required>
-						</div>
-						<button id="login-submit" class="inline-flex w-full items-center justify-center rounded-2xl border border-sky-100/20 bg-[linear-gradient(135deg,rgba(34,211,238,0.28),rgba(13,22,33,0.96))] px-4 py-[14px] text-[0.95rem] font-semibold uppercase tracking-[0.14em] text-slate-50 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 disabled:cursor-wait disabled:opacity-60" type="submit">Authenticate locally</button>
-					</form>
-				</div>
-				<div class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]">
-					<p class="mb-3 text-[0.74rem] uppercase tracking-[0.18em] text-sky-300">Operator checklist</p>
-					<ul class="m-0 list-disc pl-[18px] text-[0.95rem] leading-relaxed text-slate-300">
-						<li>Unauthenticated status requests stay denied until login.</li>
-						<li>Wrong-password retries cool down briefly instead of locking permanently.</li>
-						<li>Concurrent browsers can stay signed in independently.</li>
-						<li>Device reboot forces a fresh login because sessions are RAM-only.</li>
-					</ul>
-				</div>
-			</div>
+			Checking whether this browser already has a valid local session before the protected dashboard is shown.
 		</section>
 
 		<section id="dashboard-view" class="hidden">

@@ -6,7 +6,8 @@ const DEFAULT_DISCOVERY_TIMEOUT_MS = 1_200;
 const DEFAULT_DISCOVERY_CONCURRENCY = 32;
 const PANEL_MARKERS = [
 	'LNH Nordic Mission Console',
-	'id="login-form"',
+	'data-panel-page="dashboard"',
+	'id="dashboard-view"',
 	'src="/main.js"',
 ];
 
