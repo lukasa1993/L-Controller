@@ -65,6 +65,12 @@ static const char *panel_status_relay_note_text(const char *note)
 	return note != NULL ? note : "none";
 }
 
+static bool panel_status_outputs_configured(const struct app_context *app_context)
+{
+	ARG_UNUSED(app_context);
+	return false;
+}
+
 static bool panel_status_relay_blocked(const struct relay_runtime_status *status)
 {
 	return status == NULL || !status->implemented || !status->available;
@@ -327,6 +333,10 @@ int panel_status_render_schedule_snapshot_json(struct app_context *app_context,
 	const struct persisted_schedule_table *schedule_table;
 	uint32_t copied_problem_count = 0U;
 	uint32_t copied_schedule_count;
+	const bool outputs_configured = panel_status_outputs_configured(app_context);
+	const char *action_choices_json = outputs_configured ?
+		"{\"key\":\"relay-on\",\"label\":\"Relay On\"},{\"key\":\"relay-off\",\"label\":\"Relay Off\"}" :
+		"";
 	size_t offset = 0U;
 	uint32_t index;
 	int ret;
@@ -378,14 +388,12 @@ int panel_status_render_schedule_snapshot_json(struct app_context *app_context,
 		"\"normalizedUtcMinute\":%lld,"
 		"\"scheduleId\":\"%s\","
 		"\"actionKey\":\"%s\","
-		"\"actionLabel\":\"%s\""
-		"},"
-		"\"problemCount\":%u,"
-		"\"actionChoices\":["
-		"{\"key\":\"relay-on\",\"label\":\"Relay On\"},"
-		"{\"key\":\"relay-off\",\"label\":\"Relay Off\"}"
-		"],"
-		"\"problems\":[",
+			"\"actionLabel\":\"%s\""
+			"},"
+			"\"problemCount\":%u,"
+			"\"outputsConfigured\":%s,"
+			"\"actionChoices\":[%s],"
+			"\"problems\":[",
 		panel_status_json_bool(scheduler_status.implemented),
 		panel_status_json_bool(scheduler_status.utc_only),
 		panel_status_json_bool(scheduler_status.minute_resolution_only),
@@ -410,7 +418,9 @@ int panel_status_render_schedule_snapshot_json(struct app_context *app_context,
 		scheduler_status.last_result.schedule_id,
 		panel_status_scheduler_action_key(scheduler_status.last_result.action_id),
 		panel_status_scheduler_action_label(scheduler_status.last_result.action_id),
-		scheduler_status.problem_count);
+		scheduler_status.problem_count,
+		panel_status_json_bool(outputs_configured),
+		action_choices_json);
 	if (ret != 0) {
 		return ret;
 	}
@@ -498,6 +508,7 @@ int panel_status_render_json(struct app_context *app_context,
 	const char *reset_trigger = "none";
 	const char *reset_failure_stage = "none";
 	const char *reset_connectivity = "not-ready";
+	bool outputs_configured = false;
 	bool relay_available = false;
 	bool relay_implemented = false;
 	bool relay_actual_state = false;
@@ -528,11 +539,13 @@ int panel_status_render_json(struct app_context *app_context,
 	}
 
 	ret = panel_status_render_update_json(app_context,
-					      update_json,
-					      sizeof(update_json));
+						      update_json,
+						      sizeof(update_json));
 	if (ret != 0) {
 		return ret;
 	}
+
+	outputs_configured = panel_status_outputs_configured(app_context);
 
 	if (network_status.ipv4_bound) {
 		(void)net_addr_ntop(AF_INET,
@@ -566,6 +579,14 @@ int panel_status_render_json(struct app_context *app_context,
 		relay_blocked_reason = panel_status_relay_blocked_reason(relay_status);
 	}
 
+	if (!outputs_configured) {
+		relay_available = false;
+		relay_blocked = true;
+		relay_source = "not-configured";
+		relay_safety_note = "Relay GPIO configuration has not been created yet.";
+		relay_blocked_reason = "Relay GPIO is not configured yet.";
+	}
+
 	written = snprintf(
 		buffer,
 		buffer_len,
@@ -579,14 +600,14 @@ int panel_status_render_json(struct app_context *app_context,
 		"},"
 		"\"recovery\":{"
 		"\"available\":%s,\"recoveryReset\":%s,\"hardwareResetCause\":%u,"
-		"\"trigger\":\"%s\",\"failureStage\":\"%s\",\"reason\":%d,"
-		"\"connectivity\":\"%s\""
-		"},"
-		"\"relay\":{"
-		"\"implemented\":%s,\"available\":%s,\"actualState\":%s,"
-		"\"desiredState\":%s,\"source\":\"%s\",\"safetyNote\":\"%s\","
-		"\"pending\":%s,\"pendingReason\":\"none\",\"blocked\":%s,"
-		"\"blockedReason\":\"%s\",\"rebootPolicy\":\"%s\""
+			"\"trigger\":\"%s\",\"failureStage\":\"%s\",\"reason\":%d,"
+			"\"connectivity\":\"%s\""
+			"},"
+			"\"relay\":{"
+			"\"implemented\":%s,\"configured\":%s,\"available\":%s,\"actualState\":%s,"
+			"\"desiredState\":%s,\"source\":\"%s\",\"safetyNote\":\"%s\","
+			"\"pending\":%s,\"pendingReason\":\"none\",\"blocked\":%s,"
+			"\"blockedReason\":\"%s\",\"rebootPolicy\":\"%s\""
 		"},"
 		"\"scheduler\":%s,"
 		"\"update\":%s"
@@ -607,11 +628,12 @@ int panel_status_render_json(struct app_context *app_context,
 		panel_status_json_bool(recovery_reset),
 		hardware_reset_cause,
 		reset_trigger,
-		reset_failure_stage,
-		reset_reason,
-		reset_connectivity,
-		panel_status_json_bool(relay_implemented),
-		panel_status_json_bool(relay_available),
+			reset_failure_stage,
+			reset_reason,
+			reset_connectivity,
+			panel_status_json_bool(relay_implemented),
+			panel_status_json_bool(outputs_configured),
+			panel_status_json_bool(relay_available),
 		panel_status_json_bool(relay_actual_state),
 		panel_status_json_bool(relay_desired_state),
 		relay_source,

@@ -645,11 +645,20 @@ function renderPanelSummary() {
 	const updateDetail = state.updateSnapshot
 		? (state.updateSnapshot.applyReady ? 'A staged image is ready for explicit apply.' : (state.updateSnapshot.pendingWarning || 'No staged image is pending.'))
 		: 'Update snapshot not loaded yet.';
+	const actionsValue = relay
+		? (relay.configured === false ? 'Not configured' : `Relay ${relayStateLabel(relay.actualState)}`)
+		: 'Unavailable';
+	const actionsDetail = relay
+		? (relay.configured === false
+			? 'GPIO-backed outputs must be configured before relay actions are exposed.'
+			: `Source ${humanizeHyphenated(relay.source)} · Next schedule ${nextRun}`)
+		: 'Relay truth is unavailable.';
+	const actionsTone = relay?.configured === false ? 'warn' : (relay?.actualState ? 'ok' : '');
 
 	elements.panelSummary.innerHTML = [
 		summaryTile('Device', state.status.device.board || 'Unavailable', `Panel port ${state.status.device.panelPort} · APP_READY ${boolLabel(state.status.device.ready)}`, state.status.device.ready ? 'ok' : 'warn'),
 		summaryTile('Network', networkLabel, state.status.network.ipv4Address || 'IPv4 pending', state.status.network.reachabilityOk ? 'ok' : 'warn'),
-		summaryTile('Actions', relay ? `Relay ${relayStateLabel(relay.actualState)}` : 'Unavailable', relay ? `Source ${humanizeHyphenated(relay.source)} · Next schedule ${nextRun}` : 'Relay truth is unavailable.', relay?.actualState ? 'ok' : ''),
+		summaryTile('Actions', actionsValue, actionsDetail, actionsTone),
 		summaryTile('Updates', updateState, updateDetail, state.updateSnapshot?.applyReady ? 'warn' : ''),
 	].join('');
 }
@@ -713,6 +722,24 @@ function renderActionsInfoCard(relay) {
 			<p class="${ui.eyebrow}">Output topology</p>
 			<h3 class="${ui.title}">Waiting for relay truth</h3>
 			<div class="${ui.placeholder}">This rail is reserved for the current output and future GPIO-backed outputs once the firmware model expands beyond a single relay.</div>
+		`;
+		return;
+	}
+
+	if (relay.configured === false) {
+		elements.cards.actionsInfo.innerHTML = `
+			<p class="${ui.eyebrow}">Output topology</p>
+			<div class="grid gap-[18px]">
+				<div>
+					<h3 class="${ui.title}">No GPIO-backed outputs configured</h3>
+					<p class="${ui.muted}">The panel no longer exposes the hard-wired relay path as if it were a configured feature. Output configuration still needs to be implemented before manual controls and schedule actions should appear here.</p>
+				</div>
+				<div class="${ui.rowFlex}">
+					<span class="${badgeClass('warn')}">Outputs missing</span>
+					<span class="${badgeClass()}">GPIO config required</span>
+				</div>
+				<div class="${noticeClass('warn')}">You asked for GPIO-configured relays and multiple outputs. Until that model exists, the panel now shows an honest placeholder instead of fake-ready controls.</div>
+			</div>
 		`;
 		return;
 	}
@@ -1000,6 +1027,14 @@ function renderRelayCard(relay) {
 		return;
 	}
 
+	if (relay.configured === false) {
+		elements.cards.relay.innerHTML = renderCard('Primary actions', 'Manual control', [
+			{ label: 'Configured outputs', value: '0' },
+			{ label: 'State', value: 'Not configured' },
+		], `<div class="${noticeClass('warn')}">Relay GPIO configuration has not been created yet, so the panel no longer exposes manual relay buttons.</div>`);
+		return;
+	}
+
 	const actualState = relayStateLabel(relay.actualState);
 	const desiredState = relayStateLabel(relay.desiredState);
 	const pending = state.relayCommandPending || relay.pending;
@@ -1156,7 +1191,15 @@ function schedulerFeedbackMarkup() {
 	return `<div class="${noticeClass(state.schedulerFeedback.tone)}">${escapeHtml(state.schedulerFeedback.message)}</div>`;
 }
 
+function schedulerOutputsConfigured(snapshot) {
+	return Boolean(snapshot?.outputsConfigured);
+}
+
 function renderSchedulerRows(snapshot) {
+	if (!schedulerOutputsConfigured(snapshot)) {
+		return `<div class="${ui.placeholder}">No GPIO-backed outputs are configured yet, so relay schedules are hidden until that configuration exists.</div>`;
+	}
+
 	if (!snapshot.schedules?.length) {
 		return `<div class="${ui.placeholder}">No saved schedules yet. Create one below to start the scheduler flow.</div>`;
 	}
@@ -1212,6 +1255,16 @@ function renderSchedulerForm(snapshot) {
 	const heading = formState.mode === 'edit'
 		? `Edit ${formState.scheduleId}`
 		: 'Create schedule';
+
+	if (!schedulerOutputsConfigured(snapshot) || !actionChoices.length) {
+		return `
+			<div class="${ui.insetPanel}">
+				<p class="${ui.eyebrow}">Output configuration required</p>
+				<h3 class="${ui.title}">No schedulable outputs yet</h3>
+				<div class="${noticeClass('warn')}">Relay schedules stay hidden until GPIO-backed outputs are explicitly configured. The current hard-wired relay path is no longer exposed as if it were ready.</div>
+			</div>
+		`;
+	}
 
 	return `
 		<div class="${ui.insetPanel}">
@@ -1294,13 +1347,16 @@ function renderSchedulerSurface(snapshot) {
 	const historyCopy = snapshot.problemCount
 		? `${snapshot.problemCount} recent scheduler problems recorded`
 		: 'No recent scheduler problems';
+	const schedulerIntro = schedulerOutputsConfigured(snapshot)
+		? 'Create, edit, enable, disable, and delete UTC cron schedules without exposing internal action wiring. Manual relay control semantics stay unchanged.'
+		: 'No GPIO-backed outputs are configured yet, so schedule creation stays unavailable until that configuration model exists.';
 
 	elements.cards.scheduler.innerHTML = `
 		<p class="${ui.eyebrow}">Phase 7 live surface</p>
 		<div class="grid gap-[18px]">
 			<div>
 				<h3 class="${ui.title}">Schedule management</h3>
-				<p class="${ui.muted}">Create, edit, enable, disable, and delete UTC cron schedules without exposing internal action wiring. Manual relay control semantics stay unchanged.</p>
+				<p class="${ui.muted}">${escapeHtml(schedulerIntro)}</p>
 			</div>
 			<div class="${ui.schedulerHeader}">
 				<div class="${ui.insetPanel}">
@@ -1422,6 +1478,13 @@ async function handleRelaySet(desiredState) {
 		return;
 	}
 
+	if (relay.configured === false) {
+		setRelayFeedback('Relay GPIO is not configured yet.', 'warn');
+		setAlert('Relay GPIO is not configured yet.', 'warn');
+		renderActiveView();
+		return;
+	}
+
 	const normalizedDesiredState = Boolean(desiredState);
 	if (!state.relayCommandPending && relay.actualState === normalizedDesiredState &&
 		relay.desiredState === normalizedDesiredState) {
@@ -1515,6 +1578,13 @@ async function runSchedulerMutation(route, payload) {
 
 async function handleSchedulerFormSubmit() {
 	const formState = state.schedulerForm;
+	if (!schedulerOutputsConfigured(state.scheduleSnapshot)) {
+		setSchedulerFeedback('Configure GPIO-backed outputs before creating relay schedules.', 'warn');
+		setAlert('Configure GPIO-backed outputs before creating relay schedules.', 'warn');
+		renderSchedulerSurface(state.scheduleSnapshot);
+		return;
+	}
+
 	const payload = {
 		scheduleId: formState.scheduleId.trim(),
 		cronExpression: schedulerCronExpressionFromForm(formState),

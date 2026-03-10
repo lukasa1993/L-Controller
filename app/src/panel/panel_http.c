@@ -1484,6 +1484,12 @@ static enum http_status panel_http_relay_status_code(const struct action_dispatc
 	return HTTP_500_INTERNAL_SERVER_ERROR;
 }
 
+static bool panel_http_outputs_configured(const struct app_context *app_context)
+{
+	ARG_UNUSED(app_context);
+	return false;
+}
+
 static int panel_auth_login_handler(struct http_client_ctx *client,
 				      enum http_data_status status,
 				      const struct http_request_ctx *request_ctx,
@@ -1745,6 +1751,16 @@ static int panel_relay_command_handler(struct http_client_ctx *client,
 					    route_ctx->response_body,
 					    sizeof(route_ctx->response_body),
 					    "{\"authenticated\":false}");
+		panel_relay_route_reset(route_ctx);
+		return ret;
+	}
+
+	if (!panel_http_outputs_configured(route_ctx->app_context)) {
+		ret = panel_http_write_json_response(response_ctx,
+					    HTTP_503_SERVICE_UNAVAILABLE,
+					    route_ctx->response_body,
+					    sizeof(route_ctx->response_body),
+					    "{\"accepted\":false,\"error\":\"not-configured\",\"detail\":\"Relay GPIO is not configured yet.\"}");
 		panel_relay_route_reset(route_ctx);
 		return ret;
 	}
