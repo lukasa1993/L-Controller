@@ -11,6 +11,10 @@
 #define APP_PANEL_MAX_SESSIONS CONFIG_APP_PANEL_MAX_SESSIONS
 #define APP_PANEL_PORT CONFIG_APP_PANEL_PORT
 #define APP_PERSISTENCE_LAYOUT_VERSION CONFIG_APP_PERSISTENCE_LAYOUT_VERSION
+#define APP_SCHEDULER_CADENCE_SECONDS CONFIG_APP_SCHEDULER_CADENCE_SECONDS
+#define APP_SCHEDULER_PROBLEM_HISTORY_CAPACITY 10U
+#define APP_SCHEDULER_TRUSTED_CLOCK_TIMEOUT_MS                                     \
+	CONFIG_APP_SCHEDULER_TRUSTED_CLOCK_TIMEOUT_MS
 #define APP_RELAY_REBOOT_POLICY_DEFAULT                                            \
 	((enum persisted_relay_reboot_policy)CONFIG_APP_RELAY_REBOOT_POLICY_DEFAULT)
 
@@ -46,6 +50,12 @@ struct app_panel_config {
 	int32_t login_cooldown_ms;
 };
 
+struct app_scheduler_config {
+	uint32_t cadence_seconds;
+	int32_t trusted_clock_timeout_ms;
+	uint32_t problem_history_capacity;
+};
+
 struct app_config {
 	const char *board_name;
 	struct app_wifi_config wifi;
@@ -53,4 +63,5 @@ struct app_config {
 	struct app_recovery_config recovery;
 	struct app_panel_config panel;
 	struct app_persistence_config persistence;
+	struct app_scheduler_config scheduler;
 };

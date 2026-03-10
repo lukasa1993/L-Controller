@@ -19,6 +19,7 @@ set(APP_SOURCES
 	${APP_SOURCE_ROOT}/persistence/persistence.c
 	${APP_SOURCE_ROOT}/relay/relay.c
 	${APP_SOURCE_ROOT}/recovery/recovery.c
+	${APP_SOURCE_ROOT}/scheduler/scheduler.c
 )
 
 target_sources(app PRIVATE ${APP_SOURCES})

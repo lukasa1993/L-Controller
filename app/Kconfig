@@ -72,6 +72,22 @@ config APP_PERSISTENCE_LAYOUT_VERSION
 	help
 	  Schema layout version for the persisted configuration contracts.
 
+config APP_SCHEDULER_CADENCE_SECONDS
+	int "Scheduler cadence in seconds"
+	default 60
+	range 60 60
+	help
+	  Phase 7 scheduling evaluates normalized UTC time at minute resolution
+	  only. This fixed cadence anchors future scheduler work ownership.
+
+config APP_SCHEDULER_TRUSTED_CLOCK_TIMEOUT_MS
+	int "Trusted-clock acquisition timeout in milliseconds"
+	default 15000
+	range 1000 600000
+	help
+	  Maximum window reserved for Phase 7 trusted-clock ownership before
+	  later plans decide whether automation must remain degraded.
+
 config APP_RELAY_REBOOT_POLICY_DEFAULT
 	int "Clean-device relay reboot policy"
 	default 0
