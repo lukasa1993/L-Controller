@@ -217,6 +217,56 @@ print_phase7_device_checklist() {
 		'Record which scheduler gating, reset-then-degrade, create, edit, enable, disable, delete, manual-versus-scheduled, scheduled execution, reboot persistence, missed-job skip, time-correction recompute, conflict rejection, and recent-problem visibility scenarios passed or failed.'
 }
 
+print_phase8_ready_state_markers() {
+	print_phase7_ready_state_markers
+	printf '%s\n' \
+		'OTA runtime ready current=... confirmed=... state=... remote=lukasa1993/L-Controller every=...h' \
+		'OTA staged version=...' \
+		'OTA last_attempt=... version=... rollback=... error=... bytes=...'
+}
+
+print_phase8_curl_commands() {
+	printf '%s\n' \
+		"curl -i http://<device-ip>/api/status" \
+		"curl -i -c cookie.txt -H 'Content-Type: application/json' -d '{\"username\":\"...\",\"password\":\"...\"}' http://<device-ip>/api/auth/login" \
+		"curl -i -b cookie.txt http://<device-ip>/api/update" \
+		"curl -i -b cookie.txt -H 'Content-Type: application/octet-stream' --data-binary @build/nrf7002dk_nrf5340_cpuapp/app/zephyr/zephyr.signed.bin http://<device-ip>/api/update/upload" \
+		"curl -i -b cookie.txt -X POST http://<device-ip>/api/update/apply" \
+		"curl -i -b cookie.txt -X POST http://<device-ip>/api/update/clear" \
+		"curl -i -b cookie.txt -X POST http://<device-ip>/api/update/remote-check" \
+		"curl -i -b cookie.txt http://<device-ip>/api/status"
+}
+
+print_phase8_scenario_labels() {
+	printf '%s\n' \
+		'local upload staging' \
+		'same-version rejection' \
+		'downgrade rejection' \
+		'explicit apply reboot' \
+		'post-boot confirmation' \
+		'rollback visibility' \
+		'github update now' \
+		'daily retry' \
+		'panel truthfulness'
+}
+
+print_phase8_device_checklist() {
+	printf '%s\n' \
+		'Re-run ./scripts/validate.sh first so the canonical automated sysbuild path is green.' \
+		'Flash the latest firmware with ./scripts/flash.sh.' \
+		'Open the device console with ./scripts/console.sh, determine the device IP from the boot log, and confirm the ready-state, relay, scheduler, and OTA markers appear.' \
+		'Log in to the panel and confirm the dedicated update surface shows current version, staged version state, last result, and pending-update warnings truthfully before testing.' \
+		'Upload a newer signed firmware image locally and confirm it stages successfully without rebooting until the explicit apply action is used.' \
+		'Attempt one same-version upload and one older-version upload, and confirm both are rejected with clear operator feedback and no unsafe staged image remains.' \
+		'Trigger apply for the newer staged image and confirm the browser disconnects during reboot, then requires a fresh login after the device returns.' \
+		'After reboot, confirm the new firmware reaches APP_READY, stays healthy through the stable window, and only then becomes confirmed.' \
+		'Exercise one rollback path by preventing confirmation or using a known-bad image, then confirm the device returns to the previous firmware and the next boot surfaces rollback or failed-attempt status clearly.' \
+		'Use the explicit Update now action while upstream internet is available and confirm the device checks GitHub Releases, selects the latest stable eligible artifact, and stages or applies it through the same OTA safety rules.' \
+		'Force or simulate one failed GitHub update cycle, then allow the next daily check window and confirm the device retries instead of pausing remote updates permanently.' \
+		'Refresh the panel or API before staging, after staging, after apply, and after confirmation or rollback, and confirm current version, staged or last-attempted version, last result, rollback flags, and remote busy state remain internally consistent.' \
+		'Record which local upload staging, same-version rejection, downgrade rejection, explicit apply reboot, post-boot confirmation, rollback visibility, GitHub update-now, daily retry, and panel truthfulness scenarios passed or failed.'
+}
+
 maybe_add_jlink_to_path() {
 	local candidate
 	for candidate in \

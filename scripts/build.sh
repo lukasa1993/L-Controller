@@ -35,5 +35,7 @@ for artifact in \
 	"$BUILD_DIR/app/zephyr/zephyr.signed.bin" \
 	"$BUILD_DIR/app/zephyr/zephyr.signed.hex" \
 	"$BUILD_DIR/app/zephyr/app_update.bin"; do
-	[ -f "$artifact" ] && log "Artifact ready: $artifact"
+	if [ -f "$artifact" ]; then
+		log "Artifact ready: $artifact"
+	fi
 done
