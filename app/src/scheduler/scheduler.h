@@ -125,7 +125,9 @@ int scheduler_schedule_table_validate(
 	const struct persisted_action_catalog *actions);
 
 int scheduler_service_init(struct scheduler_service *service,
-			   struct app_context *app_context);
+				   struct app_context *app_context);
+
+int scheduler_service_start(struct scheduler_service *service);
 
 int scheduler_service_reload(struct scheduler_service *service);
 

@@ -3,10 +3,14 @@
 #include <string.h>
 #include <time.h>
 
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/sntp.h>
+#include <zephyr/posix/time.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
 
 #include "app/app_context.h"
+#include "network/network_supervisor.h"
 #include "scheduler/scheduler.h"
 
 LOG_MODULE_REGISTER(scheduler, CONFIG_LOG_DEFAULT_LEVEL);
@@ -86,6 +90,95 @@ static bool scheduler_reason_is_degraded(enum scheduler_degraded_reason reason)
 	default:
 		return false;
 	}
+}
+
+static bool scheduler_service_prior_clock_reset(const struct scheduler_service *service)
+{
+	const struct recovery_reset_cause *reset_cause;
+
+	if (service == NULL || service->app_context == NULL) {
+		return false;
+	}
+
+	reset_cause = recovery_manager_last_reset_cause(&service->app_context->recovery);
+	return reset_cause != NULL && reset_cause->available && reset_cause->recovery_reset &&
+	       reset_cause->trigger == RECOVERY_RESET_TRIGGER_TRUSTED_CLOCK_ACQUISITION;
+}
+
+static int scheduler_service_query_trusted_clock(
+	const struct scheduler_service *service,
+	struct sntp_time *timestamp)
+{
+	const struct net_if *wifi_iface;
+	const char *fallback_server;
+	uint32_t timeout_ms;
+
+	if (service == NULL || service->app_context == NULL || timestamp == NULL) {
+		return -EINVAL;
+	}
+
+	wifi_iface = service->app_context->network_state.wifi_iface;
+	timeout_ms =
+		(uint32_t)MAX(service->app_context->config.scheduler.trusted_clock_timeout_ms, 1000);
+
+	if (wifi_iface != NULL &&
+	    !net_ipv4_is_addr_unspecified(&wifi_iface->config.dhcpv4.ntp_addr)) {
+		struct sockaddr_in sntp_addr = { 0 };
+
+		sntp_addr.sin_family = AF_INET;
+		sntp_addr.sin_addr.s_addr = wifi_iface->config.dhcpv4.ntp_addr.s_addr;
+		return sntp_simple_addr((struct sockaddr *)&sntp_addr, sizeof(sntp_addr), timeout_ms,
+					 timestamp);
+	}
+
+	fallback_server = service->app_context->config.scheduler.trusted_clock_server;
+	if (fallback_server == NULL || fallback_server[0] == '\0') {
+		return -EINVAL;
+	}
+
+	return sntp_simple(fallback_server, timeout_ms, timestamp);
+}
+
+static int scheduler_service_sync_clock(
+	struct scheduler_service *service,
+	int64_t *utc_epoch_seconds)
+{
+	struct network_supervisor_status network_status;
+	struct sntp_time timestamp;
+	struct timespec realtime = { 0 };
+	int ret;
+
+	if (service == NULL || service->app_context == NULL) {
+		return -EINVAL;
+	}
+
+	ret = network_supervisor_get_status(&service->app_context->network_state,
+					   &network_status);
+	if (ret != 0) {
+		return ret;
+	}
+
+	if (network_status.connectivity_state != NETWORK_CONNECTIVITY_HEALTHY) {
+		return -ENETUNREACH;
+	}
+
+	ret = scheduler_service_query_trusted_clock(service, &timestamp);
+	if (ret != 0) {
+		return ret;
+	}
+
+	realtime.tv_sec = (time_t)timestamp.seconds;
+	realtime.tv_nsec = ((uint64_t)timestamp.fraction * 1000000000ULL) >> 32;
+	ret = clock_settime(CLOCK_REALTIME, &realtime);
+	if (ret != 0) {
+		return errno != 0 ? -errno : -EIO;
+	}
+
+	if (utc_epoch_seconds != NULL) {
+		*utc_epoch_seconds = (int64_t)realtime.tv_sec;
+	}
+
+	return 0;
 }
 
 static const char *scheduler_public_action_key(bool relay_on)
@@ -910,6 +1003,38 @@ int scheduler_service_reload(struct scheduler_service *service)
 	k_mutex_unlock(&service->lock);
 
 	return 0;
+}
+
+int scheduler_service_start(struct scheduler_service *service)
+{
+	int64_t utc_epoch_seconds;
+	int ret;
+
+	if (service == NULL || service->app_context == NULL) {
+		return -EINVAL;
+	}
+
+	ret = scheduler_service_sync_clock(service, &utc_epoch_seconds);
+	if (ret == 0) {
+		ret = scheduler_service_acquire_trusted_time(service, utc_epoch_seconds);
+		if (ret == 0) {
+			LOG_INF("Trusted UTC clock acquired via SNTP and CLOCK_REALTIME");
+		}
+		return ret;
+	}
+
+	if (!scheduler_service_prior_clock_reset(service)) {
+		LOG_WRN("Trusted UTC clock acquisition failed (%d); requesting one recovery reset",
+			ret);
+		recovery_manager_request_reset(&service->app_context->recovery,
+					      RECOVERY_RESET_TRIGGER_TRUSTED_CLOCK_ACQUISITION,
+					      ret);
+	}
+
+	LOG_WRN("Trusted UTC clock still unavailable after recovery reset; scheduling stays degraded");
+	return scheduler_service_mark_clock_untrusted(
+		service,
+		SCHEDULER_DEGRADED_REASON_INITIAL_TRUST_ACQUISITION_FAILED);
 }
 
 int scheduler_service_mark_clock_untrusted(

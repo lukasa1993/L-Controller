@@ -259,6 +259,26 @@ static int recovery_manager_init_watchdog(struct recovery_manager *manager)
 	return 0;
 }
 
+void recovery_manager_request_reset(struct recovery_manager *manager,
+				    enum recovery_reset_trigger trigger,
+				    int reason)
+{
+	if (manager == NULL) {
+		return;
+	}
+
+	if (trigger == RECOVERY_RESET_TRIGGER_TRUSTED_CLOCK_ACQUISITION) {
+		manager->observed_failure = (struct network_failure_record){
+			.recorded = true,
+			.failure_stage = NETWORK_FAILURE_STAGE_REACHABILITY,
+			.reason = reason,
+		};
+		recovery_retained_update_snapshot(manager);
+	}
+
+	recovery_manager_escalate(manager, trigger);
+}
+
 static void recovery_manager_evaluate(struct recovery_manager *manager)
 {
 	const struct app_recovery_config *policy = recovery_manager_policy(manager);
@@ -433,6 +453,8 @@ const char *recovery_manager_reset_trigger_text(enum recovery_reset_trigger trig
 		return "none";
 	case RECOVERY_RESET_TRIGGER_CONFIRMED_STUCK:
 		return "confirmed-stuck";
+	case RECOVERY_RESET_TRIGGER_TRUSTED_CLOCK_ACQUISITION:
+		return "trusted-clock-acquisition";
 	case RECOVERY_RESET_TRIGGER_WATCHDOG_STARVATION:
 		return "watchdog-starvation";
 	default:

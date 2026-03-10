@@ -212,6 +212,7 @@ static int load_app_config(struct app_context *app_context)
 			.cadence_seconds = APP_SCHEDULER_CADENCE_SECONDS,
 			.trusted_clock_timeout_ms =
 				APP_SCHEDULER_TRUSTED_CLOCK_TIMEOUT_MS,
+			.trusted_clock_server = APP_SCHEDULER_TRUSTED_CLOCK_SERVER,
 			.problem_history_capacity =
 				APP_SCHEDULER_PROBLEM_HISTORY_CAPACITY,
 		},
@@ -296,7 +297,6 @@ int app_boot(struct app_context *app_context)
 	}
 
 	log_relay_runtime_status(app_context);
-	log_scheduler_runtime_status(app_context);
 
 	ret = panel_auth_service_init(&app_context->panel_auth, app_context);
 	if (ret != 0) {
@@ -329,6 +329,14 @@ int app_boot(struct app_context *app_context)
 	}
 
 	recovery_manager_startup_complete(&app_context->recovery);
+
+	ret = scheduler_service_start(&app_context->scheduler);
+	if (ret != 0) {
+		LOG_ERR("Failed to start scheduler trusted clock: %d", ret);
+		return ret;
+	}
+
+	log_scheduler_runtime_status(app_context);
 
 	ret = network_supervisor_get_status(&app_context->network_state, &network_status);
 	if (ret == 0) {

@@ -15,6 +15,7 @@
 #define APP_SCHEDULER_PROBLEM_HISTORY_CAPACITY 10U
 #define APP_SCHEDULER_TRUSTED_CLOCK_TIMEOUT_MS                                     \
 	CONFIG_APP_SCHEDULER_TRUSTED_CLOCK_TIMEOUT_MS
+#define APP_SCHEDULER_TRUSTED_CLOCK_SERVER CONFIG_APP_SCHEDULER_TRUSTED_CLOCK_SERVER
 #define APP_RELAY_REBOOT_POLICY_DEFAULT                                            \
 	((enum persisted_relay_reboot_policy)CONFIG_APP_RELAY_REBOOT_POLICY_DEFAULT)
 
@@ -53,6 +54,7 @@ struct app_panel_config {
 struct app_scheduler_config {
 	uint32_t cadence_seconds;
 	int32_t trusted_clock_timeout_ms;
+	const char *trusted_clock_server;
 	uint32_t problem_history_capacity;
 };
 

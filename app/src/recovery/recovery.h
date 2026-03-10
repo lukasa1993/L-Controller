@@ -13,6 +13,7 @@ struct app_context;
 enum recovery_reset_trigger {
 	RECOVERY_RESET_TRIGGER_NONE,
 	RECOVERY_RESET_TRIGGER_CONFIRMED_STUCK,
+	RECOVERY_RESET_TRIGGER_TRUSTED_CLOCK_ACQUISITION,
 	RECOVERY_RESET_TRIGGER_WATCHDOG_STARVATION,
 };
 
@@ -49,6 +50,9 @@ void recovery_manager_startup_complete(struct recovery_manager *manager);
 void recovery_manager_report_network_progress(struct recovery_manager *manager,
 					      const struct network_runtime_state *network_state,
 					      const char *reason);
+void recovery_manager_request_reset(struct recovery_manager *manager,
+				    enum recovery_reset_trigger trigger,
+				    int reason);
 const struct recovery_reset_cause *recovery_manager_last_reset_cause(
 	const struct recovery_manager *manager);
 const char *recovery_manager_reset_trigger_text(enum recovery_reset_trigger trigger);

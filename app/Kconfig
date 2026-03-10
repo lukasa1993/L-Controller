@@ -88,6 +88,14 @@ config APP_SCHEDULER_TRUSTED_CLOCK_TIMEOUT_MS
 	  Maximum window reserved for Phase 7 trusted-clock ownership before
 	  later plans decide whether automation must remain degraded.
 
+config APP_SCHEDULER_TRUSTED_CLOCK_SERVER
+	string "Trusted-clock SNTP server"
+	default "time.google.com"
+	help
+	  Fallback SNTP server used when DHCP does not provide an NTP server.
+	  The scheduler owns trusted-clock acquisition directly in Phase 7 and
+	  uses this server only for one-shot synchronization attempts.
+
 config APP_RELAY_REBOOT_POLICY_DEFAULT
 	int "Clean-device relay reboot policy"
 	default 0
