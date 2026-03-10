@@ -37,6 +37,7 @@ enum scheduler_problem_code {
 	SCHEDULER_PROBLEM_BACKWARD_UTC_CLOCK_JUMP,
 	SCHEDULER_PROBLEM_NORMALIZED_UTC_MINUTE_CORRECTED,
 	SCHEDULER_PROBLEM_FUTURE_ONLY_BASELINE_APPLIED,
+	SCHEDULER_PROBLEM_TRUSTED_CLOCK_UNAVAILABLE,
 };
 
 struct scheduler_cron_matcher {
@@ -101,11 +102,13 @@ struct scheduler_runtime_status {
 struct scheduler_service {
 	struct app_context *app_context;
 	struct k_mutex lock;
+	struct k_work_delayable runtime_work;
 	struct scheduler_runtime_status status;
 	struct scheduler_runtime_entry entries[PERSISTED_SCHEDULE_MAX_COUNT];
 	struct scheduler_problem_record problems[SCHEDULER_PROBLEM_HISTORY_CAPACITY];
 	uint32_t problem_head;
 	uint32_t compiled_count;
+	bool runtime_started;
 	bool baseline_valid;
 	int64_t baseline_utc_minute;
 };

@@ -21,6 +21,14 @@ LOG_MODULE_REGISTER(scheduler, CONFIG_LOG_DEFAULT_LEVEL);
 static const char scheduler_public_relay_on_action_key[] = "relay-on";
 static const char scheduler_public_relay_off_action_key[] = "relay-off";
 
+static void scheduler_record_problem_locked(
+	struct scheduler_service *service,
+	enum scheduler_problem_code code,
+	int64_t normalized_utc_minute);
+
+static void scheduler_refresh_automation_locked(struct scheduler_service *service);
+static void scheduler_refresh_next_run_locked(struct scheduler_service *service);
+
 static int64_t scheduler_normalize_utc_minute(int64_t utc_epoch_seconds)
 {
 	if (utc_epoch_seconds >= 0) {
@@ -179,6 +187,155 @@ static int scheduler_service_sync_clock(
 	}
 
 	return 0;
+}
+
+static int scheduler_service_read_realtime(
+	int64_t *utc_epoch_seconds,
+	int64_t *normalized_utc_minute)
+{
+	struct timespec realtime = { 0 };
+	int ret;
+
+	if (utc_epoch_seconds == NULL || normalized_utc_minute == NULL) {
+		return -EINVAL;
+	}
+
+	ret = clock_gettime(CLOCK_REALTIME, &realtime);
+	if (ret != 0) {
+		return errno != 0 ? -errno : -EIO;
+	}
+
+	*utc_epoch_seconds = (int64_t)realtime.tv_sec;
+	*normalized_utc_minute = scheduler_normalize_utc_minute(*utc_epoch_seconds);
+	return 0;
+}
+
+static k_timeout_t scheduler_service_runtime_delay(const struct scheduler_service *service)
+{
+	const int64_t cadence_ms = (int64_t)MAX(service->app_context->config.scheduler.cadence_seconds, 1U) *
+		1000LL;
+	int64_t utc_epoch_seconds;
+	int64_t normalized_utc_minute;
+	int ret;
+
+	if (service == NULL || service->app_context == NULL) {
+		return K_NO_WAIT;
+	}
+
+	if (service->status.clock_state != SCHEDULER_CLOCK_TRUST_STATE_TRUSTED) {
+		return K_MSEC(cadence_ms);
+	}
+
+	ret = scheduler_service_read_realtime(&utc_epoch_seconds, &normalized_utc_minute);
+	if (ret != 0) {
+		return K_MSEC(cadence_ms);
+	}
+
+	return K_MSEC((((normalized_utc_minute + 1LL) * 60LL) - utc_epoch_seconds) * 1000LL);
+}
+
+static void scheduler_service_schedule_runtime_work(struct scheduler_service *service)
+{
+	k_timeout_t delay;
+
+	if (service == NULL || !service->runtime_started) {
+		return;
+	}
+
+	delay = scheduler_service_runtime_delay(service);
+	if (K_TIMEOUT_EQ(delay, K_NO_WAIT)) {
+		delay = K_SECONDS(service->app_context->config.scheduler.cadence_seconds);
+	}
+
+	k_work_reschedule(&service->runtime_work, delay);
+}
+
+static void scheduler_service_advance_baseline_locked(
+	struct scheduler_service *service,
+	int64_t normalized_utc_minute)
+{
+	if (service == NULL) {
+		return;
+	}
+
+	service->baseline_valid = true;
+	service->baseline_utc_minute = normalized_utc_minute;
+	scheduler_refresh_automation_locked(service);
+	scheduler_refresh_next_run_locked(service);
+}
+
+static void scheduler_service_runtime_work_handler(struct k_work *work)
+{
+	struct k_work_delayable *delayable = CONTAINER_OF(work, struct k_work_delayable, work);
+	struct scheduler_service *service =
+		CONTAINER_OF(delayable, struct scheduler_service, runtime_work);
+	int64_t utc_epoch_seconds = -1;
+	int64_t normalized_utc_minute = -1;
+	int64_t baseline_utc_minute = -1;
+	enum scheduler_clock_trust_state clock_state;
+	bool baseline_valid;
+	int ret;
+
+	if (service == NULL || !service->runtime_started) {
+		return;
+	}
+
+	k_mutex_lock(&service->lock, K_FOREVER);
+	clock_state = service->status.clock_state;
+	baseline_valid = service->baseline_valid;
+	baseline_utc_minute = service->baseline_utc_minute;
+	k_mutex_unlock(&service->lock);
+
+	if (clock_state != SCHEDULER_CLOCK_TRUST_STATE_TRUSTED) {
+		ret = scheduler_service_sync_clock(service, &utc_epoch_seconds);
+		if (ret == 0) {
+			(void)scheduler_service_acquire_trusted_time(service, utc_epoch_seconds);
+		} else {
+			k_mutex_lock(&service->lock, K_FOREVER);
+			scheduler_record_problem_locked(service,
+					       SCHEDULER_PROBLEM_TRUSTED_CLOCK_UNAVAILABLE,
+					       -1);
+			k_mutex_unlock(&service->lock);
+		}
+
+		scheduler_service_schedule_runtime_work(service);
+		return;
+	}
+
+	ret = scheduler_service_read_realtime(&utc_epoch_seconds, &normalized_utc_minute);
+	if (ret != 0) {
+		(void)scheduler_service_mark_clock_untrusted(
+			service,
+			SCHEDULER_DEGRADED_REASON_TRUSTED_CLOCK_UNAVAILABLE);
+		k_mutex_lock(&service->lock, K_FOREVER);
+		scheduler_record_problem_locked(service,
+				       SCHEDULER_PROBLEM_TRUSTED_CLOCK_UNAVAILABLE,
+				       -1);
+		k_mutex_unlock(&service->lock);
+		scheduler_service_schedule_runtime_work(service);
+		return;
+	}
+
+	if (!baseline_valid) {
+		(void)scheduler_service_acquire_trusted_time(service, utc_epoch_seconds);
+		scheduler_service_schedule_runtime_work(service);
+		return;
+	}
+
+	if (normalized_utc_minute < baseline_utc_minute ||
+	    normalized_utc_minute > baseline_utc_minute + 1LL) {
+		(void)scheduler_service_handle_clock_correction(service, utc_epoch_seconds);
+		scheduler_service_schedule_runtime_work(service);
+		return;
+	}
+
+	if (normalized_utc_minute == baseline_utc_minute + 1LL) {
+		k_mutex_lock(&service->lock, K_FOREVER);
+		scheduler_service_advance_baseline_locked(service, normalized_utc_minute);
+		k_mutex_unlock(&service->lock);
+	}
+
+	scheduler_service_schedule_runtime_work(service);
 }
 
 static const char *scheduler_public_action_key(bool relay_on)
@@ -1014,12 +1171,15 @@ int scheduler_service_start(struct scheduler_service *service)
 		return -EINVAL;
 	}
 
+	service->runtime_started = true;
+
 	ret = scheduler_service_sync_clock(service, &utc_epoch_seconds);
 	if (ret == 0) {
 		ret = scheduler_service_acquire_trusted_time(service, utc_epoch_seconds);
 		if (ret == 0) {
 			LOG_INF("Trusted UTC clock acquired via SNTP and CLOCK_REALTIME");
 		}
+		scheduler_service_schedule_runtime_work(service);
 		return ret;
 	}
 
@@ -1032,9 +1192,11 @@ int scheduler_service_start(struct scheduler_service *service)
 	}
 
 	LOG_WRN("Trusted UTC clock still unavailable after recovery reset; scheduling stays degraded");
-	return scheduler_service_mark_clock_untrusted(
+	ret = scheduler_service_mark_clock_untrusted(
 		service,
 		SCHEDULER_DEGRADED_REASON_INITIAL_TRUST_ACQUISITION_FAILED);
+	scheduler_service_schedule_runtime_work(service);
+	return ret;
 }
 
 int scheduler_service_mark_clock_untrusted(
@@ -1052,10 +1214,16 @@ int scheduler_service_mark_clock_untrusted(
 		SCHEDULER_CLOCK_TRUST_STATE_DEGRADED :
 		SCHEDULER_CLOCK_TRUST_STATE_UNTRUSTED;
 	service->status.degraded_reason =
-		reason == SCHEDULER_DEGRADED_REASON_NONE ?
-			SCHEDULER_DEGRADED_REASON_WAITING_FOR_TRUSTED_CLOCK : reason;
+			reason == SCHEDULER_DEGRADED_REASON_NONE ?
+				SCHEDULER_DEGRADED_REASON_WAITING_FOR_TRUSTED_CLOCK : reason;
 	scheduler_clear_next_run(&service->status);
 	service->status.automation_active = false;
+	service->status.last_result.available = true;
+	service->status.last_result.code = SCHEDULER_LAST_RESULT_SKIPPED_UNTRUSTED_CLOCK;
+	service->status.last_result.error_code = 0;
+	service->status.last_result.normalized_utc_minute = -1;
+	service->status.last_result.schedule_id[0] = '\0';
+	service->status.last_result.action_id[0] = '\0';
 	k_mutex_unlock(&service->lock);
 
 	return 0;
@@ -1127,6 +1295,7 @@ int scheduler_service_init(struct scheduler_service *service,
 	service->app_context = app_context;
 	service->baseline_utc_minute = -1;
 	k_mutex_init(&service->lock);
+	k_work_init_delayable(&service->runtime_work, scheduler_service_runtime_work_handler);
 
 	service->status.implemented = true;
 	service->status.utc_only = true;
