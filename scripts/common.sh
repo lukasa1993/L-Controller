@@ -113,6 +113,51 @@ print_phase5_device_checklist() {
 		'Record which auth, session, cooldown, concurrent-session, reboot, degraded-styling, and read-only-surface scenarios passed or failed.'
 }
 
+print_phase6_ready_state_markers() {
+	print_ready_state_markers
+	printf '%s\n' \
+		'Relay startup actual=... desired=... source=... reboot=... note=...'
+}
+
+print_phase6_curl_commands() {
+	printf '%s\n' \
+		"curl -i http://<device-ip>/api/status" \
+		"curl -i -c cookie.txt -H 'Content-Type: application/json' -d '{\"username\":\"...\",\"password\":\"...\"}' http://<device-ip>/api/auth/login" \
+		"curl -i -b cookie.txt http://<device-ip>/api/status" \
+		"curl -i -b cookie.txt -H 'Content-Type: application/json' -d '{\"desiredState\":true}' http://<device-ip>/api/relay/desired-state" \
+		"curl -i -b cookie.txt http://<device-ip>/api/status" \
+		"curl -i -b cookie.txt -H 'Content-Type: application/json' -d '{\"desiredState\":false}' http://<device-ip>/api/relay/desired-state" \
+		"curl -i -b cookie.txt http://<device-ip>/api/status"
+}
+
+print_phase6_scenario_labels() {
+	printf '%s\n' \
+		'relay on' \
+		'relay off' \
+		'curl parity' \
+		'degraded local control' \
+		'normal reboot policy' \
+		'recovery-forced relay off' \
+		'actual-versus-desired mismatch visibility' \
+		'pending or blocked feedback'
+}
+
+print_phase6_device_checklist() {
+	printf '%s\n' \
+		'Re-run ./scripts/validate.sh first so the canonical automated build path is green.' \
+		'Flash the latest firmware with ./scripts/flash.sh.' \
+		'Open the device console with ./scripts/console.sh, determine the device IP from the boot log, and confirm the ready-state markers plus the relay startup log appear.' \
+		'Log in through the existing local auth flow and confirm protected access still works before testing relay control.' \
+		'Use the Phase 6 relay curl route to drive the relay on and confirm the physical relay, GET /api/status, and the live panel state all agree on actual on plus desired on.' \
+		'Use the same relay curl route to drive the relay off and confirm the physical relay, GET /api/status, and the live panel state all agree on actual off plus desired off.' \
+		'Open the panel in a browser, toggle the relay on and off, and confirm the control is one tap, uses no routine confirmation dialog, and shows inline pending or failure feedback while locked.' \
+		'Exercise the LAN_UP_UPSTREAM_DEGRADED path and confirm authenticated relay control still works while the device remains locally reachable.' \
+		'Reboot the device normally and confirm the relay plus status payload follow the configured normal-boot policy.' \
+		'Trigger the recovery-reset or equivalent confirmed-fault path and confirm the next boot forces the relay off until a fresh command is issued.' \
+		'Confirm the panel makes actual versus remembered desired state visible when safety policy keeps the applied relay off and shows the relevant safety note.' \
+		'Record which relay on, relay off, curl parity, degraded-local control, normal reboot policy, recovery-forced off, mismatch visibility, and pending or blocked feedback scenarios passed or failed.'
+}
+
 maybe_add_jlink_to_path() {
 	local candidate
 	for candidate in \
