@@ -7,6 +7,8 @@
 
 #include "persistence/persistence_types.h"
 
+#define SCHEDULER_PROBLEM_HISTORY_CAPACITY 10U
+
 struct app_context;
 
 enum scheduler_clock_trust_state {
@@ -35,6 +37,26 @@ enum scheduler_problem_code {
 	SCHEDULER_PROBLEM_BACKWARD_UTC_CLOCK_JUMP,
 	SCHEDULER_PROBLEM_NORMALIZED_UTC_MINUTE_CORRECTED,
 	SCHEDULER_PROBLEM_FUTURE_ONLY_BASELINE_APPLIED,
+};
+
+struct scheduler_cron_matcher {
+	uint64_t minute_bits;
+	uint64_t hour_bits;
+	uint64_t day_of_month_bits;
+	uint64_t month_bits;
+	uint64_t day_of_week_bits;
+	bool day_of_month_wildcard;
+	bool day_of_week_wildcard;
+};
+
+struct scheduler_runtime_entry {
+	bool in_use;
+	bool enabled;
+	bool relay_on;
+	char schedule_id[PERSISTED_SCHEDULE_ID_MAX_LEN];
+	char action_id[PERSISTED_ACTION_ID_MAX_LEN];
+	char cron_expression[PERSISTED_SCHEDULE_CRON_EXPRESSION_MAX_LEN];
+	struct scheduler_cron_matcher cron;
 };
 
 struct scheduler_next_run {
@@ -80,8 +102,10 @@ struct scheduler_service {
 	struct app_context *app_context;
 	struct k_mutex lock;
 	struct scheduler_runtime_status status;
-	struct scheduler_problem_record problems[10];
+	struct scheduler_runtime_entry entries[PERSISTED_SCHEDULE_MAX_COUNT];
+	struct scheduler_problem_record problems[SCHEDULER_PROBLEM_HISTORY_CAPACITY];
 	uint32_t problem_head;
+	uint32_t compiled_count;
 	bool baseline_valid;
 	int64_t baseline_utc_minute;
 };
@@ -93,6 +117,12 @@ const char *scheduler_degraded_reason_text(enum scheduler_degraded_reason reason
 
 const char *scheduler_last_result_code_text(
 	enum scheduler_last_result_code code);
+
+int scheduler_cron_validate_expression(const char *expression);
+
+int scheduler_schedule_table_validate(
+	const struct persisted_schedule_table *schedule_table,
+	const struct persisted_action_catalog *actions);
 
 int scheduler_service_init(struct scheduler_service *service,
 			   struct app_context *app_context);

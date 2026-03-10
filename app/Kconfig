@@ -67,7 +67,7 @@ config APP_RECOVERY_COOLDOWN_MS
 
 config APP_PERSISTENCE_LAYOUT_VERSION
 	int "Persistent configuration layout version"
-	default 1
+	default 2
 	range 1 255
 	help
 	  Schema layout version for the persisted configuration contracts.

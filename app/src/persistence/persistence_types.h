@@ -9,8 +9,7 @@
 #define PERSISTED_ACTION_MAX_COUNT 8
 #define PERSISTED_SCHEDULE_ID_MAX_LEN 24
 #define PERSISTED_SCHEDULE_MAX_COUNT 8
-#define PERSISTED_SCHEDULE_VALID_DAYS_MASK 0x7fU
-#define PERSISTED_SCHEDULE_MINUTES_PER_DAY 1440U
+#define PERSISTED_SCHEDULE_CRON_EXPRESSION_MAX_LEN 64
 
 enum persistence_section {
 	PERSISTENCE_SECTION_AUTH = 0,
@@ -66,8 +65,7 @@ struct persisted_schedule {
 	char schedule_id[PERSISTED_SCHEDULE_ID_MAX_LEN];
 	char action_id[PERSISTED_ACTION_ID_MAX_LEN];
 	bool enabled;
-	uint8_t days_of_week_mask;
-	uint16_t minute_of_day;
+	char cron_expression[PERSISTED_SCHEDULE_CRON_EXPRESSION_MAX_LEN];
 };
 
 struct persisted_schedule_table {

@@ -10,6 +10,7 @@
 
 #include "app/app_config.h"
 #include "persistence/persistence.h"
+#include "scheduler/scheduler.h"
 
 LOG_MODULE_REGISTER(persistence, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -302,67 +303,17 @@ static bool persisted_action_catalog_valid(const struct persisted_action_catalog
 	return true;
 }
 
-static bool persisted_action_exists(
-	const struct persisted_action_catalog *actions,
-	const char *action_id)
-{
-	uint32_t index;
-
-	if (actions == NULL || action_id == NULL) {
-		return false;
-	}
-
-	for (index = 0U; index < actions->count; ++index) {
-		if (strcmp(actions->entries[index].action_id, action_id) == 0) {
-			return true;
-		}
-	}
-
-	return false;
-}
-
 static bool persisted_relay_valid(const struct persisted_relay *relay)
 {
 	return relay != NULL &&
 	       persisted_relay_reboot_policy_valid(relay->reboot_policy);
 }
 
-static bool persisted_schedule_table_valid(
+static int persisted_schedule_table_validate(
 	const struct persisted_schedule_table *schedule_table,
 	const struct persisted_action_catalog *actions)
 {
-	uint32_t index;
-	uint32_t match_index;
-
-	if (schedule_table == NULL || schedule_table->count > PERSISTED_SCHEDULE_MAX_COUNT) {
-		return false;
-	}
-
-	for (index = 0U; index < schedule_table->count; ++index) {
-		const struct persisted_schedule *schedule = &schedule_table->entries[index];
-
-		if (!c_string_is_non_empty(schedule->schedule_id, sizeof(schedule->schedule_id)) ||
-		    !c_string_is_non_empty(schedule->action_id, sizeof(schedule->action_id)) ||
-		    schedule->days_of_week_mask == 0U ||
-		    (schedule->days_of_week_mask & ~PERSISTED_SCHEDULE_VALID_DAYS_MASK) != 0U ||
-		    schedule->minute_of_day >= PERSISTED_SCHEDULE_MINUTES_PER_DAY) {
-			return false;
-		}
-
-		for (match_index = index + 1U; match_index < schedule_table->count;
-		     ++match_index) {
-			if (strcmp(schedule->schedule_id,
-				   schedule_table->entries[match_index].schedule_id) == 0) {
-				return false;
-			}
-		}
-
-		if (actions != NULL && !persisted_action_exists(actions, schedule->action_id)) {
-			return false;
-		}
-	}
-
-	return true;
+	return scheduler_schedule_table_validate(schedule_table, actions);
 }
 
 static bool persisted_config_save_request_has_changes(
@@ -482,17 +433,17 @@ static int persistence_stage_config_save_request(
 
 	if (request->has_schedule) {
 		persisted_schedule_table_from_save_request(store, &request->schedule,
-							  &staged->schedule);
+						  &staged->schedule);
 	}
 
 	if (!persisted_auth_valid(&staged->auth) ||
 	    !persisted_action_catalog_valid(&staged->actions) ||
-	    !persisted_relay_valid(&staged->relay) ||
-	    !persisted_schedule_table_valid(&staged->schedule, &staged->actions)) {
+	    !persisted_relay_valid(&staged->relay)) {
 		return -EINVAL;
 	}
 
-	return 0;
+	return persisted_schedule_table_validate(&staged->schedule,
+					       &staged->actions);
 }
 
 int persistence_store_init(struct persistence_store *store,
@@ -632,6 +583,7 @@ static int persistence_write_schedule_section(
 	const struct persisted_schedule_table *schedule_table)
 {
 	struct persisted_schedule_table canonical;
+	int ret;
 
 	if (!persistence_store_is_ready(store) || schedule_table == NULL) {
 		return -EINVAL;
@@ -639,8 +591,9 @@ static int persistence_write_schedule_section(
 
 	canonical = *schedule_table;
 	canonical.schema_version = persistence_expected_layout_version(store);
-	if (!persisted_schedule_table_valid(&canonical, actions)) {
-		return -EINVAL;
+	ret = persisted_schedule_table_validate(&canonical, actions);
+	if (ret != 0) {
+		return ret;
 	}
 
 	return persistence_write_blob(store, PERSISTENCE_NVS_ID_SCHEDULE, &canonical,
@@ -978,6 +931,7 @@ int persistence_store_load_schedule(
 	struct persisted_schedule_table candidate;
 	struct persistence_migration_plan migration_plan;
 	enum persistence_load_state state;
+	int validate_ret;
 	int ret;
 
 	if (!persistence_store_is_ready(store) || schedule_table == NULL || status == NULL ||
@@ -993,11 +947,13 @@ int persistence_store_load_schedule(
 				      sizeof(candidate));
 	if (state == PERSISTENCE_LOAD_STATE_LOADED) {
 		migration_plan = persistence_plan_section_migration(store,
-							  PERSISTENCE_SECTION_SCHEDULE,
-							  candidate.schema_version);
+						  PERSISTENCE_SECTION_SCHEDULE,
+						  candidate.schema_version);
 		if (migration_plan.action != PERSISTENCE_MIGRATION_ACTION_NONE) {
 			state = PERSISTENCE_LOAD_STATE_INCOMPATIBLE_RESET;
-		} else if (persisted_schedule_table_valid(&candidate, actions)) {
+		} else {
+			validate_ret = persisted_schedule_table_validate(&candidate, actions);
+			if (validate_ret == 0) {
 			*schedule_table = candidate;
 			*status = persistence_make_status(PERSISTENCE_SECTION_SCHEDULE,
 						      state,
@@ -1006,7 +962,8 @@ int persistence_store_load_schedule(
 						      candidate.schema_version,
 						      migration_plan.expected_schema_version);
 			return 0;
-		} else {
+			}
+
 			state = PERSISTENCE_LOAD_STATE_INVALID_RESET;
 		}
 	}

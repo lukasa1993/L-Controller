@@ -1,5 +1,7 @@
 #include <errno.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
@@ -9,6 +11,12 @@
 
 LOG_MODULE_REGISTER(scheduler, CONFIG_LOG_DEFAULT_LEVEL);
 
+#define SCHEDULER_CONFLICT_SCAN_START_YEAR 2000
+#define SCHEDULER_CONFLICT_SCAN_DAYS 146097U
+
+static const char scheduler_public_relay_on_action_key[] = "relay-on";
+static const char scheduler_public_relay_off_action_key[] = "relay-off";
+
 static int64_t scheduler_normalize_utc_minute(int64_t utc_epoch_seconds)
 {
 	if (utc_epoch_seconds >= 0) {
@@ -16,6 +24,55 @@ static int64_t scheduler_normalize_utc_minute(int64_t utc_epoch_seconds)
 	}
 
 	return (utc_epoch_seconds - 59) / 60;
+}
+
+static bool scheduler_c_string_has_terminator(const char *value, size_t value_len)
+{
+	return value != NULL && memchr(value, '\0', value_len) != NULL;
+}
+
+static bool scheduler_c_string_is_non_empty(const char *value, size_t value_len)
+{
+	return value != NULL && value[0] != '\0' &&
+	       scheduler_c_string_has_terminator(value, value_len);
+}
+
+static int scheduler_copy_c_string(char *dst, size_t dst_len, const char *src)
+{
+	size_t src_len;
+
+	if (dst == NULL || src == NULL || dst_len == 0U) {
+		return -EINVAL;
+	}
+
+	src_len = strlen(src);
+	if (src_len >= dst_len) {
+		return -ENAMETOOLONG;
+	}
+
+	memcpy(dst, src, src_len + 1U);
+	return 0;
+}
+
+static const struct persisted_action *scheduler_find_action(
+	const struct persisted_action_catalog *actions,
+	const char *action_id)
+{
+	uint32_t max_count;
+	uint32_t index;
+
+	if (actions == NULL || action_id == NULL) {
+		return NULL;
+	}
+
+	max_count = MIN(actions->count, PERSISTED_ACTION_MAX_COUNT);
+	for (index = 0U; index < max_count; ++index) {
+		if (strcmp(actions->entries[index].action_id, action_id) == 0) {
+			return &actions->entries[index];
+		}
+	}
+
+	return NULL;
 }
 
 static bool scheduler_reason_is_degraded(enum scheduler_degraded_reason reason)
@@ -29,6 +86,12 @@ static bool scheduler_reason_is_degraded(enum scheduler_degraded_reason reason)
 	default:
 		return false;
 	}
+}
+
+static const char *scheduler_public_action_key(bool relay_on)
+{
+	return relay_on ? scheduler_public_relay_on_action_key :
+		       scheduler_public_relay_off_action_key;
 }
 
 static void scheduler_clear_next_run(struct scheduler_runtime_status *status)
@@ -63,13 +126,15 @@ static void scheduler_record_problem_locked(
 		return;
 	}
 
-	problem = &service->problems[service->problem_head % ARRAY_SIZE(service->problems)];
+	problem =
+		&service->problems[service->problem_head % ARRAY_SIZE(service->problems)];
 	memset(problem, 0, sizeof(*problem));
 	problem->recorded = true;
 	problem->code = code;
 	problem->normalized_utc_minute = normalized_utc_minute;
 
-	service->problem_head = (service->problem_head + 1U) % ARRAY_SIZE(service->problems);
+	service->problem_head =
+		(service->problem_head + 1U) % ARRAY_SIZE(service->problems);
 	if (service->status.problem_count < ARRAY_SIZE(service->problems)) {
 		service->status.problem_count++;
 	}
@@ -77,24 +142,20 @@ static void scheduler_record_problem_locked(
 
 static void scheduler_refresh_counts_locked(struct scheduler_service *service)
 {
-	uint32_t count;
 	uint32_t enabled_count = 0U;
-	uint32_t max_count;
 	uint32_t index;
 
-	if (service == NULL || service->app_context == NULL) {
+	if (service == NULL) {
 		return;
 	}
 
-	count = service->app_context->persisted_config.schedule.count;
-	max_count = MIN(count, PERSISTED_SCHEDULE_MAX_COUNT);
-	for (index = 0U; index < max_count; ++index) {
-		if (service->app_context->persisted_config.schedule.entries[index].enabled) {
+	for (index = 0U; index < service->compiled_count; ++index) {
+		if (service->entries[index].in_use && service->entries[index].enabled) {
 			enabled_count++;
 		}
 	}
 
-	service->status.schedule_count = count;
+	service->status.schedule_count = service->compiled_count;
 	service->status.enabled_schedule_count = enabled_count;
 }
 
@@ -107,6 +168,617 @@ static void scheduler_refresh_automation_locked(struct scheduler_service *servic
 	service->status.automation_active =
 		service->status.clock_state == SCHEDULER_CLOCK_TRUST_STATE_TRUSTED &&
 		service->status.enabled_schedule_count > 0U;
+}
+
+static bool scheduler_value_is_allowed(uint64_t bits, uint8_t value)
+{
+	return (bits & BIT64(value)) != 0U;
+}
+
+static int scheduler_parse_u8_token(
+	const char *text,
+	uint8_t min_value,
+	uint8_t max_value,
+	uint8_t *value)
+{
+	char *endptr = NULL;
+	unsigned long parsed;
+
+	if (text == NULL || value == NULL || text[0] == '\0') {
+		return -EINVAL;
+	}
+
+	errno = 0;
+	parsed = strtoul(text, &endptr, 10);
+	if (errno != 0 || endptr == text || *endptr != '\0' ||
+	    parsed < min_value || parsed > max_value) {
+		return -EINVAL;
+	}
+
+	*value = (uint8_t)parsed;
+	return 0;
+}
+
+static int scheduler_compile_field(
+	const char *field_text,
+	uint8_t min_value,
+	uint8_t max_value,
+	bool allow_sunday_alias,
+	uint64_t *bits,
+	bool *wildcard)
+{
+	char field_copy[PERSISTED_SCHEDULE_CRON_EXPRESSION_MAX_LEN];
+	char *token;
+	char *saveptr = NULL;
+	bool saw_star_token = false;
+	bool saw_token = false;
+	int ret;
+
+	if (field_text == NULL || bits == NULL) {
+		return -EINVAL;
+	}
+
+	ret = scheduler_copy_c_string(field_copy, sizeof(field_copy), field_text);
+	if (ret != 0) {
+		return ret;
+	}
+
+	*bits = 0U;
+	if (wildcard != NULL) {
+		*wildcard = strcmp(field_text, "*") == 0;
+	}
+
+	for (token = strtok_r(field_copy, ",", &saveptr); token != NULL;
+	     token = strtok_r(NULL, ",", &saveptr)) {
+		char *slash = strchr(token, '/');
+		char *dash = NULL;
+		uint8_t start_value;
+		uint8_t end_value;
+		uint8_t step_value = 1U;
+		const char *step_text = NULL;
+		uint16_t current;
+
+		if (slash != NULL) {
+			*slash = '\0';
+			step_text = slash + 1;
+			ret = scheduler_parse_u8_token(step_text, 1U, UINT8_MAX,
+					      &step_value);
+			if (ret != 0) {
+				return ret;
+			}
+		}
+
+		if (token[0] == '\0') {
+			return -EINVAL;
+		}
+
+		if (strcmp(token, "*") == 0) {
+			if (saw_token) {
+				return -EINVAL;
+			}
+
+			saw_star_token = true;
+			start_value = min_value;
+			end_value = max_value;
+		} else {
+			if (saw_star_token) {
+				return -EINVAL;
+			}
+
+			dash = strchr(token, '-');
+			if (dash != NULL) {
+				*dash = '\0';
+				if (strchr(dash + 1, '-') != NULL) {
+					return -EINVAL;
+				}
+
+				ret = scheduler_parse_u8_token(token, min_value, max_value,
+						      &start_value);
+				if (ret != 0) {
+					return ret;
+				}
+
+				ret = scheduler_parse_u8_token(dash + 1, min_value, max_value,
+						      &end_value);
+				if (ret != 0 || start_value > end_value) {
+					return -EINVAL;
+				}
+			} else {
+				if (step_text != NULL) {
+					return -EINVAL;
+				}
+
+				ret = scheduler_parse_u8_token(token, min_value, max_value,
+						      &start_value);
+				if (ret != 0) {
+					return ret;
+				}
+
+				end_value = start_value;
+			}
+		}
+
+		for (current = start_value; current <= end_value; current += step_value) {
+			uint8_t normalized_value = (uint8_t)current;
+
+			if (allow_sunday_alias && normalized_value == 7U) {
+				normalized_value = 0U;
+			}
+
+			*bits |= BIT64(normalized_value);
+		}
+
+		saw_token = true;
+	}
+
+	return saw_token ? 0 : -EINVAL;
+}
+
+static int scheduler_compile_expression(
+	const char *expression,
+	struct scheduler_cron_matcher *cron)
+{
+	char expression_copy[PERSISTED_SCHEDULE_CRON_EXPRESSION_MAX_LEN];
+	char *fields[5] = { 0 };
+	char *token;
+	char *saveptr = NULL;
+	bool unused_wildcard;
+	int field_count = 0;
+	int ret;
+
+	if (!scheduler_c_string_is_non_empty(
+		    expression, PERSISTED_SCHEDULE_CRON_EXPRESSION_MAX_LEN) ||
+	    cron == NULL) {
+		return -EINVAL;
+	}
+
+	ret = scheduler_copy_c_string(expression_copy, sizeof(expression_copy),
+				     expression);
+	if (ret != 0) {
+		return ret;
+	}
+
+	for (token = strtok_r(expression_copy, " \t\r\n", &saveptr);
+	     token != NULL; token = strtok_r(NULL, " \t\r\n", &saveptr)) {
+		if (field_count >= ARRAY_SIZE(fields)) {
+			return -EINVAL;
+		}
+
+		fields[field_count++] = token;
+	}
+
+	if (field_count != ARRAY_SIZE(fields)) {
+		return -EINVAL;
+	}
+
+	memset(cron, 0, sizeof(*cron));
+
+	ret = scheduler_compile_field(fields[0], 0U, 59U, false,
+				     &cron->minute_bits, &unused_wildcard);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = scheduler_compile_field(fields[1], 0U, 23U, false,
+				     &cron->hour_bits, &unused_wildcard);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = scheduler_compile_field(fields[2], 1U, 31U, false,
+				     &cron->day_of_month_bits,
+				     &cron->day_of_month_wildcard);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = scheduler_compile_field(fields[3], 1U, 12U, false,
+				     &cron->month_bits, &unused_wildcard);
+	if (ret != 0) {
+		return ret;
+	}
+
+	return scheduler_compile_field(fields[4], 0U, 7U, true,
+				       &cron->day_of_week_bits,
+				       &cron->day_of_week_wildcard);
+}
+
+static bool scheduler_cron_date_matches(
+	const struct scheduler_cron_matcher *cron,
+	uint8_t day_of_month,
+	uint8_t day_of_week)
+{
+	const bool dom_match =
+		scheduler_value_is_allowed(cron->day_of_month_bits, day_of_month);
+	const bool dow_match =
+		scheduler_value_is_allowed(cron->day_of_week_bits, day_of_week);
+
+	if (cron->day_of_month_wildcard && cron->day_of_week_wildcard) {
+		return true;
+	}
+
+	if (cron->day_of_month_wildcard) {
+		return dow_match;
+	}
+
+	if (cron->day_of_week_wildcard) {
+		return dom_match;
+	}
+
+	return dom_match || dow_match;
+}
+
+static bool scheduler_is_leap_year(int year)
+{
+	if ((year % 400) == 0) {
+		return true;
+	}
+
+	if ((year % 100) == 0) {
+		return false;
+	}
+
+	return (year % 4) == 0;
+}
+
+static uint8_t scheduler_days_in_month(int year, uint8_t month)
+{
+	static const uint8_t month_lengths[] = {
+		31U, 28U, 31U, 30U, 31U, 30U,
+		31U, 31U, 30U, 31U, 30U, 31U,
+	};
+
+	if (month == 2U && scheduler_is_leap_year(year)) {
+		return 29U;
+	}
+
+	return month_lengths[month - 1U];
+}
+
+static void scheduler_increment_utc_date(
+	int *year,
+	uint8_t *month,
+	uint8_t *day,
+	uint8_t *day_of_week)
+{
+	const uint8_t month_length = scheduler_days_in_month(*year, *month);
+
+	*day += 1U;
+	*day_of_week = (uint8_t)((*day_of_week + 1U) % 7U);
+	if (*day <= month_length) {
+		return;
+	}
+
+	*day = 1U;
+	*month += 1U;
+	if (*month <= 12U) {
+		return;
+	}
+
+	*month = 1U;
+	*year += 1;
+}
+
+static bool scheduler_runtime_entries_conflict(
+	const struct scheduler_runtime_entry *first,
+	const struct scheduler_runtime_entry *second)
+{
+	int year = SCHEDULER_CONFLICT_SCAN_START_YEAR;
+	uint8_t month = 1U;
+	uint8_t day = 1U;
+	uint8_t day_of_week = 6U;
+	uint32_t scan_day;
+
+	if (first == NULL || second == NULL || !first->enabled || !second->enabled ||
+	    first->relay_on == second->relay_on) {
+		return false;
+	}
+
+	if ((first->cron.minute_bits & second->cron.minute_bits) == 0U ||
+	    (first->cron.hour_bits & second->cron.hour_bits) == 0U ||
+	    (first->cron.month_bits & second->cron.month_bits) == 0U) {
+		return false;
+	}
+
+	for (scan_day = 0U; scan_day < SCHEDULER_CONFLICT_SCAN_DAYS; ++scan_day) {
+		if (scheduler_value_is_allowed(first->cron.month_bits, month) &&
+		    scheduler_value_is_allowed(second->cron.month_bits, month) &&
+		    scheduler_cron_date_matches(&first->cron, day, day_of_week) &&
+		    scheduler_cron_date_matches(&second->cron, day, day_of_week)) {
+			LOG_WRN("Rejecting cron conflict for %s/%s and %s/%s",
+				first->schedule_id,
+				scheduler_public_action_key(first->relay_on),
+				second->schedule_id,
+				scheduler_public_action_key(second->relay_on));
+			return true;
+		}
+
+		scheduler_increment_utc_date(&year, &month, &day, &day_of_week);
+	}
+
+	return false;
+}
+
+static int scheduler_compile_runtime_entry(
+	const struct persisted_schedule *schedule,
+	const struct persisted_action_catalog *actions,
+	struct scheduler_runtime_entry *entry)
+{
+	const struct persisted_action *action;
+	int ret;
+
+	if (schedule == NULL || actions == NULL || entry == NULL) {
+		return -EINVAL;
+	}
+
+	if (!scheduler_c_string_is_non_empty(schedule->schedule_id,
+					   sizeof(schedule->schedule_id)) ||
+	    !scheduler_c_string_is_non_empty(schedule->action_id,
+					   sizeof(schedule->action_id)) ||
+	    !scheduler_c_string_is_non_empty(schedule->cron_expression,
+					   sizeof(schedule->cron_expression))) {
+		return -EINVAL;
+	}
+
+	action = scheduler_find_action(actions, schedule->action_id);
+	if (action == NULL) {
+		return -EINVAL;
+	}
+
+	memset(entry, 0, sizeof(*entry));
+	entry->in_use = true;
+	entry->enabled = schedule->enabled;
+	entry->relay_on = action->relay_on;
+	memcpy(entry->schedule_id, schedule->schedule_id, sizeof(entry->schedule_id));
+	memcpy(entry->action_id, schedule->action_id, sizeof(entry->action_id));
+	memcpy(entry->cron_expression, schedule->cron_expression,
+	       sizeof(entry->cron_expression));
+
+	ret = scheduler_compile_expression(schedule->cron_expression, &entry->cron);
+	if (ret != 0) {
+		return ret;
+	}
+
+	return 0;
+}
+
+static int scheduler_compile_schedule_table(
+	const struct persisted_schedule_table *schedule_table,
+	const struct persisted_action_catalog *actions,
+	struct scheduler_runtime_entry entries[PERSISTED_SCHEDULE_MAX_COUNT],
+	uint32_t *count_out,
+	uint32_t *enabled_count_out)
+{
+	uint32_t enabled_count = 0U;
+	uint32_t index;
+	uint32_t match_index;
+	int ret;
+
+	if (schedule_table == NULL || actions == NULL || entries == NULL) {
+		return -EINVAL;
+	}
+
+	if (schedule_table->count > PERSISTED_SCHEDULE_MAX_COUNT) {
+		return -EINVAL;
+	}
+
+	memset(entries, 0,
+	       sizeof(struct scheduler_runtime_entry) * PERSISTED_SCHEDULE_MAX_COUNT);
+
+	for (index = 0U; index < schedule_table->count; ++index) {
+		const struct persisted_schedule *schedule = &schedule_table->entries[index];
+
+		ret = scheduler_compile_runtime_entry(schedule, actions, &entries[index]);
+		if (ret != 0) {
+			return ret;
+		}
+
+		for (match_index = 0U; match_index < index; ++match_index) {
+			if (strcmp(entries[index].schedule_id,
+				   entries[match_index].schedule_id) == 0) {
+				return -EEXIST;
+			}
+		}
+
+		if (entries[index].enabled) {
+			enabled_count++;
+		}
+	}
+
+	for (index = 0U; index < schedule_table->count; ++index) {
+		for (match_index = index + 1U; match_index < schedule_table->count;
+		     ++match_index) {
+			if (scheduler_runtime_entries_conflict(&entries[index],
+						      &entries[match_index])) {
+				return -EADDRINUSE;
+			}
+		}
+	}
+
+	if (count_out != NULL) {
+		*count_out = schedule_table->count;
+	}
+
+	if (enabled_count_out != NULL) {
+		*enabled_count_out = enabled_count;
+	}
+
+	return 0;
+}
+
+static int64_t scheduler_days_from_civil(int year, unsigned month, unsigned day)
+{
+	const unsigned adjusted_month = month > 2U ? month - 3U : month + 9U;
+	const int adjusted_year = year - (month <= 2U ? 1 : 0);
+	const int era =
+		(adjusted_year >= 0 ? adjusted_year : adjusted_year - 399) / 400;
+	const unsigned year_of_era =
+		(unsigned)(adjusted_year - (era * 400));
+	const unsigned day_of_year =
+		((153U * adjusted_month) + 2U) / 5U + day - 1U;
+	const unsigned day_of_era =
+		year_of_era * 365U + year_of_era / 4U - year_of_era / 100U +
+		day_of_year;
+
+	return ((int64_t)era * 146097) + (int64_t)day_of_era - 719468;
+}
+
+static int64_t scheduler_tm_to_epoch_minute(const struct tm *utc_tm)
+{
+	return (scheduler_days_from_civil(utc_tm->tm_year + 1900,
+					  (unsigned)utc_tm->tm_mon + 1U,
+					  (unsigned)utc_tm->tm_mday) * 1440) +
+	       ((int64_t)utc_tm->tm_hour * 60) + utc_tm->tm_min;
+}
+
+static int scheduler_find_next_value(
+	uint64_t bits,
+	uint8_t start_value,
+	uint8_t max_value,
+	uint8_t *value)
+{
+	uint16_t candidate;
+
+	if (value == NULL) {
+		return -EINVAL;
+	}
+
+	for (candidate = start_value; candidate <= max_value; ++candidate) {
+		if (scheduler_value_is_allowed(bits, (uint8_t)candidate)) {
+			*value = (uint8_t)candidate;
+			return 0;
+		}
+	}
+
+	return -ENOENT;
+}
+
+static int scheduler_runtime_entry_next_utc_minute(
+	const struct scheduler_runtime_entry *entry,
+	int64_t after_utc_minute,
+	int64_t *next_utc_minute)
+{
+	struct tm current_tm;
+	time_t current_seconds;
+	int year;
+	uint8_t month;
+	uint8_t day;
+	uint8_t day_of_week;
+	uint8_t start_hour;
+	uint8_t start_minute;
+	uint32_t scan_day;
+
+	if (entry == NULL || next_utc_minute == NULL || !entry->enabled ||
+	    after_utc_minute < 0) {
+		return -EINVAL;
+	}
+
+	current_seconds = (time_t)((after_utc_minute + 1LL) * 60LL);
+	if (gmtime_r(&current_seconds, &current_tm) == NULL) {
+		return -ERANGE;
+	}
+
+	year = current_tm.tm_year + 1900;
+	month = (uint8_t)current_tm.tm_mon + 1U;
+	day = (uint8_t)current_tm.tm_mday;
+	day_of_week = (uint8_t)current_tm.tm_wday;
+	start_hour = (uint8_t)current_tm.tm_hour;
+	start_minute = (uint8_t)current_tm.tm_min;
+
+	for (scan_day = 0U; scan_day < SCHEDULER_CONFLICT_SCAN_DAYS; ++scan_day) {
+		uint8_t candidate_hour = 0U;
+		int hour_ret;
+
+		if (scheduler_value_is_allowed(entry->cron.month_bits, month) &&
+		    scheduler_cron_date_matches(&entry->cron, day, day_of_week)) {
+			hour_ret = scheduler_find_next_value(entry->cron.hour_bits, start_hour,
+						     23U, &candidate_hour);
+			while (hour_ret == 0) {
+				uint8_t candidate_minute;
+				struct tm candidate_tm = {
+					.tm_year = year - 1900,
+					.tm_mon = month - 1U,
+					.tm_mday = day,
+					.tm_hour = candidate_hour,
+					.tm_min = 0,
+					.tm_sec = 0,
+				};
+				int minute_ret = scheduler_find_next_value(
+					entry->cron.minute_bits,
+					candidate_hour == start_hour ? start_minute : 0U,
+					59U,
+					&candidate_minute);
+
+				if (minute_ret == 0) {
+					candidate_tm.tm_min = candidate_minute;
+					*next_utc_minute =
+						scheduler_tm_to_epoch_minute(&candidate_tm);
+					if (*next_utc_minute > after_utc_minute) {
+						return 0;
+					}
+				}
+
+				hour_ret = scheduler_find_next_value(entry->cron.hour_bits,
+							candidate_hour + 1U,
+							23U,
+							&candidate_hour);
+			}
+		}
+
+		scheduler_increment_utc_date(&year, &month, &day, &day_of_week);
+		start_hour = 0U;
+		start_minute = 0U;
+	}
+
+	return -ENOENT;
+}
+
+static void scheduler_refresh_next_run_locked(struct scheduler_service *service)
+{
+	bool found = false;
+	int64_t earliest_utc_minute = -1;
+	uint32_t index;
+
+	if (service == NULL) {
+		return;
+	}
+
+	scheduler_clear_next_run(&service->status);
+	if (!service->baseline_valid ||
+	    service->status.clock_state != SCHEDULER_CLOCK_TRUST_STATE_TRUSTED) {
+		return;
+	}
+
+	for (index = 0U; index < service->compiled_count; ++index) {
+		int64_t candidate_utc_minute;
+		int ret;
+
+		if (!service->entries[index].in_use || !service->entries[index].enabled) {
+			continue;
+		}
+
+		ret = scheduler_runtime_entry_next_utc_minute(
+			&service->entries[index],
+			service->baseline_utc_minute,
+			&candidate_utc_minute);
+		if (ret != 0) {
+			continue;
+		}
+
+		if (!found || candidate_utc_minute < earliest_utc_minute) {
+			found = true;
+			earliest_utc_minute = candidate_utc_minute;
+			service->status.next_run.available = true;
+			service->status.next_run.normalized_utc_minute =
+				candidate_utc_minute;
+			memcpy(service->status.next_run.schedule_id,
+			       service->entries[index].schedule_id,
+			       sizeof(service->status.next_run.schedule_id));
+			memcpy(service->status.next_run.action_id,
+			       service->entries[index].action_id,
+			       sizeof(service->status.next_run.action_id));
+		}
+	}
 }
 
 static void scheduler_apply_future_only_baseline_locked(
@@ -130,14 +802,15 @@ static void scheduler_apply_future_only_baseline_locked(
 	service->status.last_result.schedule_id[0] = '\0';
 	service->status.last_result.action_id[0] = '\0';
 	if (problem_code != SCHEDULER_PROBLEM_NONE) {
-		scheduler_record_problem_locked(service, problem_code, normalized_utc_minute);
+		scheduler_record_problem_locked(service, problem_code,
+					       normalized_utc_minute);
 		scheduler_record_problem_locked(service,
 					       SCHEDULER_PROBLEM_FUTURE_ONLY_BASELINE_APPLIED,
 					       normalized_utc_minute);
 	}
 
-	scheduler_clear_next_run(&service->status);
 	scheduler_refresh_automation_locked(service);
+	scheduler_refresh_next_run_locked(service);
 }
 
 const char *scheduler_clock_trust_state_text(enum scheduler_clock_trust_state state)
@@ -188,18 +861,52 @@ const char *scheduler_last_result_code_text(enum scheduler_last_result_code code
 	}
 }
 
+int scheduler_cron_validate_expression(const char *expression)
+{
+	struct scheduler_cron_matcher cron;
+
+	return scheduler_compile_expression(expression, &cron);
+}
+
+int scheduler_schedule_table_validate(
+	const struct persisted_schedule_table *schedule_table,
+	const struct persisted_action_catalog *actions)
+{
+	struct scheduler_runtime_entry entries[PERSISTED_SCHEDULE_MAX_COUNT];
+
+	return scheduler_compile_schedule_table(schedule_table, actions, entries,
+					      NULL, NULL);
+}
+
 int scheduler_service_reload(struct scheduler_service *service)
 {
+	struct scheduler_runtime_entry entries[PERSISTED_SCHEDULE_MAX_COUNT];
+	uint32_t compiled_count;
+	uint32_t enabled_count;
+	int ret;
+
 	if (service == NULL || service->app_context == NULL) {
 		return -EINVAL;
 	}
 
+	ret = scheduler_compile_schedule_table(
+		&service->app_context->persisted_config.schedule,
+		&service->app_context->persisted_config.actions,
+		entries,
+		&compiled_count,
+		&enabled_count);
+	if (ret != 0) {
+		return ret;
+	}
+
 	k_mutex_lock(&service->lock, K_FOREVER);
+	memcpy(service->entries, entries, sizeof(service->entries));
+	service->compiled_count = compiled_count;
+	service->status.schedule_count = compiled_count;
+	service->status.enabled_schedule_count = enabled_count;
 	scheduler_refresh_counts_locked(service);
 	scheduler_refresh_automation_locked(service);
-	if (service->status.clock_state != SCHEDULER_CLOCK_TRUST_STATE_TRUSTED) {
-		scheduler_clear_next_run(&service->status);
-	}
+	scheduler_refresh_next_run_locked(service);
 	k_mutex_unlock(&service->lock);
 
 	return 0;
@@ -257,7 +964,8 @@ int scheduler_service_handle_clock_correction(
 		return -EINVAL;
 	}
 
-	normalized_utc_minute = scheduler_normalize_utc_minute(corrected_utc_epoch_seconds);
+	normalized_utc_minute =
+		scheduler_normalize_utc_minute(corrected_utc_epoch_seconds);
 
 	k_mutex_lock(&service->lock, K_FOREVER);
 	problem_code = service->baseline_valid &&
@@ -309,6 +1017,6 @@ int scheduler_service_init(struct scheduler_service *service,
 		return ret;
 	}
 
-	LOG_INF("Scheduler service ready with trusted clock gate, UTC minute cadence, and future-only baseline semantics");
+	LOG_INF("Scheduler service ready with UTC cron validation, relay-on/relay-off conflict checks, and trusted clock gating");
 	return 0;
 }
