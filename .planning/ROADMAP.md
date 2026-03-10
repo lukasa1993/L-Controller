@@ -92,7 +92,7 @@ Plans:
   2. A single operator can log in, use the local panel, and log out through a predictable browser session flow.
   3. The panel is served from authored HTML/JS assets styled via Tailwind Play CDN, not from C-generated markup.
   4. The panel exposes current device, Wi-Fi, relay, scheduler, and update status.
-**Plans**: 3 plans
+**Plans**: 3/3 plans executed
 
 Plans:
 - [x] 05-01: Build the HTTP service shell and static asset delivery pipeline
@@ -123,7 +123,7 @@ Plans:
   2. Scheduled jobs persist across reboot and execute locally without external services.
   3. Scheduler behavior is clearly defined for reboot, missed jobs, and time resynchronization.
   4. Scheduled executions use the same action path as manual commands.
-**Plans**: 3 plans
+**Plans**: 3/3 plans executed
 
 Plans:
 - [x] 07-01: Define the time model, schedule schema, and missed-job semantics
@@ -159,5 +159,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Persistent Configuration | 3/3 | Complete   | 2026-03-09 |
 | 5. Local Control Panel | 2/3 | In Progress | - |
 | 6. Action Engine & Relay Control | 3/3 | Complete | 2026-03-10 |
-| 7. Scheduling | 2/3 | In Progress | - |
+| 7. Scheduling | 3/3 | Complete | 2026-03-10 |
 | 8. OTA Lifecycle | 0/3 | Not started | - |
