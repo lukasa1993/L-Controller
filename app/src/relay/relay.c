@@ -23,6 +23,12 @@ LOG_MODULE_DECLARE(app, CONFIG_LOG_DEFAULT_LEVEL);
 
 static const struct gpio_dt_spec relay0_gpio = GPIO_DT_SPEC_GET(APP_RELAY0_NODE, gpios);
 
+static int relay_service_apply_state(struct relay_service *service,
+				 bool actual_state,
+				 bool desired_state,
+				 enum relay_status_source source,
+				 const char *safety_note);
+
 static const char *relay_state_text(bool state)
 {
 	return state ? "on" : "off";
@@ -40,12 +46,57 @@ const char *relay_status_source_text(enum relay_status_source source)
 		return "boot-policy";
 	case RELAY_STATUS_SOURCE_RECOVERY_POLICY:
 		return "recovery-policy";
-	case RELAY_STATUS_SOURCE_COMMAND:
-		return "command";
+	case RELAY_STATUS_SOURCE_PANEL_MANUAL:
+		return "manual-panel";
+	case RELAY_STATUS_SOURCE_SCHEDULER:
+		return "scheduler";
+	case RELAY_STATUS_SOURCE_SAFETY_POLICY:
+		return "safety-policy";
 	case RELAY_STATUS_SOURCE_NONE:
 	default:
 		return "none";
 	}
+}
+
+int relay_service_apply_command(struct relay_service *service,
+				bool desired_state,
+				enum relay_status_source source)
+{
+	if (service == NULL) {
+		return -EINVAL;
+	}
+
+	if (!service->status.implemented) {
+		return -ENOTSUP;
+	}
+
+	if (!service->status.available) {
+		return -ENODEV;
+	}
+
+	return relay_service_apply_state(service, desired_state, desired_state, source, NULL);
+}
+
+int relay_service_restore_status(struct relay_service *service,
+				 const struct relay_runtime_status *status)
+{
+	if (service == NULL || status == NULL) {
+		return -EINVAL;
+	}
+
+	if (!service->status.implemented) {
+		return -ENOTSUP;
+	}
+
+	if (!service->status.available) {
+		return -ENODEV;
+	}
+
+	return relay_service_apply_state(service,
+				 status->actual_state,
+				 status->desired_state,
+				 status->source,
+				 status->safety_note);
 }
 
 static bool relay_service_started_from_recovery(const struct relay_service *service)
