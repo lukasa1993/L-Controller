@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 5: Local Control Panel** - Ship the authenticated local HTTP panel with authored HTML/JS assets and operator status views
 - [x] **Phase 6: Action Engine & Relay Control** - Implement the generic action path and the first real relay on/off behavior (completed 2026-03-10)
 - [x] **Phase 7: Scheduling** - Add cron-style local scheduling for relay actions with deterministic reboot/time behavior (completed 2026-03-10)
-- [ ] **Phase 8: OTA Lifecycle** - Deliver bootloader-backed local upload and remote-pull firmware updates with rollback discipline
+- [x] **Phase 8: OTA Lifecycle** - Deliver bootloader-backed local upload and remote-pull firmware updates with rollback discipline (completed 2026-03-10)
 
 ## Phase Details
 
@@ -139,12 +139,12 @@ Plans:
   2. Device can be configured to fetch an update from a remote endpoint without bypassing the same image safety rules.
   3. Firmware updates use a bootloader-backed swap/rollback process rather than replacing the active image in place.
   4. A new firmware image is only marked permanent after a healthy post-update boot.
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans executed
 
 Plans:
 - [x] 08-01: Enable MCUboot/sysbuild, partitioning, and staged-image plumbing
 - [x] 08-02: Implement authenticated local upload and staged image validation flow
-- [ ] 08-03: Implement remote-pull orchestration plus confirm/rollback handling
+- [x] 08-03: Implement remote-pull orchestration plus confirm/rollback handling *(approved browser/curl/device verification recorded on 2026-03-10)*
 
 ## Progress
 
@@ -160,4 +160,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Local Control Panel | 2/3 | In Progress | - |
 | 6. Action Engine & Relay Control | 3/3 | Complete | 2026-03-10 |
 | 7. Scheduling | 3/3 | Complete | 2026-03-10 |
-| 8. OTA Lifecycle | 2/3 | In Progress|  |
+| 8. OTA Lifecycle | 3/3 | Complete | 2026-03-10 |
