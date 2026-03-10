@@ -142,6 +142,40 @@ static void log_relay_runtime_status(const struct app_context *app_context)
 		relay_safety_note_text(status->safety_note));
 }
 
+static void log_scheduler_runtime_status(const struct app_context *app_context)
+{
+	const struct scheduler_runtime_status *status;
+
+	status = scheduler_service_get_status(&app_context->scheduler);
+	if (status == NULL || !status->implemented) {
+		return;
+	}
+
+	LOG_INF("Scheduler runtime ready schedules=%u enabled=%u automation=%s clock=%s degraded=%s UTC cadence=%us timeout=%dms",
+		status->schedule_count,
+		status->enabled_schedule_count,
+		status->automation_active ? "active" : "inactive",
+		scheduler_clock_trust_state_text(status->clock_state),
+		scheduler_degraded_reason_text(status->degraded_reason),
+		app_context->config.scheduler.cadence_seconds,
+		app_context->config.scheduler.trusted_clock_timeout_ms);
+
+	if (status->next_run.available) {
+		LOG_INF("Scheduler next_run minute=%lld schedule=%s action=%s",
+			(long long)status->next_run.normalized_utc_minute,
+			status->next_run.schedule_id,
+			status->next_run.action_id);
+	} else {
+		LOG_INF("Scheduler boot contract keeps automation inactive until trusted UTC time baselines the current minute, skip missed work, and calculates only future run candidates");
+	}
+
+	if (status->last_result.available) {
+		LOG_INF("Scheduler last_result=%s minute=%lld",
+			scheduler_last_result_code_text(status->last_result.code),
+			(long long)status->last_result.normalized_utc_minute);
+	}
+}
+
 static int load_app_config(struct app_context *app_context)
 {
 	int ret;
@@ -173,6 +207,13 @@ static int load_app_config(struct app_context *app_context)
 		.persistence = {
 			.layout_version = APP_PERSISTENCE_LAYOUT_VERSION,
 			.default_relay_reboot_policy = APP_RELAY_REBOOT_POLICY_DEFAULT,
+		},
+		.scheduler = {
+			.cadence_seconds = APP_SCHEDULER_CADENCE_SECONDS,
+			.trusted_clock_timeout_ms =
+				APP_SCHEDULER_TRUSTED_CLOCK_TIMEOUT_MS,
+			.problem_history_capacity =
+				APP_SCHEDULER_PROBLEM_HISTORY_CAPACITY,
 		},
 	};
 
@@ -248,7 +289,14 @@ int app_boot(struct app_context *app_context)
 		return ret;
 	}
 
+	ret = scheduler_service_init(&app_context->scheduler, app_context);
+	if (ret != 0) {
+		LOG_ERR("Failed to initialize scheduler service: %d", ret);
+		return ret;
+	}
+
 	log_relay_runtime_status(app_context);
+	log_scheduler_runtime_status(app_context);
 
 	ret = panel_auth_service_init(&app_context->panel_auth, app_context);
 	if (ret != 0) {

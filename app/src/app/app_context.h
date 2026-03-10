@@ -8,6 +8,7 @@
 #include "persistence/persistence.h"
 #include "recovery/recovery.h"
 #include "relay/relay.h"
+#include "scheduler/scheduler.h"
 
 struct app_context {
 	struct app_config config;
@@ -19,4 +20,5 @@ struct app_context {
 	struct panel_http_server panel_http;
 	struct recovery_manager recovery;
 	struct relay_service relay;
+	struct scheduler_service scheduler;
 };
