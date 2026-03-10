@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 8
 current_phase_name: ota lifecycle
-current_plan: 2
-status: execution
-stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-03-10T09:16:39.919Z"
+current_plan: 3
+status: executing
+stopped_at: Completed 08-02-PLAN.md
+last_updated: "2026-03-10T09:51:40.815Z"
 last_activity: 2026-03-10
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 22
-  completed_plans: 20
-  percent: 91
+  completed_plans: 21
+  percent: 95
 ---
 
 # Project State
@@ -30,18 +30,18 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Current Phase:** 8
 **Current Phase Name:** ota lifecycle
-**Current Plan:** 2
+**Current Plan:** 3
 **Total Plans in Phase:** 3
 **Status:** Ready to execute
 **Last Activity:** 2026-03-10
-**Last Activity Description:** Completed 08-01 OTA foundation and prepared 08-02
+**Last Activity Description:** Completed 08-02 local OTA upload and prepared 08-03
 
 Phase: 8 of 8 (ota lifecycle) — execution
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
-Last activity: 2026-03-10 — Completed 08-01 OTA foundation and prepared 08-02
+Last activity: 2026-03-10 — Completed 08-02 local OTA upload and prepared 08-03
 
-Progress: [█████████░] 91%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -80,6 +80,7 @@ Progress: [█████████░] 91%
 | Phase 07 P02 | 13 min | 4 tasks | 12 files |
 | Phase 07-scheduling P03 | 6min | 4 tasks | 10 files |
 | Phase 08 P01 | 22 min | 3 tasks | 19 files |
+| Phase 08 P02 | 32 min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -156,6 +157,9 @@ Recent decisions affecting current work:
 - [Phase 08]: The nRF7002DK OTA foundation uses mcuboot_secondary on MX25R64 external flash so the app keeps nearly the full internal slot.
 - [Phase 08]: OTA metadata stays in a dedicated typed persistence section keyed by PERSISTENCE_NVS_ID_OTA without disturbing auth, relay, or schedule sections.
 - [Phase 08]: All future update entrypoints must share ota_service staging and apply helpers so same-version and downgrade gating cannot diverge by caller.
+- [Phase 08]: Kept `/api/status` compact and moved detailed OTA truth plus mutations onto the exact `/api/update` route family.
+- [Phase 08]: Streaming local OTA upload validates captured `Content-Type` and `Content-Length` headers and writes chunks through `ota_service` instead of buffering firmware in RAM.
+- [Phase 08]: Explicit apply requests the MCUboot test upgrade and schedules a delayed reboot so the operator receives a response before the browser session drops.
 
 ### Pending Todos
 
@@ -168,6 +172,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T09:16:39.917Z
-Stopped at: Completed 08-01-PLAN.md
+Last session: 2026-03-10T09:51:40.813Z
+Stopped at: Completed 08-02-PLAN.md
 Resume file: None

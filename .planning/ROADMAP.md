@@ -160,4 +160,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Local Control Panel | 2/3 | In Progress | - |
 | 6. Action Engine & Relay Control | 3/3 | Complete | 2026-03-10 |
 | 7. Scheduling | 3/3 | Complete | 2026-03-10 |
-| 8. OTA Lifecycle | 1/3 | In Progress|  |
+| 8. OTA Lifecycle | 2/3 | In Progress|  |
