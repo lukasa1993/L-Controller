@@ -1,0 +1,10 @@
+/*
+ * MCUboot itself must target the boot partition and see the external flash.
+ */
+
+/ {
+	chosen {
+		zephyr,code-partition = &boot_partition;
+		nordic,pm-ext-flash = &mx25r64;
+	};
+};

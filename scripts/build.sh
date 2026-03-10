@@ -24,7 +24,16 @@ west build \
 	-b "$BOARD" \
 	-d "$BUILD_DIR" \
 	-p always \
+	--sysbuild \
 	-- \
 	-DEXTRA_CONF_FILE="$SECRETS_CONF"
 
 log "Build complete: $BUILD_DIR"
+
+for artifact in \
+	"$BUILD_DIR/merged.hex" \
+	"$BUILD_DIR/app/zephyr/zephyr.signed.bin" \
+	"$BUILD_DIR/app/zephyr/zephyr.signed.hex" \
+	"$BUILD_DIR/app/zephyr/app_update.bin"; do
+	[ -f "$artifact" ] && log "Artifact ready: $artifact"
+done

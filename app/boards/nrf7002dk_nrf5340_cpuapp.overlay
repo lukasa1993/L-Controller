@@ -1,6 +1,15 @@
 #include <zephyr/dt-bindings/gpio/gpio.h>
 
+/*
+ * Route Partition Manager to the board's MX25R64 so slot-1 can live off-chip,
+ * while preserving the board-owned relay0 binding from Phase 6.
+ */
+
 / {
+	chosen {
+		nordic,pm-ext-flash = &mx25r64;
+	};
+
 	aliases {
 		relay0 = &relay0;
 	};

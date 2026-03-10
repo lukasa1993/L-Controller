@@ -23,6 +23,10 @@ cd "$WORKSPACE_DIR"
 log "Flashing $BOARD from $BUILD_DIR"
 flash_args=(flash --build-dir "$BUILD_DIR" --runner jlink)
 
+if [ -f "$BUILD_DIR/merged.hex" ]; then
+	flash_args+=(--hex-file "$BUILD_DIR/merged.hex")
+fi
+
 if [ -n "${JLINK_SERIAL:-}" ]; then
 	flash_args+=(--dev-id "$JLINK_SERIAL")
 fi
