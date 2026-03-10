@@ -158,6 +158,7 @@ static struct panel_schedule_mutation_route_context panel_schedule_update_route_
 static struct panel_schedule_mutation_route_context panel_schedule_delete_route_ctx;
 static struct panel_schedule_mutation_route_context panel_schedule_enabled_route_ctx;
 static struct panel_update_snapshot_route_context panel_update_snapshot_route_ctx;
+static struct panel_update_action_route_context panel_update_remote_route_ctx;
 static struct panel_update_action_route_context panel_update_apply_route_ctx;
 static struct panel_update_action_route_context panel_update_clear_route_ctx;
 static struct panel_update_upload_route_context panel_update_upload_route_ctx;
@@ -242,6 +243,11 @@ static int panel_update_snapshot_handler(struct http_client_ctx *client,
 					 struct http_response_ctx *response_ctx,
 					 void *user_data);
 static int panel_update_upload_handler(struct http_client_ctx *client,
+				       enum http_data_status status,
+				       const struct http_request_ctx *request_ctx,
+				       struct http_response_ctx *response_ctx,
+				       void *user_data);
+static int panel_update_remote_handler(struct http_client_ctx *client,
 				       enum http_data_status status,
 				       const struct http_request_ctx *request_ctx,
 				       struct http_response_ctx *response_ctx,
@@ -377,6 +383,16 @@ static struct http_resource_detail_dynamic panel_update_upload_resource_detail =
 	.user_data = &panel_update_upload_route_ctx,
 };
 
+static struct http_resource_detail_dynamic panel_update_remote_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_DYNAMIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_POST),
+		.content_type = "application/json",
+	},
+	.cb = panel_update_remote_handler,
+	.user_data = &panel_update_remote_route_ctx,
+};
+
 static struct http_resource_detail_dynamic panel_update_apply_resource_detail = {
 	.common = {
 		.type = HTTP_RESOURCE_TYPE_DYNAMIC,
@@ -436,6 +452,9 @@ HTTP_RESOURCE_DEFINE(panel_update_snapshot_resource, panel_http_service, "/api/u
 HTTP_RESOURCE_DEFINE(panel_update_upload_resource, panel_http_service,
 		     "/api/update/upload",
 		     &panel_update_upload_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_update_remote_resource, panel_http_service,
+		     "/api/update/remote-check",
+		     &panel_update_remote_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_update_apply_resource, panel_http_service,
 		     "/api/update/apply",
 		     &panel_update_apply_resource_detail);
@@ -866,6 +885,21 @@ static void panel_http_format_ota_version_label(
 		 version->build_num);
 }
 
+static const char *panel_http_remote_state_text(enum ota_remote_job_state state)
+{
+	switch (state) {
+	case OTA_REMOTE_JOB_CHECKING:
+		return "checking";
+	case OTA_REMOTE_JOB_DOWNLOADING:
+		return "downloading";
+	case OTA_REMOTE_JOB_APPLYING:
+		return "applying";
+	case OTA_REMOTE_JOB_IDLE:
+	default:
+		return "idle";
+	}
+}
+
 static const char *panel_http_update_last_result_detail(
 	const struct persisted_ota_attempt *attempt)
 {
@@ -951,6 +985,8 @@ static int panel_http_render_update_snapshot_json(
 		"{"
 		"\"implemented\":%s,"
 		"\"imageConfirmed\":%s,"
+		"\"remoteBusy\":%s,"
+		"\"remoteState\":\"%s\","
 		"\"state\":\"%s\","
 		"\"applyReady\":%s,"
 		"\"currentVersion\":{"
@@ -988,6 +1024,8 @@ static int panel_http_render_update_snapshot_json(
 		"}",
 		snapshot.implemented ? "true" : "false",
 		snapshot.image_confirmed ? "true" : "false",
+		snapshot.remote_busy ? "true" : "false",
+		panel_http_remote_state_text(snapshot.remote_state),
 		persistence_ota_state_text(snapshot.state),
 		(snapshot.state == PERSISTED_OTA_STATE_STAGED &&
 		 snapshot.staged_version.available) ? "true" : "false",
@@ -2588,6 +2626,79 @@ static int panel_update_upload_handler(struct http_client_ctx *client,
 	return response_ret;
 }
 
+static int panel_update_remote_handler(struct http_client_ctx *client,
+				       enum http_data_status status,
+				       const struct http_request_ctx *request_ctx,
+				       struct http_response_ctx *response_ctx,
+				       void *user_data)
+{
+	struct panel_update_action_route_context *route_ctx = user_data;
+	bool authenticated = false;
+	int ret;
+
+	ARG_UNUSED(client);
+
+	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	    response_ctx == NULL) {
+		return -EINVAL;
+	}
+
+	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+		return 0;
+	}
+
+	ret = panel_http_require_authenticated(request_ctx,
+					 response_ctx,
+					 route_ctx->app_context,
+					 route_ctx->headers,
+					 route_ctx->set_cookie_header,
+					 sizeof(route_ctx->set_cookie_header),
+					 route_ctx->response_body,
+					 sizeof(route_ctx->response_body),
+					 &authenticated);
+	if (ret != 0 || !authenticated) {
+		return ret;
+	}
+
+	ret = ota_service_request_remote_update(&route_ctx->app_context->ota);
+	if (ret == -EALREADY) {
+		return panel_http_write_update_error_response(
+			response_ctx,
+			HTTP_409_CONFLICT,
+			route_ctx->response_body,
+			sizeof(route_ctx->response_body),
+			"remote-update-busy",
+			"A GitHub Release check is already running through the OTA service.");
+	}
+
+	if (ret == -EBUSY) {
+		return panel_http_write_update_error_response(
+			response_ctx,
+			HTTP_409_CONFLICT,
+			route_ctx->response_body,
+			sizeof(route_ctx->response_body),
+			"ota-pipeline-busy",
+			"Clear or apply the current staged image before starting Update now.");
+	}
+
+	if (ret != 0) {
+		return panel_http_write_update_error_response(
+			response_ctx,
+			HTTP_500_INTERNAL_SERVER_ERROR,
+			route_ctx->response_body,
+			sizeof(route_ctx->response_body),
+			"remote-update-start-failed",
+			"The device could not start the GitHub Release check.");
+	}
+
+	return panel_http_write_update_success_response(
+		response_ctx,
+		HTTP_202_ACCEPTED,
+		route_ctx->response_body,
+		sizeof(route_ctx->response_body),
+		"Update now accepted. The device will check GitHub Releases, stage the latest stable eligible artifact, and reboot only if a newer image is applied.");
+}
+
 static int panel_update_apply_handler(struct http_client_ctx *client,
 				      enum http_data_status status,
 				      const struct http_request_ctx *request_ctx,
@@ -2833,6 +2944,7 @@ int panel_http_server_init(struct panel_http_server *server,
 	panel_schedule_delete_route_ctx.app_context = app_context;
 	panel_schedule_enabled_route_ctx.app_context = app_context;
 	panel_update_snapshot_route_ctx.app_context = app_context;
+	panel_update_remote_route_ctx.app_context = app_context;
 	panel_update_apply_route_ctx.app_context = app_context;
 	panel_update_clear_route_ctx.app_context = app_context;
 	panel_update_upload_route_ctx.app_context = app_context;

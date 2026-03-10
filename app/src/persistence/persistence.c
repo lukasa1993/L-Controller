@@ -180,6 +180,10 @@ const char *persistence_ota_last_result_text(
 		return "rejected-downgrade";
 	case PERSISTED_OTA_LAST_RESULT_REJECTED_INVALID_IMAGE:
 		return "rejected-invalid-image";
+	case PERSISTED_OTA_LAST_RESULT_REMOTE_UP_TO_DATE:
+		return "remote-up-to-date";
+	case PERSISTED_OTA_LAST_RESULT_REMOTE_CHECK_FAILED:
+		return "remote-check-failed";
 	default:
 		return "unknown";
 	}
@@ -222,6 +226,8 @@ static bool persisted_ota_last_result_valid(
 	case PERSISTED_OTA_LAST_RESULT_REJECTED_SAME_VERSION:
 	case PERSISTED_OTA_LAST_RESULT_REJECTED_DOWNGRADE:
 	case PERSISTED_OTA_LAST_RESULT_REJECTED_INVALID_IMAGE:
+	case PERSISTED_OTA_LAST_RESULT_REMOTE_UP_TO_DATE:
+	case PERSISTED_OTA_LAST_RESULT_REMOTE_CHECK_FAILED:
 		return true;
 	default:
 		return false;
@@ -314,6 +320,7 @@ static int persisted_ota_defaults(
 	ota->schema_version = persistence_expected_layout_version(store);
 	ota->state = PERSISTED_OTA_STATE_IDLE;
 	ota->last_attempt.result = PERSISTED_OTA_LAST_RESULT_NONE;
+	ota->remote_policy.auto_update_enabled = true;
 	ota->remote_policy.check_interval_hours =
 		store->config->ota.remote_default_check_interval_hours;
 

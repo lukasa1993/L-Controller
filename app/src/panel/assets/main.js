@@ -39,6 +39,7 @@ const routes = {
 	status: '/api/status',
 	updateStatus: '/api/update',
 	updateUpload: '/api/update/upload',
+	updateNow: '/api/update/remote-check',
 	updateApply: '/api/update/apply',
 	updateClear: '/api/update/clear',
 	relayDesiredState: '/api/relay/desired-state',
@@ -308,11 +309,13 @@ function syncUpdateFileMeta() {
 
 function setUpdateCardBusy(busy, labels = {}) {
 	const uploadButton = elements.cards.update?.querySelector('[data-update-upload]');
+	const updateNowButton = elements.cards.update?.querySelector('[data-update-now]');
 	const applyButton = elements.cards.update?.querySelector('[data-update-apply]');
 	const clearButton = elements.cards.update?.querySelector('[data-update-clear]');
 
 	state.updateBusy = busy;
 	setBusy(uploadButton, busy, labels.uploadLabel || 'Stage local firmware');
+	setBusy(updateNowButton, busy, labels.updateNowLabel || 'Update now');
 	setBusy(applyButton, busy, labels.applyLabel || 'Apply staged update');
 	setBusy(clearButton, busy, labels.clearLabel || 'Clear staged image');
 }
@@ -346,6 +349,8 @@ function renderUpdateSurface(snapshot) {
 		: 'No result yet';
 	const lastResultDetail = snapshot.lastResult?.detail || 'No staged or applied firmware result is recorded yet.';
 	const stateLabel = humanizeHyphenated(snapshot.state);
+	const remoteBusy = Boolean(snapshot.remoteBusy);
+	const remoteState = humanizeHyphenated(snapshot.remoteState || 'idle');
 	const applyReady = Boolean(snapshot.applyReady);
 	const clearAvailable = snapshot.state && snapshot.state !== 'idle';
 	const rollbackDetected = Boolean(snapshot.lastResult?.rollbackDetected);
@@ -353,6 +358,7 @@ function renderUpdateSurface(snapshot) {
 		`<span class="badge ${applyReady ? 'badge--warn' : ''}">State ${escapeHtml(stateLabel)}</span>`,
 		`<span class="badge ${snapshot.imageConfirmed ? 'badge--ok' : 'badge--warn'}">Image ${snapshot.imageConfirmed ? 'Confirmed' : 'Unconfirmed'}</span>`,
 		`<span class="badge ${applyReady ? 'badge--warn' : 'badge--ok'}">Apply ${applyReady ? 'Ready' : 'Not ready'}</span>`,
+		`<span class="badge ${remoteBusy ? 'badge--warn' : ''}">Remote ${escapeHtml(remoteState)}</span>`,
 		rollbackDetected ? '<span class="badge badge--warn">Rollback flagged</span>' : '',
 	].filter(Boolean).join('');
 
@@ -404,6 +410,15 @@ function renderUpdateSurface(snapshot) {
 						<button class="button" type="button" data-update-upload ${state.updateBusy || snapshot.state === 'apply-requested' ? 'disabled' : ''}>Stage local firmware</button>
 					</div>
 					<div class="update-file-meta" data-update-file-meta>Choose a signed firmware image from this computer. Same-version and downgrade uploads are rejected.</div>
+				</div>
+				<div class="update-panel">
+					<p class="card-eyebrow">GitHub Releases</p>
+					<h3>Remote update now</h3>
+					<p class="update-note">The device checks the latest stable release from <code>${escapeHtml(snapshot.remotePolicy?.githubOwner || 'lukasa1993')}/${escapeHtml(snapshot.remotePolicy?.githubRepo || 'L-Controller')}</code>, downloads the expected artifact through the same OTA pipeline, and only reboots if a newer image is applied.</p>
+					<div class="button-row">
+						<button class="button" type="button" data-update-now ${state.updateBusy || remoteBusy || snapshot.state !== 'idle' ? 'disabled' : ''}>${remoteBusy ? 'Checking GitHub release…' : 'Update now'}</button>
+					</div>
+					<div class="update-note">Automatic remote checks stay enabled every ${escapeHtml(String(snapshot.remotePolicy?.checkIntervalHours || 24))} hour(s) and retry on future cycles after failure.</div>
 				</div>
 				<div class="update-panel">
 					<p class="card-eyebrow">Apply or clear</p>
@@ -1074,6 +1089,44 @@ async function handleUpdateUpload() {
 	}
 }
 
+async function handleUpdateNow() {
+	if (state.updateBusy) {
+		return;
+	}
+
+	setUpdateCardBusy(true, {
+		uploadLabel: 'Stage local firmware',
+		updateNowLabel: 'Checking GitHub release…',
+		applyLabel: 'Apply staged update',
+		clearLabel: 'Clear staged image',
+	});
+	setAlert('Checking GitHub Releases for the latest stable update…', 'info');
+
+	try {
+		const { response, data } = await requestJson(routes.updateNow, { method: 'POST' });
+
+		if (response.status === 401) {
+			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			return;
+		}
+
+		if (!response.ok || !data?.accepted) {
+			throw new Error(data?.detail || `Update now failed (${response.status})`);
+		}
+
+		setUpdateFeedback(data.detail || 'GitHub update check started.', 'info');
+		setAlert(data.detail || 'GitHub update check started.', 'info');
+		await refreshDashboard({ silent: true });
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Update now failed.';
+		setUpdateFeedback(message, 'error');
+		setAlert(message, 'error');
+	} finally {
+		setUpdateCardBusy(false);
+		renderUpdateSurface(state.updateSnapshot);
+	}
+}
+
 async function handleUpdateClear() {
 	if (!state.updateSnapshot || state.updateBusy) {
 		return;
@@ -1315,6 +1368,11 @@ async function handleSchedulerCardSubmit(event) {
 async function handleUpdateCardClick(event) {
 	if (event.target.closest('[data-update-upload]')) {
 		await handleUpdateUpload();
+		return;
+	}
+
+	if (event.target.closest('[data-update-now]')) {
+		await handleUpdateNow();
 		return;
 	}
 
