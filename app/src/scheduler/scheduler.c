@@ -21,10 +21,31 @@ LOG_MODULE_REGISTER(scheduler, CONFIG_LOG_DEFAULT_LEVEL);
 static const char scheduler_public_relay_on_action_key[] = "relay-on";
 static const char scheduler_public_relay_off_action_key[] = "relay-off";
 
+struct scheduler_due_entry {
+	char schedule_id[PERSISTED_SCHEDULE_ID_MAX_LEN];
+	char action_id[PERSISTED_ACTION_ID_MAX_LEN];
+};
+
 static void scheduler_record_problem_locked(
 	struct scheduler_service *service,
 	enum scheduler_problem_code code,
-	int64_t normalized_utc_minute);
+	int64_t normalized_utc_minute,
+	int error_code,
+	const char *schedule_id,
+	const char *action_id);
+
+static int scheduler_runtime_entry_next_utc_minute(
+	const struct scheduler_runtime_entry *entry,
+	int64_t after_utc_minute,
+	int64_t *next_utc_minute);
+
+static void scheduler_set_last_result_locked(
+	struct scheduler_service *service,
+	enum scheduler_last_result_code code,
+	int error_code,
+	int64_t normalized_utc_minute,
+	const char *schedule_id,
+	const char *action_id);
 
 static void scheduler_refresh_automation_locked(struct scheduler_service *service);
 static void scheduler_refresh_next_run_locked(struct scheduler_service *service);
@@ -264,6 +285,109 @@ static void scheduler_service_advance_baseline_locked(
 	scheduler_refresh_next_run_locked(service);
 }
 
+static uint32_t scheduler_collect_due_entries_locked(
+	struct scheduler_service *service,
+	int64_t normalized_utc_minute,
+	struct scheduler_due_entry due_entries[PERSISTED_SCHEDULE_MAX_COUNT])
+{
+	uint32_t due_count = 0U;
+	uint32_t index;
+
+	if (service == NULL || due_entries == NULL || !service->baseline_valid) {
+		return 0U;
+	}
+
+	for (index = 0U; index < service->compiled_count; ++index) {
+		int64_t due_utc_minute;
+		int ret;
+
+		if (!service->entries[index].in_use || !service->entries[index].enabled) {
+			continue;
+		}
+
+		ret = scheduler_runtime_entry_next_utc_minute(
+			&service->entries[index],
+			service->baseline_utc_minute,
+			&due_utc_minute);
+		if (ret != 0 || due_utc_minute != normalized_utc_minute) {
+			continue;
+		}
+
+		memcpy(due_entries[due_count].schedule_id,
+		       service->entries[index].schedule_id,
+		       sizeof(due_entries[due_count].schedule_id));
+		memcpy(due_entries[due_count].action_id,
+		       service->entries[index].action_id,
+		       sizeof(due_entries[due_count].action_id));
+		due_count++;
+	}
+
+	return due_count;
+}
+
+static void scheduler_execute_due_minute(
+	struct scheduler_service *service,
+	int64_t normalized_utc_minute)
+{
+	struct scheduler_due_entry due_entries[PERSISTED_SCHEDULE_MAX_COUNT];
+	uint32_t due_count;
+	uint32_t index;
+
+	if (service == NULL || service->app_context == NULL) {
+		return;
+	}
+
+	memset(due_entries, 0, sizeof(due_entries));
+
+	k_mutex_lock(&service->lock, K_FOREVER);
+	due_count = scheduler_collect_due_entries_locked(service, normalized_utc_minute, due_entries);
+	k_mutex_unlock(&service->lock);
+
+	for (index = 0U; index < due_count; ++index) {
+		struct action_dispatch_result dispatch_result;
+		int ret;
+
+		ret = action_dispatcher_execute(&service->app_context->actions,
+					       due_entries[index].action_id,
+					       ACTION_DISPATCH_SOURCE_SCHEDULER,
+					       &dispatch_result);
+
+		k_mutex_lock(&service->lock, K_FOREVER);
+		if (ret == 0 && dispatch_result.accepted) {
+			scheduler_set_last_result_locked(
+				service,
+				SCHEDULER_LAST_RESULT_EXECUTED,
+				0,
+				normalized_utc_minute,
+				due_entries[index].schedule_id,
+				due_entries[index].action_id);
+		} else {
+			const int error_code = ret != 0 ? ret :
+				(dispatch_result.error_code != 0 ? dispatch_result.error_code : -EIO);
+
+			scheduler_set_last_result_locked(
+				service,
+				SCHEDULER_LAST_RESULT_FAILED,
+				error_code,
+				normalized_utc_minute,
+				due_entries[index].schedule_id,
+				due_entries[index].action_id);
+			scheduler_record_problem_locked(
+				service,
+				SCHEDULER_PROBLEM_ACTION_DISPATCH_FAILED,
+				normalized_utc_minute,
+				error_code,
+				due_entries[index].schedule_id,
+				due_entries[index].action_id);
+		}
+		k_mutex_unlock(&service->lock);
+	}
+
+	k_mutex_lock(&service->lock, K_FOREVER);
+	scheduler_service_advance_baseline_locked(service, normalized_utc_minute);
+	k_mutex_unlock(&service->lock);
+}
+
 static void scheduler_service_runtime_work_handler(struct k_work *work)
 {
 	struct k_work_delayable *delayable = CONTAINER_OF(work, struct k_work_delayable, work);
@@ -290,13 +414,16 @@ static void scheduler_service_runtime_work_handler(struct k_work *work)
 		ret = scheduler_service_sync_clock(service, &utc_epoch_seconds);
 		if (ret == 0) {
 			(void)scheduler_service_acquire_trusted_time(service, utc_epoch_seconds);
-		} else {
-			k_mutex_lock(&service->lock, K_FOREVER);
-			scheduler_record_problem_locked(service,
+			} else {
+				k_mutex_lock(&service->lock, K_FOREVER);
+				scheduler_record_problem_locked(service,
 					       SCHEDULER_PROBLEM_TRUSTED_CLOCK_UNAVAILABLE,
-					       -1);
-			k_mutex_unlock(&service->lock);
-		}
+					       -1,
+					       ret,
+					       NULL,
+					       NULL);
+				k_mutex_unlock(&service->lock);
+			}
 
 		scheduler_service_schedule_runtime_work(service);
 		return;
@@ -310,7 +437,10 @@ static void scheduler_service_runtime_work_handler(struct k_work *work)
 		k_mutex_lock(&service->lock, K_FOREVER);
 		scheduler_record_problem_locked(service,
 				       SCHEDULER_PROBLEM_TRUSTED_CLOCK_UNAVAILABLE,
-				       -1);
+				       -1,
+				       ret,
+				       NULL,
+				       NULL);
 		k_mutex_unlock(&service->lock);
 		scheduler_service_schedule_runtime_work(service);
 		return;
@@ -330,9 +460,7 @@ static void scheduler_service_runtime_work_handler(struct k_work *work)
 	}
 
 	if (normalized_utc_minute == baseline_utc_minute + 1LL) {
-		k_mutex_lock(&service->lock, K_FOREVER);
-		scheduler_service_advance_baseline_locked(service, normalized_utc_minute);
-		k_mutex_unlock(&service->lock);
+		scheduler_execute_due_minute(service, normalized_utc_minute);
 	}
 
 	scheduler_service_schedule_runtime_work(service);
@@ -365,10 +493,45 @@ static void scheduler_clear_last_result(struct scheduler_runtime_status *status)
 	status->last_result.normalized_utc_minute = -1;
 }
 
+static void scheduler_set_last_result_locked(
+	struct scheduler_service *service,
+	enum scheduler_last_result_code code,
+	int error_code,
+	int64_t normalized_utc_minute,
+	const char *schedule_id,
+	const char *action_id)
+{
+	if (service == NULL) {
+		return;
+	}
+
+	service->status.last_result.available = true;
+	service->status.last_result.code = code;
+	service->status.last_result.error_code = error_code;
+	service->status.last_result.normalized_utc_minute = normalized_utc_minute;
+	service->status.last_result.schedule_id[0] = '\0';
+	service->status.last_result.action_id[0] = '\0';
+
+	if (schedule_id != NULL) {
+		strncpy(service->status.last_result.schedule_id,
+			schedule_id,
+			sizeof(service->status.last_result.schedule_id) - 1U);
+	}
+
+	if (action_id != NULL) {
+		strncpy(service->status.last_result.action_id,
+			action_id,
+			sizeof(service->status.last_result.action_id) - 1U);
+	}
+}
+
 static void scheduler_record_problem_locked(
 	struct scheduler_service *service,
 	enum scheduler_problem_code code,
-	int64_t normalized_utc_minute)
+	int64_t normalized_utc_minute,
+	int error_code,
+	const char *schedule_id,
+	const char *action_id)
 {
 	struct scheduler_problem_record *problem;
 
@@ -381,7 +544,16 @@ static void scheduler_record_problem_locked(
 	memset(problem, 0, sizeof(*problem));
 	problem->recorded = true;
 	problem->code = code;
+	problem->error_code = error_code;
 	problem->normalized_utc_minute = normalized_utc_minute;
+
+	if (schedule_id != NULL) {
+		strncpy(problem->schedule_id, schedule_id, sizeof(problem->schedule_id) - 1U);
+	}
+
+	if (action_id != NULL) {
+		strncpy(problem->action_id, action_id, sizeof(problem->action_id) - 1U);
+	}
 
 	service->problem_head =
 		(service->problem_head + 1U) % ARRAY_SIZE(service->problems);
@@ -1044,19 +1216,24 @@ static void scheduler_apply_future_only_baseline_locked(
 	service->baseline_utc_minute = normalized_utc_minute;
 	service->status.clock_state = SCHEDULER_CLOCK_TRUST_STATE_TRUSTED;
 	service->status.degraded_reason = SCHEDULER_DEGRADED_REASON_NONE;
-	service->status.last_result.available = true;
-	service->status.last_result.code =
-		SCHEDULER_LAST_RESULT_SKIPPED_BASELINE_RESET;
-	service->status.last_result.error_code = 0;
-	service->status.last_result.normalized_utc_minute = normalized_utc_minute;
-	service->status.last_result.schedule_id[0] = '\0';
-	service->status.last_result.action_id[0] = '\0';
+	scheduler_set_last_result_locked(service,
+		SCHEDULER_LAST_RESULT_SKIPPED_BASELINE_RESET,
+		0,
+		normalized_utc_minute,
+		NULL,
+		NULL);
 	if (problem_code != SCHEDULER_PROBLEM_NONE) {
 		scheduler_record_problem_locked(service, problem_code,
-					       normalized_utc_minute);
+					       normalized_utc_minute,
+					       0,
+					       NULL,
+					       NULL);
 		scheduler_record_problem_locked(service,
 					       SCHEDULER_PROBLEM_FUTURE_ONLY_BASELINE_APPLIED,
-					       normalized_utc_minute);
+					       normalized_utc_minute,
+					       0,
+					       NULL,
+					       NULL);
 	}
 
 	scheduler_refresh_automation_locked(service);
@@ -1218,12 +1395,12 @@ int scheduler_service_mark_clock_untrusted(
 				SCHEDULER_DEGRADED_REASON_WAITING_FOR_TRUSTED_CLOCK : reason;
 	scheduler_clear_next_run(&service->status);
 	service->status.automation_active = false;
-	service->status.last_result.available = true;
-	service->status.last_result.code = SCHEDULER_LAST_RESULT_SKIPPED_UNTRUSTED_CLOCK;
-	service->status.last_result.error_code = 0;
-	service->status.last_result.normalized_utc_minute = -1;
-	service->status.last_result.schedule_id[0] = '\0';
-	service->status.last_result.action_id[0] = '\0';
+	scheduler_set_last_result_locked(service,
+		SCHEDULER_LAST_RESULT_SKIPPED_UNTRUSTED_CLOCK,
+		0,
+		-1,
+		NULL,
+		NULL);
 	k_mutex_unlock(&service->lock);
 
 	return 0;

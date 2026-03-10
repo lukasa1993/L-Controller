@@ -241,7 +241,7 @@ const char *action_dispatcher_builtin_relay_action_id(bool desired_state)
 }
 
 int action_dispatcher_init(struct action_dispatcher *dispatcher,
-			   struct app_context *app_context)
+				   struct app_context *app_context)
 {
 	int ret;
 
@@ -252,6 +252,7 @@ int action_dispatcher_init(struct action_dispatcher *dispatcher,
 	*dispatcher = (struct action_dispatcher){
 		.app_context = app_context,
 	};
+	k_mutex_init(&dispatcher->lock);
 
 	ret = action_dispatcher_ensure_builtin_actions(dispatcher);
 	if (ret != 0) {
@@ -272,6 +273,7 @@ int action_dispatcher_execute(struct action_dispatcher *dispatcher,
 	const struct persisted_action *action;
 	struct persisted_relay_save_request save_request;
 	struct relay_runtime_status previous_status;
+	bool release_lock = false;
 	int ret;
 
 	action_dispatch_result_reset(result, action_id, source);
@@ -294,13 +296,17 @@ int action_dispatcher_execute(struct action_dispatcher *dispatcher,
 		return -EINVAL;
 	}
 
+	k_mutex_lock(&dispatcher->lock, K_FOREVER);
+	release_lock = true;
+
 	action = action_dispatcher_find_action(dispatcher, action_id);
 	if (action == NULL) {
 		action_dispatch_result_fail(result,
 					ACTION_DISPATCH_RESULT_NOT_FOUND,
 					0,
 					"Action ID was not found");
-		return 0;
+		ret = 0;
+		goto out;
 	}
 
 	if (!action->enabled) {
@@ -308,7 +314,8 @@ int action_dispatcher_execute(struct action_dispatcher *dispatcher,
 					ACTION_DISPATCH_RESULT_DISABLED,
 					0,
 					"Action is disabled");
-		return 0;
+		ret = 0;
+		goto out;
 	}
 
 	status = relay_service_get_status(&dispatcher->app_context->relay);
@@ -317,7 +324,26 @@ int action_dispatcher_execute(struct action_dispatcher *dispatcher,
 					ACTION_DISPATCH_RESULT_UNAVAILABLE,
 					0,
 					"Relay runtime is unavailable");
-		return 0;
+		ret = 0;
+		goto out;
+	}
+
+	if (status->actual_state == action->relay_on &&
+	    status->desired_state == action->relay_on &&
+	    status->safety_note == NULL) {
+		if (result != NULL) {
+			result->code = ACTION_DISPATCH_RESULT_OK;
+			result->error_code = 0;
+			result->accepted = true;
+			result->detail = "no-op";
+		}
+
+		LOG_INF("Skipped action id=%s source=%s result=no-op desired=%s",
+			action_id,
+			action_dispatch_source_text(source),
+			action->relay_on ? "on" : "off");
+		ret = 0;
+		goto out;
 	}
 
 	previous_status = *status;
@@ -330,7 +356,7 @@ int action_dispatcher_execute(struct action_dispatcher *dispatcher,
 					ACTION_DISPATCH_RESULT_FAILED,
 					ret,
 					"Relay actuation failed");
-		return ret;
+		goto out;
 	}
 
 	save_request = (struct persisted_relay_save_request){
@@ -343,25 +369,25 @@ int action_dispatcher_execute(struct action_dispatcher *dispatcher,
 					   &save_request);
 	if (ret != 0) {
 		int rollback_ret = relay_service_restore_status(&dispatcher->app_context->relay,
-							       &previous_status);
+						       &previous_status);
 
 		LOG_ERR("Failed to persist desired relay state for %s: %d", action_id, ret);
 		if (rollback_ret != 0) {
 			LOG_ERR("Failed to roll back relay runtime after persistence error: %d",
 				rollback_ret);
-			action_dispatch_result_fail(result,
+				action_dispatch_result_fail(result,
 						ACTION_DISPATCH_RESULT_FAILED,
 						ret,
 						"Desired-state persistence failed and relay rollback failed");
-			return ret;
-		}
+				goto out;
+			}
 
-		action_dispatch_result_fail(result,
+			action_dispatch_result_fail(result,
 					ACTION_DISPATCH_RESULT_FAILED,
 					ret,
 					"Desired-state persistence failed");
-		return ret;
-	}
+			goto out;
+		}
 
 	if (result != NULL) {
 		result->code = ACTION_DISPATCH_RESULT_OK;
@@ -374,5 +400,12 @@ int action_dispatcher_execute(struct action_dispatcher *dispatcher,
 		action_id,
 		action_dispatch_source_text(source),
 		action_dispatch_result_text(ACTION_DISPATCH_RESULT_OK));
-	return 0;
+	ret = 0;
+
+out:
+	if (release_lock) {
+		k_mutex_unlock(&dispatcher->lock);
+	}
+
+	return ret;
 }

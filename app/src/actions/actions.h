@@ -2,6 +2,8 @@
 
 #include <stdbool.h>
 
+#include <zephyr/kernel.h>
+
 #include "persistence/persistence_types.h"
 
 struct app_context;
@@ -33,6 +35,7 @@ struct action_dispatch_result {
 
 struct action_dispatcher {
 	struct app_context *app_context;
+	struct k_mutex lock;
 };
 
 const char *action_dispatch_source_text(enum action_dispatch_source source);
