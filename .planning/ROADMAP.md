@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Recovery & Watchdog** - Add conservative fault supervision and reset escalation for true stuck states
 - [x] **Phase 4: Persistent Configuration** - Establish durable, validated storage for auth, actions, relay state rules, and schedules (completed 2026-03-09)
 - [ ] **Phase 5: Local Control Panel** - Ship the authenticated local HTTP panel with authored HTML/JS assets and operator status views
-- [ ] **Phase 6: Action Engine & Relay Control** - Implement the generic action path and the first real relay on/off behavior
+- [x] **Phase 6: Action Engine & Relay Control** - Implement the generic action path and the first real relay on/off behavior (completed 2026-03-10)
 - [ ] **Phase 7: Scheduling** - Add cron-style local scheduling for relay actions with deterministic reboot/time behavior
 - [ ] **Phase 8: OTA Lifecycle** - Deliver bootloader-backed local upload and remote-pull firmware updates with rollback discipline
 
@@ -158,6 +158,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Recovery & Watchdog | 2/2 | Complete | 2026-03-09 |
 | 4. Persistent Configuration | 3/3 | Complete   | 2026-03-09 |
 | 5. Local Control Panel | 2/3 | In Progress | - |
-| 6. Action Engine & Relay Control | 3/3 | Ready for verification | 2026-03-10 |
+| 6. Action Engine & Relay Control | 3/3 | Complete | 2026-03-10 |
 | 7. Scheduling | 0/3 | Not started | - |
 | 8. OTA Lifecycle | 0/3 | Not started | - |
