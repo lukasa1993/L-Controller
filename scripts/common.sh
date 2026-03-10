@@ -158,6 +158,65 @@ print_phase6_device_checklist() {
 		'Record which relay on, relay off, curl parity, degraded-local control, normal reboot policy, recovery-forced off, mismatch visibility, and pending or blocked feedback scenarios passed or failed.'
 }
 
+print_phase7_ready_state_markers() {
+	print_phase6_ready_state_markers
+	printf '%s\n' \
+		'Scheduler runtime ready schedules=... enabled=... automation=... clock=... degraded=... UTC cadence=... timeout=...ms' \
+		'Scheduler recent problems=... clock=... degraded=...'
+}
+
+print_phase7_curl_commands() {
+	printf '%s\n' \
+		"curl -i http://<device-ip>/api/status" \
+		"curl -i -c cookie.txt -H 'Content-Type: application/json' -d '{\"username\":\"...\",\"password\":\"...\"}' http://<device-ip>/api/auth/login" \
+		"curl -i -b cookie.txt http://<device-ip>/api/schedules" \
+		"curl -i -b cookie.txt -H 'Content-Type: application/json' -d '{\"scheduleId\":\"weekday-open\",\"cronExpression\":\"*/15 6-18 * * 1-5\",\"actionKey\":\"relay-on\",\"enabled\":true}' http://<device-ip>/api/schedules/create" \
+		"curl -i -b cookie.txt http://<device-ip>/api/schedules" \
+		"curl -i -b cookie.txt -H 'Content-Type: application/json' -d '{\"scheduleId\":\"weekday-open\",\"cronExpression\":\"0 7 * * 1-5\",\"actionKey\":\"relay-on\",\"enabled\":true}' http://<device-ip>/api/schedules/update" \
+		"curl -i -b cookie.txt -H 'Content-Type: application/json' -d '{\"scheduleId\":\"weekday-open\",\"enabled\":false}' http://<device-ip>/api/schedules/set-enabled" \
+		"curl -i -b cookie.txt -H 'Content-Type: application/json' -d '{\"scheduleId\":\"weekday-open\",\"enabled\":true}' http://<device-ip>/api/schedules/set-enabled" \
+		"curl -i -b cookie.txt -H 'Content-Type: application/json' -d '{\"scheduleId\":\"weekday-open\"}' http://<device-ip>/api/schedules/delete"
+}
+
+print_phase7_scenario_labels() {
+	printf '%s\n' \
+		'untrusted scheduler gating' \
+		'initial sync reset then degrade' \
+		'schedule create' \
+		'schedule edit' \
+		'schedule enable' \
+		'schedule disable' \
+		'schedule delete' \
+		'manual versus scheduled interaction' \
+		'scheduled execution parity' \
+		'reboot persistence with list re-check' \
+		'missed job skip after trust restore' \
+		'time correction future-only recompute' \
+		'conflict rejection' \
+		'recent problem visibility'
+}
+
+print_phase7_device_checklist() {
+	printf '%s\n' \
+		'Re-run ./scripts/validate.sh first so the canonical automated build path is green.' \
+		'Flash the latest firmware with ./scripts/flash.sh.' \
+		'Open the device console with ./scripts/console.sh, determine the device IP from the boot log, and confirm the ready-state, relay, and scheduler markers appear.' \
+		'Before trusted time is available, confirm the scheduler reports untrusted or syncing state while manual relay control still remains available.' \
+		'Deliberately exercise one failed initial trusted-time acquisition path and confirm the device performs one recovery reset, then comes back with scheduling inactive and visibly degraded instead of reboot-looping.' \
+		'Log in through the panel or curl and confirm GET /api/schedules returns action choices, runtime summary, recent problems, and the current schedule list without exposing raw internal action IDs.' \
+		'Create a near-future schedule and confirm the next run appears immediately in the panel or GET /api/schedules output.' \
+		'Edit that schedule, then disable and re-enable it, and confirm each mutation is reflected in the list and next-run display.' \
+		'Delete one schedule and confirm it disappears cleanly without disturbing unrelated schedules.' \
+		'Create a near-future relay schedule, issue a manual relay command before the due minute, and confirm the next scheduled run still executes normally.' \
+		'Wait for the due minute and confirm the physical relay, GET /api/status, and scheduler last-result or next-run fields all agree that execution came from the scheduler path.' \
+		'Reboot the device before one scheduled minute passes, then reopen the scheduler view or GET /api/schedules and confirm edited, disabled, enabled, and deleted schedule state is still correct.' \
+		'Restore trusted time after that reboot and confirm the missed run is skipped rather than replayed automatically.' \
+		'Force or simulate a major clock correction and confirm the scheduler recomputes only future runs without backfilling earlier missed minutes.' \
+		'Attempt to save two enabled schedules that command opposite relay states in the same minute and confirm the save is rejected with operator-visible feedback.' \
+		'Confirm recent scheduler problems remain visible after rejected saves, untrusted time, or degraded-time scenarios.' \
+		'Record which scheduler gating, reset-then-degrade, create, edit, enable, disable, delete, manual-versus-scheduled, scheduled execution, reboot persistence, missed-job skip, time-correction recompute, conflict rejection, and recent-problem visibility scenarios passed or failed.'
+}
+
 maybe_add_jlink_to_path() {
 	local candidate
 	for candidate in \
