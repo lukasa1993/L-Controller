@@ -18,6 +18,10 @@ Run the repo-owned validation entrypoint during normal development:
 - Stays safe for frequent refactor loops because it does **not** require hardware interaction by default.
 - Supports `./scripts/validate.sh --preflight` when you want `./scripts/doctor.sh` to check host tools and connected hardware first.
 
+### Ad hoc next-version OTA builds come from `app/VERSION`
+
+The repo now derives the default MCUboot signing version from [app/VERSION](/Users/l/_DEV/LNH-Nordic/app/VERSION). For repeated local OTA tests from nearly identical code, increment `VERSION_TWEAK` before rebuilding so the generated `zephyr.signed.bin` stays strictly newer than the image already running on the device.
+
 ### Admin credentials still come from the local secrets overlay
 
 Phase 8 OTA still depends on the Phase 5 local auth flow. Copy the example secrets file before building:
