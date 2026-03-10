@@ -37,6 +37,7 @@ struct action_dispatcher {
 
 const char *action_dispatch_source_text(enum action_dispatch_source source);
 const char *action_dispatch_result_text(enum action_dispatch_result_code code);
+const char *action_dispatcher_builtin_relay_action_id(bool desired_state);
 
 int action_dispatcher_init(struct action_dispatcher *dispatcher,
 				   struct app_context *app_context);
