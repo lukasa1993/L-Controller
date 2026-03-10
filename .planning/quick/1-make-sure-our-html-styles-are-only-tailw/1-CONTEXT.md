@@ -6,7 +6,7 @@
 <domain>
 ## Task Boundary
 
-Replace the panel's old Tailwind CDN import and handwritten stylesheet with the Tailwind v4 browser runtime requested by the user, and ensure the JavaScript embedded into firmware is Bun-minified before Zephyr gzips it into the generated include.
+Replace the panel's old Tailwind CDN import and handwritten stylesheet with the Tailwind v4 browser runtime requested by the user, remove the custom stylesheet layer entirely, and ensure the JavaScript embedded into firmware is Bun-minified before Zephyr gzips it into the generated include.
 
 </domain>
 
@@ -17,7 +17,8 @@ Replace the panel's old Tailwind CDN import and handwritten stylesheet with the 
 - Lock the panel shell to `<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>`.
 
 ### Styling source
-- Remove the plain `<style>` block and keep panel styling in a `type="text/tailwindcss"` block so the semantic classes rendered by `main.js` remain stable.
+- Remove the stylesheet layer entirely and express panel styling through Tailwind utility classes in `index.html` and `main.js`.
+- Add one hidden utility safelist element in `index.html` for Tailwind tokens that only appear inside JS-rendered template strings.
 
 ### Firmware asset pipeline
 - Minify `app/src/panel/assets/main.js` with `bun build --target=browser --format=iife --minify` before `generate_inc_file_for_target(... --gzip)` embeds the asset.
