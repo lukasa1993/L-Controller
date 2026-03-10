@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Wi-Fi Supervision** - Introduce a dedicated network supervisor with robust reconnect and visibility into connectivity state
 - [x] **Phase 3: Recovery & Watchdog** - Add conservative fault supervision and reset escalation for true stuck states
 - [x] **Phase 4: Persistent Configuration** - Establish durable, validated storage for auth, actions, relay state rules, and schedules (completed 2026-03-09)
-- [ ] **Phase 5: Local Control Panel** - Ship the authenticated local HTTP panel with authored HTML/JS assets and operator status views
+- [x] **Phase 5: Local Control Panel** - Ship the authenticated local HTTP panel with authored HTML/JS assets and operator status views (completed 2026-03-10)
 - [x] **Phase 6: Action Engine & Relay Control** - Implement the generic action path and the first real relay on/off behavior (completed 2026-03-10)
 - [x] **Phase 7: Scheduling** - Add cron-style local scheduling for relay actions with deterministic reboot/time behavior (completed 2026-03-10)
 - [x] **Phase 8: OTA Lifecycle** - Deliver bootloader-backed local upload and remote-pull firmware updates with rollback discipline (completed 2026-03-10)
@@ -97,7 +97,7 @@ Plans:
 Plans:
 - [x] 05-01: Build the HTTP service shell and static asset delivery pipeline
 - [x] 05-02: Implement single-user auth, sessions, and protected API routing
-- [ ] 05-03: Ship the initial operator dashboard and status views
+- [x] 05-03: Ship the initial operator dashboard and status views *(approved browser/curl/device verification recorded on 2026-03-10)*
 
 ### Phase 6: Action Engine & Relay Control
 **Goal**: Establish the generic action execution path and ship the first safe relay on/off operation.
@@ -157,7 +157,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 2. Wi-Fi Supervision | 3/3 | Complete | 2026-03-08 |
 | 3. Recovery & Watchdog | 2/2 | Complete | 2026-03-09 |
 | 4. Persistent Configuration | 3/3 | Complete   | 2026-03-09 |
-| 5. Local Control Panel | 2/3 | In Progress | - |
+| 5. Local Control Panel | 3/3 | Complete | 2026-03-10 |
 | 6. Action Engine & Relay Control | 3/3 | Complete | 2026-03-10 |
 | 7. Scheduling | 3/3 | Complete | 2026-03-10 |
 | 8. OTA Lifecycle | 3/3 | Complete | 2026-03-10 |

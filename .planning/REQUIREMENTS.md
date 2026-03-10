@@ -23,12 +23,12 @@ Requirements for the initial release. Each maps to roadmap phases.
 
 ### Authentication & Panel
 
-- [ ] **AUTH-01**: Operator can log in with a single local username/password
-- [ ] **AUTH-02**: Unauthenticated users cannot access control, configuration, scheduling, or update endpoints
-- [ ] **AUTH-03**: Authenticated operator can log out and browser session state behaves predictably across page navigation
+- [x] **AUTH-01**: Operator can log in with a single local username/password
+- [x] **AUTH-02**: Unauthenticated users cannot access control, configuration, scheduling, or update endpoints
+- [x] **AUTH-03**: Authenticated operator can log out and browser session state behaves predictably across page navigation
 - [x] **PANEL-01**: Device serves a local HTTP admin panel composed of authored HTML and JavaScript assets
 - [x] **PANEL-02**: Panel uses Tailwind Play CDN styling without generating UI markup in C
-- [ ] **PANEL-03**: Panel shows current device, Wi-Fi, relay, scheduler, and update status
+- [x] **PANEL-03**: Panel shows current device, Wi-Fi, relay, scheduler, and update status
 
 ### Configuration & Persistence
 
@@ -109,12 +109,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CFG-02 | Phase 4 | Complete |
 | CFG-03 | Phase 4 | Complete |
 | CFG-04 | Phase 4 | Complete |
-| AUTH-01 | Phase 5 | Pending |
-| AUTH-02 | Phase 5 | Pending |
-| AUTH-03 | Phase 5 | Pending |
+| AUTH-01 | Phase 5 | Complete |
+| AUTH-02 | Phase 5 | Complete |
+| AUTH-03 | Phase 5 | Complete |
 | PANEL-01 | Phase 5 | Complete |
 | PANEL-02 | Phase 5 | Complete |
-| PANEL-03 | Phase 5 | Pending |
+| PANEL-03 | Phase 5 | Complete |
 | ACT-01 | Phase 6 | Complete |
 | ACT-02 | Phase 6 | Complete |
 | RELAY-01 | Phase 6 | Complete |
@@ -136,4 +136,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-08*
-*Last updated: 2026-03-08 after roadmap creation*
+*Last updated: 2026-03-10 after Phase 5 backfill completion*
