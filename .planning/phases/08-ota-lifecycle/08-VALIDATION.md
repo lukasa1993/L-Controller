@@ -1,7 +1,7 @@
 ---
 phase: 8
 slug: ota-lifecycle
-status: draft
+status: approved
 nyquist_compliant: true
 wave_0_complete: true
 created: 2026-03-10
@@ -86,4 +86,4 @@ created: 2026-03-10
 - [x] Feedback latency < 90s
 - [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved on 2026-03-10
