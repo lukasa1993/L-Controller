@@ -191,6 +191,24 @@ static int ota_service_update_state_locked(struct ota_service *service,
 	return ota_service_save_persisted_locked(service, &persisted);
 }
 
+static int ota_service_record_stage_failure_locked(
+	struct ota_service *service,
+	int error_code,
+	uint32_t bytes_written,
+	const struct persisted_ota_version *version)
+{
+	struct persisted_ota_attempt attempt =
+		ota_make_attempt(PERSISTED_OTA_LAST_RESULT_STAGE_FAILED,
+				 error_code != 0 ? error_code : -ECANCELED,
+				 bytes_written,
+				 version);
+
+	return ota_service_update_state_locked(service,
+					      PERSISTED_OTA_STATE_IDLE,
+					      NULL,
+					      &attempt);
+}
+
 int ota_service_init(struct ota_service *service, struct app_context *app_context)
 {
 	if (service == NULL || app_context == NULL) {
@@ -278,6 +296,31 @@ int ota_service_write_chunk(struct ota_service *service,
 	return ret;
 }
 
+int ota_service_abort_staging(struct ota_service *service, int error_code)
+{
+	uint32_t bytes_written;
+	int ret;
+
+	if (service == NULL) {
+		return -EINVAL;
+	}
+
+	k_mutex_lock(&service->lock, K_FOREVER);
+	if (!service->stage_open) {
+		k_mutex_unlock(&service->lock);
+		return -EALREADY;
+	}
+
+	bytes_written = flash_img_bytes_written(&service->stage_context);
+	ota_service_close_stage_context(service);
+	ret = ota_service_record_stage_failure_locked(service,
+						      error_code,
+						      bytes_written,
+						      NULL);
+	k_mutex_unlock(&service->lock);
+	return ret;
+}
+
 int ota_service_finish_staging(struct ota_service *service)
 {
 	struct persisted_ota_version staged_version;
@@ -299,14 +342,12 @@ int ota_service_finish_staging(struct ota_service *service)
 
 	bytes_written = flash_img_bytes_written(&service->stage_context);
 	ret = flash_img_buffered_write(&service->stage_context, NULL, 0U, true);
-	service->stage_open = false;
+	ota_service_close_stage_context(service);
 	if (ret != 0) {
-		attempt = ota_make_attempt(PERSISTED_OTA_LAST_RESULT_STAGE_FAILED,
-					 ret,
-					 bytes_written,
-					 NULL);
-		(void)ota_service_update_state_locked(service, PERSISTED_OTA_STATE_IDLE,
-						      NULL, &attempt);
+		(void)ota_service_record_stage_failure_locked(service,
+							      ret,
+							      bytes_written,
+							      NULL);
 		k_mutex_unlock(&service->lock);
 		return ret;
 	}
@@ -366,6 +407,37 @@ int ota_service_finish_staging(struct ota_service *service)
 						     &attempt);
 	k_mutex_unlock(&service->lock);
 	return update_ret;
+}
+
+int ota_service_clear_staged_image(struct ota_service *service)
+{
+	int ret;
+
+	if (service == NULL) {
+		return -EINVAL;
+	}
+
+	k_mutex_lock(&service->lock, K_FOREVER);
+	if (service->status.state == PERSISTED_OTA_STATE_APPLY_REQUESTED) {
+		k_mutex_unlock(&service->lock);
+		return -EBUSY;
+	}
+
+	if (!service->stage_open && service->status.state == PERSISTED_OTA_STATE_IDLE) {
+		k_mutex_unlock(&service->lock);
+		return -EALREADY;
+	}
+
+	if (service->stage_open) {
+		ota_service_close_stage_context(service);
+	}
+
+	ret = ota_service_update_state_locked(service,
+					      PERSISTED_OTA_STATE_IDLE,
+					      NULL,
+					      NULL);
+	k_mutex_unlock(&service->lock);
+	return ret;
 }
 
 int ota_service_request_apply(struct ota_service *service)

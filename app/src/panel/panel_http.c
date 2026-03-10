@@ -1,27 +1,36 @@
 #include <ctype.h>
 #include <errno.h>
+#include <stdlib.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
 #include <zephyr/data/json.h>
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/http/server.h>
 #include <zephyr/net/http/service.h>
 #include <zephyr/net/http/status.h>
+#include <zephyr/sys/reboot.h>
 #include <zephyr/sys/util.h>
 
 #include "app/app_context.h"
+#include "ota/ota.h"
 #include "panel/panel_auth.h"
 #include "panel/panel_http.h"
 #include "panel/panel_status.h"
+#include "persistence/persistence.h"
 
 LOG_MODULE_REGISTER(panel_http, CONFIG_LOG_DEFAULT_LEVEL);
 
 HTTP_SERVER_REGISTER_HEADER_CAPTURE(panel_http_cookie_header, "Cookie");
+HTTP_SERVER_REGISTER_HEADER_CAPTURE(panel_http_content_type_header, "Content-Type");
+HTTP_SERVER_REGISTER_HEADER_CAPTURE(panel_http_content_length_header, "Content-Length");
 
 #define PANEL_SCHEDULE_ACTION_KEY_MAX_LEN 16
+#define PANEL_UPDATE_ERROR_MAX_LEN 48
+#define PANEL_UPDATE_DETAIL_MAX_LEN 224
 
 struct panel_auth_payload {
 	char username[PERSISTED_AUTH_USERNAME_MAX_LEN];
@@ -84,6 +93,36 @@ struct panel_schedule_mutation_route_context {
 	struct http_header headers[1];
 };
 
+struct panel_update_snapshot_route_context {
+	struct app_context *app_context;
+	char set_cookie_header[96];
+	char response_body[2048];
+	struct http_header headers[1];
+};
+
+struct panel_update_action_route_context {
+	struct app_context *app_context;
+	char set_cookie_header[96];
+	char response_body[512];
+	struct http_header headers[1];
+};
+
+struct panel_update_upload_route_context {
+	struct app_context *app_context;
+	bool initialized;
+	bool stage_started;
+	bool clear_cookie;
+	bool rejected;
+	enum http_status rejected_status;
+	size_t bytes_received;
+	size_t content_length;
+	char rejected_error[PANEL_UPDATE_ERROR_MAX_LEN];
+	char rejected_detail[PANEL_UPDATE_DETAIL_MAX_LEN];
+	char set_cookie_header[96];
+	char response_body[768];
+	struct http_header headers[1];
+};
+
 struct panel_schedule_payload {
 	char schedule_id[PERSISTED_SCHEDULE_ID_MAX_LEN];
 	char cron_expression[PERSISTED_SCHEDULE_CRON_EXPRESSION_MAX_LEN];
@@ -118,6 +157,12 @@ static struct panel_schedule_mutation_route_context panel_schedule_create_route_
 static struct panel_schedule_mutation_route_context panel_schedule_update_route_ctx;
 static struct panel_schedule_mutation_route_context panel_schedule_delete_route_ctx;
 static struct panel_schedule_mutation_route_context panel_schedule_enabled_route_ctx;
+static struct panel_update_snapshot_route_context panel_update_snapshot_route_ctx;
+static struct panel_update_action_route_context panel_update_apply_route_ctx;
+static struct panel_update_action_route_context panel_update_clear_route_ctx;
+static struct panel_update_upload_route_context panel_update_upload_route_ctx;
+static struct k_work_delayable panel_update_reboot_work;
+static bool panel_update_reboot_work_ready;
 
 static struct http_resource_detail_static panel_shell_index_resource_detail = {
 	.common = {
@@ -191,6 +236,26 @@ static int panel_schedule_enabled_handler(struct http_client_ctx *client,
 					const struct http_request_ctx *request_ctx,
 					struct http_response_ctx *response_ctx,
 					void *user_data);
+static int panel_update_snapshot_handler(struct http_client_ctx *client,
+					 enum http_data_status status,
+					 const struct http_request_ctx *request_ctx,
+					 struct http_response_ctx *response_ctx,
+					 void *user_data);
+static int panel_update_upload_handler(struct http_client_ctx *client,
+				       enum http_data_status status,
+				       const struct http_request_ctx *request_ctx,
+				       struct http_response_ctx *response_ctx,
+				       void *user_data);
+static int panel_update_apply_handler(struct http_client_ctx *client,
+				      enum http_data_status status,
+				      const struct http_request_ctx *request_ctx,
+				      struct http_response_ctx *response_ctx,
+				      void *user_data);
+static int panel_update_clear_handler(struct http_client_ctx *client,
+				      enum http_data_status status,
+				      const struct http_request_ctx *request_ctx,
+				      struct http_response_ctx *response_ctx,
+				      void *user_data);
 
 static struct http_resource_detail_dynamic panel_auth_login_resource_detail = {
 	.common = {
@@ -292,6 +357,46 @@ static struct http_resource_detail_dynamic panel_schedule_enabled_resource_detai
 	.user_data = &panel_schedule_enabled_route_ctx,
 };
 
+static struct http_resource_detail_dynamic panel_update_snapshot_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_DYNAMIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
+		.content_type = "application/json",
+	},
+	.cb = panel_update_snapshot_handler,
+	.user_data = &panel_update_snapshot_route_ctx,
+};
+
+static struct http_resource_detail_dynamic panel_update_upload_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_DYNAMIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_POST),
+		.content_type = "application/json",
+	},
+	.cb = panel_update_upload_handler,
+	.user_data = &panel_update_upload_route_ctx,
+};
+
+static struct http_resource_detail_dynamic panel_update_apply_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_DYNAMIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_POST),
+		.content_type = "application/json",
+	},
+	.cb = panel_update_apply_handler,
+	.user_data = &panel_update_apply_route_ctx,
+};
+
+static struct http_resource_detail_dynamic panel_update_clear_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_DYNAMIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_POST),
+		.content_type = "application/json",
+	},
+	.cb = panel_update_clear_handler,
+	.user_data = &panel_update_clear_route_ctx,
+};
+
 static uint16_t panel_http_service_port = APP_PANEL_PORT;
 
 HTTP_SERVICE_DEFINE(panel_http_service, NULL, &panel_http_service_port,
@@ -326,6 +431,17 @@ HTTP_RESOURCE_DEFINE(panel_schedule_delete_resource, panel_http_service,
 HTTP_RESOURCE_DEFINE(panel_schedule_enabled_resource, panel_http_service,
 			     "/api/schedules/set-enabled",
 			     &panel_schedule_enabled_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_update_snapshot_resource, panel_http_service, "/api/update",
+		     &panel_update_snapshot_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_update_upload_resource, panel_http_service,
+		     "/api/update/upload",
+		     &panel_update_upload_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_update_apply_resource, panel_http_service,
+		     "/api/update/apply",
+		     &panel_update_apply_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_update_clear_resource, panel_http_service,
+		     "/api/update/clear",
+		     &panel_update_clear_resource_detail);
 
 static void panel_login_route_reset(struct panel_login_route_context *route_ctx)
 {
@@ -356,6 +472,24 @@ static void panel_schedule_route_reset(
 
 	route_ctx->request_body_len = 0;
 	route_ctx->request_too_large = false;
+}
+
+static void panel_update_upload_route_reset(
+	struct panel_update_upload_route_context *route_ctx)
+{
+	if (route_ctx == NULL) {
+		return;
+	}
+
+	memset(route_ctx->rejected_error, 0, sizeof(route_ctx->rejected_error));
+	memset(route_ctx->rejected_detail, 0, sizeof(route_ctx->rejected_detail));
+	route_ctx->initialized = false;
+	route_ctx->stage_started = false;
+	route_ctx->clear_cookie = false;
+	route_ctx->rejected = false;
+	route_ctx->rejected_status = HTTP_400_BAD_REQUEST;
+	route_ctx->bytes_received = 0U;
+	route_ctx->content_length = 0U;
 }
 
 static int panel_http_write_json_response(struct http_response_ctx *response_ctx,
@@ -596,6 +730,29 @@ static bool panel_http_parse_string_field(const char *json,
 	return true;
 }
 
+static bool panel_http_session_is_authenticated(
+	const struct http_request_ctx *request_ctx,
+	struct app_context *app_context,
+	bool *has_cookie_out)
+{
+	char session_token[PANEL_AUTH_SESSION_TOKEN_LEN + 1];
+	bool has_cookie;
+
+	if (request_ctx == NULL || app_context == NULL) {
+		return false;
+	}
+
+	has_cookie = panel_http_extract_sid_cookie(request_ctx,
+						     session_token,
+						     sizeof(session_token));
+	if (has_cookie_out != NULL) {
+		*has_cookie_out = has_cookie;
+	}
+
+	return has_cookie &&
+		panel_auth_service_session_active(&app_context->panel_auth, session_token);
+}
+
 static int panel_http_require_authenticated(
 	const struct http_request_ctx *request_ctx,
 	struct http_response_ctx *response_ctx,
@@ -639,6 +796,343 @@ static int panel_http_require_authenticated(
 				     response_body,
 				     response_body_len,
 				     "{\"authenticated\":false}");
+}
+
+static bool panel_http_parse_size_header(const char *header_value, size_t *size_out)
+{
+	char *end = NULL;
+	unsigned long long parsed;
+
+	if (header_value == NULL || size_out == NULL || header_value[0] == '\0') {
+		return false;
+	}
+
+	errno = 0;
+	parsed = strtoull(header_value, &end, 10);
+	if (errno != 0 || end == header_value) {
+		return false;
+	}
+
+	while (*end == ' ' || *end == '\t') {
+		end++;
+	}
+
+	if (*end != '\0' || parsed == 0U || parsed > SIZE_MAX) {
+		return false;
+	}
+
+	*size_out = (size_t)parsed;
+	return true;
+}
+
+static bool panel_http_content_type_is_octet_stream(const char *content_type)
+{
+	static const char expected[] = "application/octet-stream";
+
+	if (content_type == NULL) {
+		return false;
+	}
+
+	while (*content_type == ' ' || *content_type == '\t') {
+		content_type++;
+	}
+
+	return strncmp(content_type, expected, sizeof(expected) - 1U) == 0 &&
+		(content_type[sizeof(expected) - 1U] == '\0' ||
+		 content_type[sizeof(expected) - 1U] == ';' ||
+		 content_type[sizeof(expected) - 1U] == ' ');
+}
+
+static void panel_http_format_ota_version_label(
+	const struct persisted_ota_version *version,
+	char *buffer,
+	size_t buffer_len)
+{
+	if (buffer == NULL || buffer_len == 0U) {
+		return;
+	}
+
+	if (version == NULL || !version->available) {
+		snprintf(buffer, buffer_len, "Unavailable");
+		return;
+	}
+
+	snprintf(buffer,
+		 buffer_len,
+		 "%u.%u.%u+%u",
+		 version->major,
+		 version->minor,
+		 version->revision,
+		 version->build_num);
+}
+
+static const char *panel_http_update_last_result_detail(
+	const struct persisted_ota_attempt *attempt)
+{
+	if (attempt == NULL || !attempt->recorded) {
+		return "No firmware update result is recorded yet.";
+	}
+
+	switch (attempt->result) {
+	case PERSISTED_OTA_LAST_RESULT_STAGE_READY:
+		return "A newer firmware image is staged and waiting for explicit apply.";
+	case PERSISTED_OTA_LAST_RESULT_STAGE_FAILED:
+		return "The device could not finish staging the uploaded firmware image.";
+	case PERSISTED_OTA_LAST_RESULT_APPLY_REQUESTED:
+		return "The device queued the staged image for reboot.";
+	case PERSISTED_OTA_LAST_RESULT_APPLY_REQUEST_FAILED:
+		return "The device could not queue the staged image for reboot.";
+	case PERSISTED_OTA_LAST_RESULT_REJECTED_SAME_VERSION:
+		return "Same-version reinstall is blocked in this phase.";
+	case PERSISTED_OTA_LAST_RESULT_REJECTED_DOWNGRADE:
+		return "Downgrade uploads are blocked in this phase.";
+	case PERSISTED_OTA_LAST_RESULT_REJECTED_INVALID_IMAGE:
+		return "The uploaded firmware did not validate as a newer MCUboot image.";
+	case PERSISTED_OTA_LAST_RESULT_NONE:
+	default:
+		return "No firmware update result is recorded yet.";
+	}
+}
+
+static const char *panel_http_update_pending_warning(
+	const struct ota_runtime_status *snapshot)
+{
+	if (snapshot == NULL) {
+		return "Firmware update status is unavailable.";
+	}
+
+	switch (snapshot->state) {
+	case PERSISTED_OTA_STATE_STAGING:
+		return "A firmware upload is currently staging into the shared OTA pipeline.";
+	case PERSISTED_OTA_STATE_STAGED:
+		return "A staged firmware image is waiting. Applying it will reboot the device and clear this browser session.";
+	case PERSISTED_OTA_STATE_APPLY_REQUESTED:
+		return "The staged firmware image has been queued for reboot. This browser session will be cleared when the device restarts.";
+	case PERSISTED_OTA_STATE_IDLE:
+	default:
+		return "No staged firmware image is currently waiting for apply.";
+	}
+}
+
+static int panel_http_render_update_snapshot_json(
+	struct app_context *app_context,
+	char *buffer,
+	size_t buffer_len)
+{
+	struct ota_runtime_status snapshot;
+	char current_version_label[24];
+	char staged_version_label[24];
+	char attempt_version_label[24];
+	int ret;
+	int written;
+
+	if (app_context == NULL || buffer == NULL || buffer_len == 0U) {
+		return -EINVAL;
+	}
+
+	ret = ota_service_copy_snapshot(&app_context->ota, &snapshot);
+	if (ret != 0) {
+		return ret;
+	}
+
+	panel_http_format_ota_version_label(&snapshot.current_version,
+					      current_version_label,
+					      sizeof(current_version_label));
+	panel_http_format_ota_version_label(&snapshot.staged_version,
+					      staged_version_label,
+					      sizeof(staged_version_label));
+	panel_http_format_ota_version_label(&snapshot.last_attempt.version,
+					      attempt_version_label,
+					      sizeof(attempt_version_label));
+
+	written = snprintf(
+		buffer,
+		buffer_len,
+		"{"
+		"\"implemented\":%s,"
+		"\"imageConfirmed\":%s,"
+		"\"state\":\"%s\","
+		"\"applyReady\":%s,"
+		"\"currentVersion\":{"
+		"\"available\":%s,"
+		"\"label\":\"%s\","
+		"\"major\":%u,\"minor\":%u,\"revision\":%u,\"buildNum\":%u,\"imageSize\":%u"
+		"},"
+		"\"stagedVersion\":{"
+		"\"available\":%s,"
+		"\"label\":\"%s\","
+		"\"major\":%u,\"minor\":%u,\"revision\":%u,\"buildNum\":%u,\"imageSize\":%u"
+		"},"
+		"\"lastResult\":{"
+		"\"recorded\":%s,"
+		"\"code\":\"%s\","
+		"\"detail\":\"%s\","
+		"\"errorCode\":%d,"
+		"\"bytesWritten\":%u,"
+		"\"rollbackDetected\":%s,"
+		"\"rollbackReason\":%d,"
+		"\"version\":{"
+		"\"available\":%s,"
+		"\"label\":\"%s\","
+		"\"major\":%u,\"minor\":%u,\"revision\":%u,\"buildNum\":%u,\"imageSize\":%u"
+		"}"
+		"},"
+		"\"remotePolicy\":{"
+		"\"autoUpdateEnabled\":%s,"
+		"\"checkIntervalHours\":%u,"
+		"\"githubOwner\":\"%s\","
+		"\"githubRepo\":\"%s\""
+		"},"
+		"\"pendingWarning\":\"%s\","
+		"\"sessionWarning\":\"Applying an update will reboot the device, drop this browser session, and require a fresh login after startup.\""
+		"}",
+		snapshot.implemented ? "true" : "false",
+		snapshot.image_confirmed ? "true" : "false",
+		persistence_ota_state_text(snapshot.state),
+		(snapshot.state == PERSISTED_OTA_STATE_STAGED &&
+		 snapshot.staged_version.available) ? "true" : "false",
+		snapshot.current_version.available ? "true" : "false",
+		current_version_label,
+		snapshot.current_version.major,
+		snapshot.current_version.minor,
+		snapshot.current_version.revision,
+		snapshot.current_version.build_num,
+		snapshot.current_version.image_size,
+		snapshot.staged_version.available ? "true" : "false",
+		staged_version_label,
+		snapshot.staged_version.major,
+		snapshot.staged_version.minor,
+		snapshot.staged_version.revision,
+		snapshot.staged_version.build_num,
+		snapshot.staged_version.image_size,
+		snapshot.last_attempt.recorded ? "true" : "false",
+		persistence_ota_last_result_text(snapshot.last_attempt.result),
+		panel_http_update_last_result_detail(&snapshot.last_attempt),
+		snapshot.last_attempt.error_code,
+		snapshot.last_attempt.bytes_written,
+		snapshot.last_attempt.rollback_detected ? "true" : "false",
+		snapshot.last_attempt.rollback_reason,
+		snapshot.last_attempt.version.available ? "true" : "false",
+		attempt_version_label,
+		snapshot.last_attempt.version.major,
+		snapshot.last_attempt.version.minor,
+		snapshot.last_attempt.version.revision,
+		snapshot.last_attempt.version.build_num,
+		snapshot.last_attempt.version.image_size,
+		snapshot.remote_policy.auto_update_enabled ? "true" : "false",
+		snapshot.remote_policy.check_interval_hours,
+		snapshot.remote_policy.github_owner,
+		snapshot.remote_policy.github_repo,
+		panel_http_update_pending_warning(&snapshot));
+	if (written < 0 || (size_t)written >= buffer_len) {
+		return -ENOMEM;
+	}
+
+	return written;
+}
+
+static int panel_http_write_update_error_response(
+	struct http_response_ctx *response_ctx,
+	enum http_status status_code,
+	char *buffer,
+	size_t buffer_len,
+	const char *error,
+	const char *detail)
+{
+	return panel_http_write_json_response(response_ctx,
+					      status_code,
+					      buffer,
+					      buffer_len,
+					      "{\"accepted\":false,\"error\":\"%s\",\"detail\":\"%s\"}",
+					      error,
+					      detail);
+}
+
+static int panel_http_write_update_success_response(
+	struct http_response_ctx *response_ctx,
+	enum http_status status_code,
+	char *buffer,
+	size_t buffer_len,
+	const char *detail)
+{
+	return panel_http_write_json_response(response_ctx,
+					      status_code,
+					      buffer,
+					      buffer_len,
+					      "{\"accepted\":true,\"detail\":\"%s\"}",
+					      detail);
+}
+
+static void panel_http_update_upload_set_error(
+	struct panel_update_upload_route_context *route_ctx,
+	enum http_status status_code,
+	const char *error,
+	const char *detail)
+{
+	if (route_ctx == NULL) {
+		return;
+	}
+
+	route_ctx->rejected = true;
+	route_ctx->rejected_status = status_code;
+	snprintf(route_ctx->rejected_error,
+		 sizeof(route_ctx->rejected_error),
+		 "%s",
+		 error != NULL ? error : "update-failed");
+	snprintf(route_ctx->rejected_detail,
+		 sizeof(route_ctx->rejected_detail),
+		 "%s",
+		 detail != NULL ? detail : "The update request failed.");
+}
+
+static void panel_http_update_upload_map_finish_error(
+	struct panel_update_upload_route_context *route_ctx,
+	const struct ota_runtime_status *snapshot,
+	int error_code)
+{
+	enum persisted_ota_last_result_code result = snapshot != NULL ?
+		snapshot->last_attempt.result : PERSISTED_OTA_LAST_RESULT_NONE;
+
+	switch (result) {
+	case PERSISTED_OTA_LAST_RESULT_REJECTED_SAME_VERSION:
+		panel_http_update_upload_set_error(
+			route_ctx,
+			HTTP_409_CONFLICT,
+			"same-version-blocked",
+			"The uploaded firmware matches the running image. Same-version reinstall is rejected in this phase.");
+		break;
+	case PERSISTED_OTA_LAST_RESULT_REJECTED_DOWNGRADE:
+		panel_http_update_upload_set_error(
+			route_ctx,
+			HTTP_409_CONFLICT,
+			"downgrade-blocked",
+			"The uploaded firmware is older than the running image. Downgrades are rejected in this phase.");
+		break;
+	case PERSISTED_OTA_LAST_RESULT_REJECTED_INVALID_IMAGE:
+		panel_http_update_upload_set_error(
+			route_ctx,
+			HTTP_400_BAD_REQUEST,
+			"invalid-image",
+			"The uploaded file did not validate as a newer signed MCUboot image.");
+		break;
+	case PERSISTED_OTA_LAST_RESULT_STAGE_FAILED:
+	default:
+		panel_http_update_upload_set_error(
+			route_ctx,
+			HTTP_500_INTERNAL_SERVER_ERROR,
+			"stage-write-failed",
+			error_code == -ENOSPC ?
+				"The device could not stage the firmware because the secondary slot is full." :
+				"The device could not stage the firmware image. Check the console for the precise flash or validation error.");
+		break;
+	}
+}
+
+static void panel_http_update_reboot_work_handler(struct k_work *work)
+{
+	ARG_UNUSED(work);
+
+	sys_reboot(SYS_REBOOT_COLD);
 }
 
 static bool panel_http_schedule_id_is_operator_safe(const char *schedule_id)
@@ -1844,6 +2338,413 @@ static int panel_schedule_enabled_handler(struct http_client_ctx *client,
 	return ret;
 }
 
+static int panel_update_snapshot_handler(struct http_client_ctx *client,
+					 enum http_data_status status,
+					 const struct http_request_ctx *request_ctx,
+					 struct http_response_ctx *response_ctx,
+					 void *user_data)
+{
+	struct panel_update_snapshot_route_context *route_ctx = user_data;
+	bool authenticated = false;
+	int ret;
+
+	ARG_UNUSED(client);
+
+	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	    response_ctx == NULL) {
+		return -EINVAL;
+	}
+
+	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+		return 0;
+	}
+
+	ret = panel_http_require_authenticated(request_ctx,
+					 response_ctx,
+					 route_ctx->app_context,
+					 route_ctx->headers,
+					 route_ctx->set_cookie_header,
+					 sizeof(route_ctx->set_cookie_header),
+					 route_ctx->response_body,
+					 sizeof(route_ctx->response_body),
+					 &authenticated);
+	if (ret != 0 || !authenticated) {
+		return ret;
+	}
+
+	ret = panel_http_render_update_snapshot_json(route_ctx->app_context,
+						 route_ctx->response_body,
+						 sizeof(route_ctx->response_body));
+	if (ret < 0) {
+		return panel_http_write_json_response(response_ctx,
+					 HTTP_500_INTERNAL_SERVER_ERROR,
+					 route_ctx->response_body,
+					 sizeof(route_ctx->response_body),
+					 "{\"error\":\"update-render-failed\"}");
+	}
+
+	response_ctx->status = HTTP_200_OK;
+	response_ctx->body = (const uint8_t *)route_ctx->response_body;
+	response_ctx->body_len = (size_t)ret;
+	response_ctx->final_chunk = true;
+	return 0;
+}
+
+static int panel_update_upload_handler(struct http_client_ctx *client,
+				       enum http_data_status status,
+				       const struct http_request_ctx *request_ctx,
+				       struct http_response_ctx *response_ctx,
+				       void *user_data)
+{
+	struct panel_update_upload_route_context *route_ctx = user_data;
+	struct ota_runtime_status snapshot;
+	char staged_version_label[24];
+	char detail[192];
+	const char *content_type;
+	const char *content_length_header;
+	bool authenticated;
+	bool has_cookie = false;
+	int response_ret;
+	int ret;
+
+	ARG_UNUSED(client);
+
+	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	    response_ctx == NULL) {
+		return -EINVAL;
+	}
+
+	if (status == HTTP_SERVER_DATA_ABORTED) {
+		if (route_ctx->stage_started) {
+			(void)ota_service_abort_staging(&route_ctx->app_context->ota, -ECANCELED);
+		}
+		panel_update_upload_route_reset(route_ctx);
+		return 0;
+	}
+
+	if (!route_ctx->initialized) {
+		route_ctx->initialized = true;
+		authenticated = panel_http_session_is_authenticated(request_ctx,
+							      route_ctx->app_context,
+							      &has_cookie);
+		route_ctx->clear_cookie = has_cookie && !authenticated;
+		if (!authenticated) {
+			panel_http_update_upload_set_error(route_ctx,
+							  HTTP_401_UNAUTHORIZED,
+							  "not-authenticated",
+							  "Log in again before staging a firmware image.");
+		}
+
+		content_type = panel_http_find_header(request_ctx, "Content-Type");
+		content_length_header = panel_http_find_header(request_ctx, "Content-Length");
+		if (!route_ctx->rejected &&
+		    !panel_http_content_type_is_octet_stream(content_type)) {
+			panel_http_update_upload_set_error(
+				route_ctx,
+				HTTP_400_BAD_REQUEST,
+				"invalid-content-type",
+				"Upload the firmware as application/octet-stream.");
+		}
+
+		if (!route_ctx->rejected &&
+		    !panel_http_parse_size_header(content_length_header,
+						     &route_ctx->content_length)) {
+			panel_http_update_upload_set_error(
+				route_ctx,
+				HTTP_400_BAD_REQUEST,
+				"missing-content-length",
+				"Provide a positive content-length for the firmware upload.");
+		}
+
+		if (!route_ctx->rejected) {
+			ret = ota_service_begin_staging(&route_ctx->app_context->ota);
+			if (ret == 0) {
+				route_ctx->stage_started = true;
+			} else if (ret == -EBUSY) {
+				panel_http_update_upload_set_error(
+					route_ctx,
+					HTTP_409_CONFLICT,
+					"upload-in-progress",
+					"Another firmware upload is already staging through the OTA service.");
+			} else {
+				panel_http_update_upload_set_error(
+					route_ctx,
+					HTTP_500_INTERNAL_SERVER_ERROR,
+					"stage-open-failed",
+					"The device could not open the shared OTA staging pipeline.");
+			}
+		}
+	}
+
+	if (!route_ctx->rejected && route_ctx->stage_started && request_ctx->data_len > 0U) {
+		ret = ota_service_write_chunk(&route_ctx->app_context->ota,
+					       request_ctx->data,
+					       request_ctx->data_len);
+		if (ret != 0) {
+			(void)ota_service_abort_staging(&route_ctx->app_context->ota, ret);
+			route_ctx->stage_started = false;
+			panel_http_update_upload_set_error(
+				route_ctx,
+				HTTP_500_INTERNAL_SERVER_ERROR,
+				"stage-write-failed",
+				"The device could not stream the firmware image into the OTA staging slot.");
+		} else {
+			route_ctx->bytes_received += request_ctx->data_len;
+		}
+	}
+
+	if (status != HTTP_SERVER_DATA_FINAL) {
+		return 0;
+	}
+
+	if (!route_ctx->rejected && route_ctx->bytes_received == 0U) {
+		if (route_ctx->stage_started) {
+			(void)ota_service_abort_staging(&route_ctx->app_context->ota, -ENODATA);
+			route_ctx->stage_started = false;
+		}
+
+		panel_http_update_upload_set_error(route_ctx,
+						  HTTP_400_BAD_REQUEST,
+						  "empty-upload",
+						  "Provide a non-empty firmware image before uploading.");
+	}
+
+	if (!route_ctx->rejected &&
+	    route_ctx->bytes_received != route_ctx->content_length) {
+		if (route_ctx->stage_started) {
+			(void)ota_service_abort_staging(&route_ctx->app_context->ota, -EMSGSIZE);
+			route_ctx->stage_started = false;
+		}
+
+		panel_http_update_upload_set_error(
+			route_ctx,
+			HTTP_400_BAD_REQUEST,
+			"content-length-mismatch",
+			"The upload did not match the declared content-length, so the staged image was discarded.");
+	}
+
+	if (route_ctx->clear_cookie) {
+		panel_http_attach_cookie_header(response_ctx,
+					      route_ctx->headers,
+					      route_ctx->set_cookie_header,
+					      sizeof(route_ctx->set_cookie_header),
+					      "sid=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
+	}
+
+	if (route_ctx->rejected) {
+		response_ret = panel_http_write_update_error_response(response_ctx,
+							       route_ctx->rejected_status,
+							       route_ctx->response_body,
+							       sizeof(route_ctx->response_body),
+							       route_ctx->rejected_error,
+							       route_ctx->rejected_detail);
+		panel_update_upload_route_reset(route_ctx);
+		return response_ret;
+	}
+
+	ret = ota_service_finish_staging(&route_ctx->app_context->ota);
+	route_ctx->stage_started = false;
+	if (ret != 0) {
+		if (ota_service_copy_snapshot(&route_ctx->app_context->ota, &snapshot) != 0) {
+			memset(&snapshot, 0, sizeof(snapshot));
+		}
+		panel_http_update_upload_map_finish_error(route_ctx, &snapshot, ret);
+		response_ret = panel_http_write_update_error_response(response_ctx,
+							       route_ctx->rejected_status,
+							       route_ctx->response_body,
+							       sizeof(route_ctx->response_body),
+							       route_ctx->rejected_error,
+							       route_ctx->rejected_detail);
+		panel_update_upload_route_reset(route_ctx);
+		return response_ret;
+	}
+
+	ret = ota_service_copy_snapshot(&route_ctx->app_context->ota, &snapshot);
+	if (ret != 0) {
+		response_ret = panel_http_write_update_error_response(
+			response_ctx,
+			HTTP_500_INTERNAL_SERVER_ERROR,
+			route_ctx->response_body,
+			sizeof(route_ctx->response_body),
+			"snapshot-failed",
+			"The firmware image staged successfully, but the device could not render the follow-up OTA snapshot.");
+		panel_update_upload_route_reset(route_ctx);
+		return response_ret;
+	}
+
+	panel_http_format_ota_version_label(&snapshot.staged_version,
+					      staged_version_label,
+					      sizeof(staged_version_label));
+	snprintf(detail,
+		 sizeof(detail),
+		 "Firmware image staged as %s. Apply explicitly to reboot into it.",
+		 staged_version_label);
+	response_ret = panel_http_write_update_success_response(response_ctx,
+							HTTP_200_OK,
+							route_ctx->response_body,
+							sizeof(route_ctx->response_body),
+							detail);
+	panel_update_upload_route_reset(route_ctx);
+	return response_ret;
+}
+
+static int panel_update_apply_handler(struct http_client_ctx *client,
+				      enum http_data_status status,
+				      const struct http_request_ctx *request_ctx,
+				      struct http_response_ctx *response_ctx,
+				      void *user_data)
+{
+	struct panel_update_action_route_context *route_ctx = user_data;
+	bool authenticated = false;
+	int ret;
+
+	ARG_UNUSED(client);
+
+	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	    response_ctx == NULL) {
+		return -EINVAL;
+	}
+
+	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+		return 0;
+	}
+
+	ret = panel_http_require_authenticated(request_ctx,
+					 response_ctx,
+					 route_ctx->app_context,
+					 route_ctx->headers,
+					 route_ctx->set_cookie_header,
+					 sizeof(route_ctx->set_cookie_header),
+					 route_ctx->response_body,
+					 sizeof(route_ctx->response_body),
+					 &authenticated);
+	if (ret != 0 || !authenticated) {
+		return ret;
+	}
+
+	ret = ota_service_request_apply(&route_ctx->app_context->ota);
+	if (ret == -EAGAIN) {
+		return panel_http_write_update_error_response(
+			response_ctx,
+			HTTP_409_CONFLICT,
+			route_ctx->response_body,
+			sizeof(route_ctx->response_body),
+			"no-staged-update",
+			"Stage a newer firmware image before requesting apply.");
+	}
+
+	if (ret == -EALREADY) {
+		return panel_http_write_update_error_response(
+			response_ctx,
+			HTTP_409_CONFLICT,
+			route_ctx->response_body,
+			sizeof(route_ctx->response_body),
+			"apply-already-requested",
+			"The staged firmware image is already queued for reboot.");
+	}
+
+	if (ret == -EBUSY) {
+		return panel_http_write_update_error_response(
+			response_ctx,
+			HTTP_409_CONFLICT,
+			route_ctx->response_body,
+			sizeof(route_ctx->response_body),
+			"upload-in-progress",
+			"Finish the current firmware upload before applying an update.");
+	}
+
+	if (ret != 0) {
+		return panel_http_write_update_error_response(
+			response_ctx,
+			HTTP_500_INTERNAL_SERVER_ERROR,
+			route_ctx->response_body,
+			sizeof(route_ctx->response_body),
+			"apply-request-failed",
+			"The device could not queue the staged firmware image for reboot.");
+	}
+
+	(void)k_work_reschedule(&panel_update_reboot_work, K_MSEC(1200));
+	return panel_http_write_update_success_response(
+		response_ctx,
+		HTTP_200_OK,
+		route_ctx->response_body,
+		sizeof(route_ctx->response_body),
+		"Staged firmware apply requested. The device will reboot, drop this browser session, and require a fresh login after it returns.");
+}
+
+static int panel_update_clear_handler(struct http_client_ctx *client,
+				      enum http_data_status status,
+				      const struct http_request_ctx *request_ctx,
+				      struct http_response_ctx *response_ctx,
+				      void *user_data)
+{
+	struct panel_update_action_route_context *route_ctx = user_data;
+	bool authenticated = false;
+	int ret;
+
+	ARG_UNUSED(client);
+
+	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	    response_ctx == NULL) {
+		return -EINVAL;
+	}
+
+	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+		return 0;
+	}
+
+	ret = panel_http_require_authenticated(request_ctx,
+					 response_ctx,
+					 route_ctx->app_context,
+					 route_ctx->headers,
+					 route_ctx->set_cookie_header,
+					 sizeof(route_ctx->set_cookie_header),
+					 route_ctx->response_body,
+					 sizeof(route_ctx->response_body),
+					 &authenticated);
+	if (ret != 0 || !authenticated) {
+		return ret;
+	}
+
+	ret = ota_service_clear_staged_image(&route_ctx->app_context->ota);
+	if (ret == -EALREADY) {
+		return panel_http_write_update_error_response(
+			response_ctx,
+			HTTP_409_CONFLICT,
+			route_ctx->response_body,
+			sizeof(route_ctx->response_body),
+			"nothing-to-clear",
+			"No staged firmware image is waiting to be cleared.");
+	}
+
+	if (ret == -EBUSY) {
+		return panel_http_write_update_error_response(
+			response_ctx,
+			HTTP_409_CONFLICT,
+			route_ctx->response_body,
+			sizeof(route_ctx->response_body),
+			"apply-in-progress",
+			"The staged firmware image is already queued for reboot and cannot be cleared now.");
+	}
+
+	if (ret != 0) {
+		return panel_http_write_update_error_response(
+			response_ctx,
+			HTTP_500_INTERNAL_SERVER_ERROR,
+			route_ctx->response_body,
+			sizeof(route_ctx->response_body),
+			"clear-failed",
+			"The device could not clear the staged firmware image.");
+	}
+
+	return panel_http_write_update_success_response(
+		response_ctx,
+		HTTP_200_OK,
+		route_ctx->response_body,
+		sizeof(route_ctx->response_body),
+		"Staged firmware eligibility cleared. Upload a newer image when ready.");
+}
+
 static int panel_status_handler(struct http_client_ctx *client,
 				 enum http_data_status status,
 				 const struct http_request_ctx *request_ctx,
@@ -1931,6 +2832,16 @@ int panel_http_server_init(struct panel_http_server *server,
 	panel_schedule_update_route_ctx.app_context = app_context;
 	panel_schedule_delete_route_ctx.app_context = app_context;
 	panel_schedule_enabled_route_ctx.app_context = app_context;
+	panel_update_snapshot_route_ctx.app_context = app_context;
+	panel_update_apply_route_ctx.app_context = app_context;
+	panel_update_clear_route_ctx.app_context = app_context;
+	panel_update_upload_route_ctx.app_context = app_context;
+	panel_update_upload_route_reset(&panel_update_upload_route_ctx);
+	if (!panel_update_reboot_work_ready) {
+		k_work_init_delayable(&panel_update_reboot_work,
+				      panel_http_update_reboot_work_handler);
+		panel_update_reboot_work_ready = true;
+	}
 
 	ret = http_server_start();
 	if (ret != 0) {

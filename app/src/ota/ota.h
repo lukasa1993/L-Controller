@@ -33,5 +33,7 @@ int ota_service_begin_staging(struct ota_service *service);
 int ota_service_write_chunk(struct ota_service *service,
 			    const uint8_t *data,
 			    size_t data_len);
+int ota_service_abort_staging(struct ota_service *service, int error_code);
 int ota_service_finish_staging(struct ota_service *service);
+int ota_service_clear_staged_image(struct ota_service *service);
 int ota_service_request_apply(struct ota_service *service);
