@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20.0)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 find_package(Python REQUIRED COMPONENTS Interpreter)
+find_program(BUN_EXECUTABLE bun REQUIRED)
 project(lnh_nordic_wifi)
 
 set(APP_SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -33,17 +34,43 @@ zephyr_linker_section(NAME http_resource_desc_panel_http_service
 
 set(PANEL_ASSET_SOURCE_DIR ${APP_SOURCE_ROOT}/panel/assets)
 set(PANEL_ASSET_GENERATED_DIR ${ZEPHYR_BINARY_DIR}/include/generated/panel)
+set(PANEL_ASSET_BUILD_DIR ${ZEPHYR_BINARY_DIR}/panel-assets)
+set(PANEL_INDEX_HTML_SOURCE ${PANEL_ASSET_SOURCE_DIR}/index.html)
+set(PANEL_MAIN_JS_SOURCE ${PANEL_ASSET_SOURCE_DIR}/main.js)
+set(PANEL_MAIN_JS_MINIFIED ${PANEL_ASSET_BUILD_DIR}/main.min.js)
 
 file(MAKE_DIRECTORY ${PANEL_ASSET_GENERATED_DIR})
+file(MAKE_DIRECTORY ${PANEL_ASSET_BUILD_DIR})
 
-foreach(panel_asset
-	index.html
-	main.js
+add_custom_command(
+	OUTPUT ${PANEL_MAIN_JS_MINIFIED}
+	COMMAND ${CMAKE_COMMAND} -E make_directory ${PANEL_ASSET_BUILD_DIR}
+	COMMAND
+		${BUN_EXECUTABLE}
+		build
+		${PANEL_MAIN_JS_SOURCE}
+		--target=browser
+		--format=iife
+		--minify
+		--outfile
+		${PANEL_MAIN_JS_MINIFIED}
+	DEPENDS ${PANEL_MAIN_JS_SOURCE}
+	COMMENT "Minifying panel JavaScript with Bun"
+	VERBATIM
 )
-	generate_inc_file_for_target(
-		app
-		${PANEL_ASSET_SOURCE_DIR}/${panel_asset}
-		${PANEL_ASSET_GENERATED_DIR}/${panel_asset}.gz.inc
-		--gzip
-	)
-endforeach()
+
+set_source_files_properties(${PANEL_MAIN_JS_MINIFIED} PROPERTIES GENERATED TRUE)
+
+generate_inc_file_for_target(
+	app
+	${PANEL_INDEX_HTML_SOURCE}
+	${PANEL_ASSET_GENERATED_DIR}/index.html.gz.inc
+	--gzip
+)
+
+generate_inc_file_for_target(
+	app
+	${PANEL_MAIN_JS_MINIFIED}
+	${PANEL_ASSET_GENERATED_DIR}/main.js.gz.inc
+	--gzip
+)
