@@ -27,17 +27,50 @@ static uint32_t panel_status_enabled_schedule_count(const struct persisted_sched
 	return enabled_count;
 }
 
+static const char *panel_status_relay_note_text(const char *note)
+{
+	return note != NULL ? note : "none";
+}
+
+static bool panel_status_relay_blocked(const struct relay_runtime_status *status)
+{
+	return status == NULL || !status->implemented || !status->available;
+}
+
+static const char *panel_status_relay_blocked_reason(const struct relay_runtime_status *status)
+{
+	if (!panel_status_relay_blocked(status)) {
+		return "none";
+	}
+
+	if (status == NULL || !status->implemented) {
+		return "Relay control is not implemented on this build.";
+	}
+
+	return "Relay runtime is unavailable.";
+}
+
 int panel_status_render_json(struct app_context *app_context,
-			     char *buffer,
-			     size_t buffer_len)
+				     char *buffer,
+				     size_t buffer_len)
 {
 	struct network_supervisor_status network_status;
+	const struct relay_runtime_status *relay_status;
 	const struct recovery_reset_cause *reset_cause;
+	const char *relay_source = "none";
+	const char *relay_safety_note = "none";
+	const char *relay_blocked_reason = "none";
 	char ipv4_address[NET_IPV4_ADDR_LEN] = "";
 	uint32_t enabled_schedule_count;
 	const char *reset_trigger = "none";
 	const char *reset_failure_stage = "none";
 	const char *reset_connectivity = "not-ready";
+	bool relay_available = false;
+	bool relay_implemented = false;
+	bool relay_actual_state = false;
+	bool relay_desired_state = false;
+	bool relay_pending = false;
+	bool relay_blocked = false;
 	bool reset_available = false;
 	bool recovery_reset = false;
 	uint32_t hardware_reset_cause = 0;
@@ -76,6 +109,17 @@ int panel_status_render_json(struct app_context *app_context,
 
 	enabled_schedule_count =
 		panel_status_enabled_schedule_count(&app_context->persisted_config.schedule);
+	relay_status = relay_service_get_status(&app_context->relay);
+	if (relay_status != NULL) {
+		relay_implemented = relay_status->implemented;
+		relay_available = relay_status->available;
+		relay_actual_state = relay_status->actual_state;
+		relay_desired_state = relay_status->desired_state;
+		relay_source = relay_status_source_text(relay_status->source);
+		relay_safety_note = panel_status_relay_note_text(relay_status->safety_note);
+		relay_blocked = panel_status_relay_blocked(relay_status);
+		relay_blocked_reason = panel_status_relay_blocked_reason(relay_status);
+	}
 
 	written = snprintf(
 		buffer,
@@ -94,9 +138,10 @@ int panel_status_render_json(struct app_context *app_context,
 		"\"connectivity\":\"%s\""
 		"},"
 		"\"relay\":{"
-		"\"implemented\":false,\"configuredActions\":%u,\"lastDesiredState\":%s,"
-		"\"rebootPolicy\":\"%s\","
-		"\"placeholder\":\"Relay controls arrive in Phase 6.\""
+		"\"implemented\":%s,\"available\":%s,\"actualState\":%s,"
+		"\"desiredState\":%s,\"source\":\"%s\",\"safetyNote\":\"%s\","
+		"\"pending\":%s,\"pendingReason\":\"none\",\"blocked\":%s,"
+		"\"blockedReason\":\"%s\",\"rebootPolicy\":\"%s\""
 		"},"
 		"\"scheduler\":{"
 		"\"implemented\":false,\"scheduleCount\":%u,\"enabledCount\":%u,"
@@ -126,8 +171,15 @@ int panel_status_render_json(struct app_context *app_context,
 		reset_failure_stage,
 		reset_reason,
 		reset_connectivity,
-		app_context->persisted_config.actions.count,
-		panel_status_json_bool(app_context->persisted_config.relay.last_desired_state),
+		panel_status_json_bool(relay_implemented),
+		panel_status_json_bool(relay_available),
+		panel_status_json_bool(relay_actual_state),
+		panel_status_json_bool(relay_desired_state),
+		relay_source,
+		relay_safety_note,
+		panel_status_json_bool(relay_pending),
+		panel_status_json_bool(relay_blocked),
+		relay_blocked_reason,
 		persisted_relay_reboot_policy_text(app_context->persisted_config.relay.reboot_policy),
 		app_context->persisted_config.schedule.count,
 		enabled_schedule_count);

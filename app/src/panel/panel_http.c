@@ -50,7 +50,17 @@ struct panel_auth_route_context {
 struct panel_status_route_context {
 	struct app_context *app_context;
 	char set_cookie_header[96];
-	char response_body[1536];
+	char response_body[PANEL_STATUS_RESPONSE_BODY_LEN];
+	struct http_header headers[1];
+};
+
+struct panel_relay_route_context {
+	struct app_context *app_context;
+	uint8_t request_body[64];
+	size_t request_body_len;
+	bool request_too_large;
+	char set_cookie_header[96];
+	char response_body[320];
 	struct http_header headers[1];
 };
 
@@ -66,6 +76,7 @@ static struct panel_login_route_context panel_auth_login_route_ctx;
 static struct panel_auth_route_context panel_auth_logout_route_ctx;
 static struct panel_auth_route_context panel_auth_session_route_ctx;
 static struct panel_status_route_context panel_status_route_ctx;
+static struct panel_relay_route_context panel_relay_route_ctx;
 
 static struct http_resource_detail_static panel_shell_index_resource_detail = {
 	.common = {
@@ -109,6 +120,11 @@ static int panel_status_handler(struct http_client_ctx *client,
 				 const struct http_request_ctx *request_ctx,
 				 struct http_response_ctx *response_ctx,
 				 void *user_data);
+static int panel_relay_command_handler(struct http_client_ctx *client,
+				       enum http_data_status status,
+				       const struct http_request_ctx *request_ctx,
+				       struct http_response_ctx *response_ctx,
+				       void *user_data);
 
 static struct http_resource_detail_dynamic panel_auth_login_resource_detail = {
 	.common = {
@@ -150,6 +166,16 @@ static struct http_resource_detail_dynamic panel_status_resource_detail = {
 	.user_data = &panel_status_route_ctx,
 };
 
+static struct http_resource_detail_dynamic panel_relay_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_DYNAMIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_POST),
+		.content_type = "application/json",
+	},
+	.cb = panel_relay_command_handler,
+	.user_data = &panel_relay_route_ctx,
+};
+
 static uint16_t panel_http_service_port = APP_PANEL_PORT;
 
 HTTP_SERVICE_DEFINE(panel_http_service, NULL, &panel_http_service_port,
@@ -164,11 +190,23 @@ HTTP_RESOURCE_DEFINE(panel_auth_login_resource, panel_http_service, "/api/auth/l
 HTTP_RESOURCE_DEFINE(panel_auth_logout_resource, panel_http_service, "/api/auth/logout",
 		     &panel_auth_logout_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_auth_session_resource, panel_http_service, "/api/auth/session",
-		     &panel_auth_session_resource_detail);
+			     &panel_auth_session_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_status_resource, panel_http_service, "/api/status",
-		     &panel_status_resource_detail);
+			     &panel_status_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_relay_resource, panel_http_service, "/api/relay/desired-state",
+			     &panel_relay_resource_detail);
 
 static void panel_login_route_reset(struct panel_login_route_context *route_ctx)
+{
+	if (route_ctx == NULL) {
+		return;
+	}
+
+	route_ctx->request_body_len = 0;
+	route_ctx->request_too_large = false;
+}
+
+static void panel_relay_route_reset(struct panel_relay_route_context *route_ctx)
 {
 	if (route_ctx == NULL) {
 		return;
@@ -292,6 +330,79 @@ static bool panel_http_extract_sid_cookie(const struct http_request_ctx *request
 	}
 
 	return false;
+}
+
+static bool panel_http_is_json_whitespace(char value)
+{
+	return value == ' ' || value == '\t' || value == '\n' || value == '\r';
+}
+
+static bool panel_http_parse_bool_field(const char *json,
+				       const char *field_name,
+				       bool *value)
+{
+	char needle[32];
+	const char *cursor;
+	int needle_len;
+
+	if (json == NULL || field_name == NULL || value == NULL) {
+		return false;
+	}
+
+	needle_len = snprintf(needle, sizeof(needle), "\"%s\"", field_name);
+	if (needle_len < 0 || (size_t)needle_len >= sizeof(needle)) {
+		return false;
+	}
+
+	cursor = strstr(json, needle);
+	if (cursor == NULL) {
+		return false;
+	}
+
+	cursor += needle_len;
+	while (panel_http_is_json_whitespace(*cursor)) {
+		cursor++;
+	}
+
+	if (*cursor != ':') {
+		return false;
+	}
+
+	cursor++;
+	while (panel_http_is_json_whitespace(*cursor)) {
+		cursor++;
+	}
+
+	if (strncmp(cursor, "true", 4) == 0) {
+		*value = true;
+		return true;
+	}
+
+	if (strncmp(cursor, "false", 5) == 0) {
+		*value = false;
+		return true;
+	}
+
+	return false;
+}
+
+static enum http_status panel_http_relay_status_code(const struct action_dispatch_result *result,
+					    int dispatch_ret)
+{
+	if (dispatch_ret == -EINVAL || (result != NULL &&
+		    result->code == ACTION_DISPATCH_RESULT_INVALID_REQUEST)) {
+		return HTTP_400_BAD_REQUEST;
+	}
+
+	if (result != NULL && result->code == ACTION_DISPATCH_RESULT_UNAVAILABLE) {
+		return HTTP_503_SERVICE_UNAVAILABLE;
+	}
+
+	if (result != NULL && result->code == ACTION_DISPATCH_RESULT_OK) {
+		return HTTP_200_OK;
+	}
+
+	return HTTP_500_INTERNAL_SERVER_ERROR;
 }
 
 static int panel_auth_login_handler(struct http_client_ctx *client,
@@ -496,6 +607,118 @@ static int panel_auth_session_handler(struct http_client_ctx *client,
 	return ret;
 }
 
+static int panel_relay_command_handler(struct http_client_ctx *client,
+				       enum http_data_status status,
+				       const struct http_request_ctx *request_ctx,
+				       struct http_response_ctx *response_ctx,
+				       void *user_data)
+{
+	struct panel_relay_route_context *route_ctx = user_data;
+	struct action_dispatch_result dispatch_result;
+	char session_token[PANEL_AUTH_SESSION_TOKEN_LEN + 1];
+	const char *action_id;
+	bool has_cookie;
+	bool authenticated;
+	bool desired_state = false;
+	bool parsed = false;
+	enum http_status status_code;
+	int ret;
+
+	ARG_UNUSED(client);
+
+	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	    response_ctx == NULL) {
+		return -EINVAL;
+	}
+
+	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_relay_route_reset(route_ctx);
+		return 0;
+	}
+
+	if (request_ctx->data_len + route_ctx->request_body_len >= sizeof(route_ctx->request_body)) {
+		route_ctx->request_too_large = true;
+	} else if (request_ctx->data_len > 0) {
+		memcpy(route_ctx->request_body + route_ctx->request_body_len,
+		       request_ctx->data,
+		       request_ctx->data_len);
+		route_ctx->request_body_len += request_ctx->data_len;
+	}
+
+	if (status != HTTP_SERVER_DATA_FINAL) {
+		return 0;
+	}
+
+	has_cookie = panel_http_extract_sid_cookie(request_ctx, session_token, sizeof(session_token));
+	authenticated = has_cookie &&
+		panel_auth_service_session_active(&route_ctx->app_context->panel_auth, session_token);
+	if (!authenticated) {
+		if (has_cookie) {
+			panel_http_attach_cookie_header(response_ctx,
+					      route_ctx->headers,
+					      route_ctx->set_cookie_header,
+					      sizeof(route_ctx->set_cookie_header),
+					      "sid=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
+		}
+
+		ret = panel_http_write_json_response(response_ctx,
+					    HTTP_401_UNAUTHORIZED,
+					    route_ctx->response_body,
+					    sizeof(route_ctx->response_body),
+					    "{\"authenticated\":false}");
+		panel_relay_route_reset(route_ctx);
+		return ret;
+	}
+
+	if (route_ctx->request_too_large) {
+		ret = panel_http_write_json_response(response_ctx,
+					    HTTP_400_BAD_REQUEST,
+					    route_ctx->response_body,
+					    sizeof(route_ctx->response_body),
+					    "{\"accepted\":false,\"error\":\"payload-too-large\"}");
+		panel_relay_route_reset(route_ctx);
+		return ret;
+	}
+
+	route_ctx->request_body[route_ctx->request_body_len] = '\0';
+	parsed = panel_http_parse_bool_field((char *)route_ctx->request_body,
+					    "desiredState",
+					    &desired_state) ||
+		panel_http_parse_bool_field((char *)route_ctx->request_body,
+					  "desired",
+					  &desired_state);
+	if (!parsed) {
+		ret = panel_http_write_json_response(response_ctx,
+					    HTTP_400_BAD_REQUEST,
+					    route_ctx->response_body,
+					    sizeof(route_ctx->response_body),
+					    "{\"accepted\":false,\"error\":\"invalid-request\"}");
+		panel_relay_route_reset(route_ctx);
+		return ret;
+	}
+
+	action_id = action_dispatcher_builtin_relay_action_id(desired_state);
+	ret = action_dispatcher_execute(&route_ctx->app_context->actions,
+				      action_id,
+				      ACTION_DISPATCH_SOURCE_PANEL_MANUAL,
+				      &dispatch_result);
+	status_code = panel_http_relay_status_code(&dispatch_result, ret);
+	ret = panel_http_write_json_response(response_ctx,
+				    status_code,
+				    route_ctx->response_body,
+				    sizeof(route_ctx->response_body),
+				    "{\"accepted\":%s,\"desiredState\":%s,\"actionId\":\"%s\","
+				    "\"result\":\"%s\",\"source\":\"%s\",\"detail\":\"%s\"}",
+				    dispatch_result.accepted ? "true" : "false",
+				    desired_state ? "true" : "false",
+				    dispatch_result.action_id,
+				    action_dispatch_result_text(dispatch_result.code),
+				    action_dispatch_source_text(dispatch_result.source),
+				    dispatch_result.detail != NULL ? dispatch_result.detail : "none");
+	panel_relay_route_reset(route_ctx);
+	return ret;
+}
+
 static int panel_status_handler(struct http_client_ctx *client,
 				 enum http_data_status status,
 				 const struct http_request_ctx *request_ctx,
@@ -577,6 +800,7 @@ int panel_http_server_init(struct panel_http_server *server,
 	panel_auth_logout_route_ctx.auth_service = &app_context->panel_auth;
 	panel_auth_session_route_ctx.auth_service = &app_context->panel_auth;
 	panel_status_route_ctx.app_context = app_context;
+	panel_relay_route_ctx.app_context = app_context;
 
 	ret = http_server_start();
 	if (ret != 0) {
