@@ -35,7 +35,7 @@ test('redirects through /login and lands on the authenticated dashboard', async 
 		(response) => response.url() === `${baseUrl}/api/schedules` && response.request().method() === 'GET',
 	);
 
-	await page.getByRole('button', { name: 'Authenticate locally' }).click();
+	await page.getByRole('button', { name: 'Sign in' }).click();
 
 	const [loginResponse, statusResponse, updateResponse, schedulesResponse] = await Promise.all([
 		loginResponsePromise,

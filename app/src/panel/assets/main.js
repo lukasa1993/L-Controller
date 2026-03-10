@@ -87,7 +87,7 @@ const elements = {
 
 const currentPage = document.body?.dataset.panelPage === pages.login ? pages.login : pages.dashboard;
 const flashStorageKey = 'lnh-panel-flash';
-const SESSION_EXPIRED_MESSAGE = 'The device no longer trusts this browser session. Log in again.';
+const SESSION_EXPIRED_MESSAGE = 'Session expired. Sign in again.';
 
 const ui = {
 	badgeBase: 'inline-flex items-center gap-2 rounded-full border border-sky-100/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100',
@@ -376,7 +376,7 @@ function showLoginView(message, tone = 'info') {
 	elements.logoutButton?.setAttribute('disabled', 'disabled');
 	elements.refreshButton?.setAttribute('disabled', 'disabled');
 	if (elements.sessionChip) {
-		elements.sessionChip.textContent = 'Authentication required';
+			elements.sessionChip.textContent = 'Session';
 		elements.sessionChip.className = badgeClass('warn');
 	}
 	if (message) {
@@ -1437,10 +1437,10 @@ async function handleUpdateApply() {
 
 async function bootstrapSession() {
 	const flash = consumeFlashMessage();
-	const defaultLoginMessage = 'Log in with the configured local admin credentials to unlock protected status.';
-	const unavailableMessage = 'The panel could not confirm session state yet. Try logging in once the device is reachable.';
+	const defaultLoginMessage = 'Sign in to continue.';
+	const unavailableMessage = 'Panel unavailable.';
 
-	setAlert(flash?.message || 'Checking whether this browser already has a valid local session…', flash?.tone || 'info');
+	setAlert(flash?.message || 'Checking session...', flash?.tone || 'info');
 	try {
 		const { response, data } = await requestJson(routes.session, { method: 'GET' });
 		if (response.ok && data?.authenticated) {
@@ -1464,12 +1464,12 @@ async function handleLogin(event) {
 	const password = elements.loginPassword?.value || '';
 
 	if (!username || !password) {
-		setAlert('Enter both the username and password before continuing.', 'warn');
+			setAlert('Enter username and password.', 'warn');
 		return;
 	}
 
 	setBusy(elements.loginSubmit, true, 'Authenticating…');
-	setAlert('Sending credentials to the local device…', 'info');
+	setAlert('Signing in...', 'info');
 
 	try {
 		const { response, data } = await requestJson(routes.login, {
@@ -1481,7 +1481,7 @@ async function handleLogin(event) {
 			state.sessionUsername = username;
 			elements.loginForm?.reset();
 			setBusy(elements.loginSubmit, true, 'Redirecting…');
-			setAlert('Authentication accepted. Opening the protected dashboard…', 'success');
+				setAlert('Signed in.', 'success');
 			navigateTo(requestedNextPath());
 			return;
 		}
@@ -1492,9 +1492,9 @@ async function handleLogin(event) {
 			return;
 		}
 
-		setAlert('Authentication failed. Confirm the local admin credentials and try again.', 'error');
+		setAlert('Invalid credentials.', 'error');
 	} catch (error) {
-		setAlert(error instanceof Error ? error.message : 'Authentication failed.', 'error');
+		setAlert(error instanceof Error ? error.message : 'Sign-in failed.', 'error');
 	} finally {
 		setBusy(elements.loginSubmit, false, 'Authenticate locally');
 	}
@@ -1513,10 +1513,10 @@ async function handleLogout() {
 		setRelayFeedback(null);
 		setSchedulerFeedback(null);
 		resetSchedulerForm();
-		showLoginView('Session cleared. Log in again to view protected status.', 'success');
+			showLoginView('Signed out.', 'success');
 	} catch (error) {
-		setAlert('Logout request failed, but the browser session may already be invalid.', 'warn');
-		showLoginView('Session reset locally. Log in again if needed.', 'warn');
+		setAlert('Sign-out failed.', 'warn');
+			showLoginView('Session reset.', 'warn');
 	} finally {
 		setBusy(elements.logoutButton, false, 'Logout');
 	}
