@@ -139,11 +139,11 @@ Plans:
   2. Device can be configured to fetch an update from a remote endpoint without bypassing the same image safety rules.
   3. Firmware updates use a bootloader-backed swap/rollback process rather than replacing the active image in place.
   4. A new firmware image is only marked permanent after a healthy post-update boot.
-**Plans**: 3 plans
+**Plans**: 2/3 plans executed
 
 Plans:
 - [x] 08-01: Enable MCUboot/sysbuild, partitioning, and staged-image plumbing
-- [ ] 08-02: Implement authenticated local upload and staged image validation flow
+- [x] 08-02: Implement authenticated local upload and staged image validation flow
 - [ ] 08-03: Implement remote-pull orchestration plus confirm/rollback handling
 
 ## Progress
