@@ -107,12 +107,12 @@ Plans:
   1. Authenticated operator can activate and deactivate the first relay through the panel/API.
   2. Manual commands and future scheduled jobs execute through the same action engine path.
   3. Relay control is isolated behind a driver abstraction with defined safe boot and recovery state.
-**Plans**: 3 plans
+**Plans**: 3/3 plans executed
 
 Plans:
 - [x] 06-01: Implement the relay driver abstraction and safe-state policy
 - [x] 06-02: Implement the generic action model and execution pipeline
-- [ ] 06-03: Wire panel/API relay commands through the action engine and validate end-to-end behavior
+- [x] 06-03: Wire panel/API relay commands through the action engine and validate end-to-end behavior *(approved browser/curl/device verification recorded on 2026-03-10)*
 
 ### Phase 7: Scheduling
 **Goal**: Add persistent cron-style scheduling for relay actions with deterministic time and reboot semantics.
@@ -158,6 +158,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Recovery & Watchdog | 2/2 | Complete | 2026-03-09 |
 | 4. Persistent Configuration | 3/3 | Complete   | 2026-03-09 |
 | 5. Local Control Panel | 2/3 | In Progress | - |
-| 6. Action Engine & Relay Control | 2/3 | In Progress | - |
+| 6. Action Engine & Relay Control | 3/3 | Ready for verification | 2026-03-10 |
 | 7. Scheduling | 0/3 | Not started | - |
 | 8. OTA Lifecycle | 0/3 | Not started | - |

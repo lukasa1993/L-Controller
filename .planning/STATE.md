@@ -5,9 +5,9 @@ milestone_name: milestone
 current_phase: 6
 current_phase_name: Action Engine & Relay Control
 current_plan: 3
-status: executing
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-03-10T03:55:10.861Z"
+status: verifying
+stopped_at: Completed 06-action-engine-relay-control-03-PLAN.md
+last_updated: "2026-03-10T05:03:26.755Z"
 last_activity: 2026-03-10
 progress:
   total_phases: 8
@@ -32,21 +32,21 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 **Current Phase Name:** Action Engine & Relay Control
 **Current Plan:** 3
 **Total Plans in Phase:** 3
-**Status:** Ready to execute
+**Status:** Phase complete — ready for verification
 **Last Activity:** 2026-03-10
-**Last Activity Description:** Completed 06-02 generic action model and execution pipeline
+**Last Activity Description:** Closed the approved 06-03 human-verify checkpoint and marked Phase 06 ready for verification
 
-Phase: 6 of 8 (Action Engine & Relay Control) — in progress
+Phase: 6 of 8 (Action Engine & Relay Control) — ready for verification
 Plan: 3 of 3 in current phase
-Status: Ready to execute next plan
-Last activity: 2026-03-10 — Completed 06-02 generic action model and execution pipeline
+Status: 06-03 complete; Phase 06 ready for verification
+Last activity: 2026-03-10 — Closed the approved 06-03 verification checkpoint and finalized planning updates
 
 Progress: [█████████░] 94%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
+- Total plans completed: 15
 - Average duration: 69.2 min
 - Total execution time: 15.0 hours
 
@@ -75,6 +75,7 @@ Progress: [█████████░] 94%
 | Phase 05-local-control-panel P02 | 5 min | 3 tasks | 11 files |
 | Phase 06-action-engine-relay-control P01 | 3 min | 3 tasks | 7 files |
 | Phase 06-action-engine-relay-control P02 | 4m | 3 tasks | 7 files |
+| Phase 06-action-engine-relay-control P03 | 6 min (auto tasks) + approved human verification | 4 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -136,6 +137,9 @@ Recent decisions affecting current work:
 - [Phase 06-action-engine-relay-control]: Reserve stable relay built-ins as relay0.off and relay0.on and seed them during dispatcher startup.
 - [Phase 06-action-engine-relay-control]: Keep HTTP and future scheduler callers on action_id execution while the dispatcher owns relay actuation and persistence writes.
 - [Phase 06-action-engine-relay-control]: Roll back relay runtime state if desired-state persistence fails so accepted commands remain durable and truthful.
+- [Phase 06-action-engine-relay-control]: Keep the external panel/API surface relay-centric with one `/api/relay/desired-state` route while the dispatcher continues to own internal action execution.
+- [Phase 06-action-engine-relay-control]: Show actual-versus-desired mismatch as operator visibility plus a safety note instead of treating it as an automatic command block.
+- [Phase 06-action-engine-relay-control]: Keep `./scripts/validate.sh` build-first and treat browser/curl/device relay verification as the blocking Phase 6 approval gate.
 
 ### Pending Todos
 
@@ -148,6 +152,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T03:55:10.859Z
-Stopped at: Completed 06-02-PLAN.md
+Last session: 2026-03-10T05:03:26.753Z
+Stopped at: Completed 06-action-engine-relay-control-03-PLAN.md
 Resume file: None
