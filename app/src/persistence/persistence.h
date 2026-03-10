@@ -42,6 +42,11 @@ int persistence_store_load_schedule(
 	struct persisted_schedule_table *schedule_table,
 	struct persistence_section_status *status);
 
+int persistence_store_load_ota(
+	struct persistence_store *store,
+	struct persisted_ota *ota,
+	struct persistence_section_status *status);
+
 int persistence_store_load(struct persistence_store *store,
 			   struct persisted_config *config);
 
@@ -65,6 +70,11 @@ int persistence_store_save_schedule(
 	struct persisted_config *config,
 	const struct persisted_schedule_table_save_request *request);
 
+int persistence_store_save_ota(
+	struct persistence_store *store,
+	struct persisted_config *config,
+	const struct persisted_ota_save_request *request);
+
 int persistence_store_save_config(
 	struct persistence_store *store,
 	struct persisted_config *config,
@@ -79,3 +89,7 @@ const char *persistence_migration_action_text(
 
 const char *persisted_relay_reboot_policy_text(
 	enum persisted_relay_reboot_policy policy);
+
+const char *persistence_ota_state_text(enum persisted_ota_state state);
+const char *persistence_ota_last_result_text(
+	enum persisted_ota_last_result_code code);

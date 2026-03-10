@@ -19,6 +19,7 @@ enum persistence_nvs_id {
 	PERSISTENCE_NVS_ID_ACTIONS = 0x4002,
 	PERSISTENCE_NVS_ID_RELAY = 0x4003,
 	PERSISTENCE_NVS_ID_SCHEDULE = 0x4004,
+	PERSISTENCE_NVS_ID_OTA = 0x4005,
 };
 
 struct persistence_migration_plan {
@@ -91,6 +92,8 @@ const char *persistence_section_text(enum persistence_section section)
 		return "relay";
 	case PERSISTENCE_SECTION_SCHEDULE:
 		return "schedule";
+	case PERSISTENCE_SECTION_OTA:
+		return "ota";
 	default:
 		return "unknown";
 	}
@@ -141,12 +144,84 @@ const char *persisted_relay_reboot_policy_text(enum persisted_relay_reboot_polic
 	}
 }
 
+const char *persistence_ota_state_text(enum persisted_ota_state state)
+{
+	switch (state) {
+	case PERSISTED_OTA_STATE_IDLE:
+		return "idle";
+	case PERSISTED_OTA_STATE_STAGING:
+		return "staging";
+	case PERSISTED_OTA_STATE_STAGED:
+		return "staged";
+	case PERSISTED_OTA_STATE_APPLY_REQUESTED:
+		return "apply-requested";
+	default:
+		return "unknown";
+	}
+}
+
+const char *persistence_ota_last_result_text(
+	enum persisted_ota_last_result_code code)
+{
+	switch (code) {
+	case PERSISTED_OTA_LAST_RESULT_NONE:
+		return "none";
+	case PERSISTED_OTA_LAST_RESULT_STAGE_READY:
+		return "stage-ready";
+	case PERSISTED_OTA_LAST_RESULT_STAGE_FAILED:
+		return "stage-failed";
+	case PERSISTED_OTA_LAST_RESULT_APPLY_REQUESTED:
+		return "apply-requested";
+	case PERSISTED_OTA_LAST_RESULT_APPLY_REQUEST_FAILED:
+		return "apply-request-failed";
+	case PERSISTED_OTA_LAST_RESULT_REJECTED_SAME_VERSION:
+		return "rejected-same-version";
+	case PERSISTED_OTA_LAST_RESULT_REJECTED_DOWNGRADE:
+		return "rejected-downgrade";
+	case PERSISTED_OTA_LAST_RESULT_REJECTED_INVALID_IMAGE:
+		return "rejected-invalid-image";
+	default:
+		return "unknown";
+	}
+}
+
 static bool persisted_relay_reboot_policy_valid(enum persisted_relay_reboot_policy policy)
 {
 	switch (policy) {
 	case PERSISTED_RELAY_REBOOT_POLICY_SAFE_OFF:
 	case PERSISTED_RELAY_REBOOT_POLICY_RESTORE_LAST_DESIRED:
 	case PERSISTED_RELAY_REBOOT_POLICY_IGNORE_LAST_DESIRED:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static bool persisted_ota_state_valid(enum persisted_ota_state state)
+{
+	switch (state) {
+	case PERSISTED_OTA_STATE_IDLE:
+	case PERSISTED_OTA_STATE_STAGING:
+	case PERSISTED_OTA_STATE_STAGED:
+	case PERSISTED_OTA_STATE_APPLY_REQUESTED:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static bool persisted_ota_last_result_valid(
+	enum persisted_ota_last_result_code code)
+{
+	switch (code) {
+	case PERSISTED_OTA_LAST_RESULT_NONE:
+	case PERSISTED_OTA_LAST_RESULT_STAGE_READY:
+	case PERSISTED_OTA_LAST_RESULT_STAGE_FAILED:
+	case PERSISTED_OTA_LAST_RESULT_APPLY_REQUESTED:
+	case PERSISTED_OTA_LAST_RESULT_APPLY_REQUEST_FAILED:
+	case PERSISTED_OTA_LAST_RESULT_REJECTED_SAME_VERSION:
+	case PERSISTED_OTA_LAST_RESULT_REJECTED_DOWNGRADE:
+	case PERSISTED_OTA_LAST_RESULT_REJECTED_INVALID_IMAGE:
 		return true;
 	default:
 		return false;
@@ -229,6 +304,31 @@ static void persisted_schedule_defaults(
 	schedule_table->schema_version = persistence_expected_layout_version(store);
 }
 
+static int persisted_ota_defaults(
+	const struct persistence_store *store,
+	struct persisted_ota *ota)
+{
+	int ret;
+
+	memset(ota, 0, sizeof(*ota));
+	ota->schema_version = persistence_expected_layout_version(store);
+	ota->state = PERSISTED_OTA_STATE_IDLE;
+	ota->last_attempt.result = PERSISTED_OTA_LAST_RESULT_NONE;
+	ota->remote_policy.check_interval_hours =
+		store->config->ota.remote_default_check_interval_hours;
+
+	ret = copy_c_string(ota->remote_policy.github_owner,
+			    sizeof(ota->remote_policy.github_owner),
+			    store->config->ota.remote_github_owner);
+	if (ret != 0) {
+		return ret;
+	}
+
+	return copy_c_string(ota->remote_policy.github_repo,
+			       sizeof(ota->remote_policy.github_repo),
+			       store->config->ota.remote_github_repo);
+}
+
 static enum persistence_load_state persistence_read_blob(
 	struct persistence_store *store,
 	uint16_t id,
@@ -309,6 +409,47 @@ static bool persisted_relay_valid(const struct persisted_relay *relay)
 	       persisted_relay_reboot_policy_valid(relay->reboot_policy);
 }
 
+static bool persisted_ota_version_valid(const struct persisted_ota_version *version)
+{
+	return version != NULL &&
+	       (!version->available || version->image_size > 0U);
+}
+
+static bool persisted_ota_attempt_valid(const struct persisted_ota_attempt *attempt)
+{
+	if (attempt == NULL ||
+	    !persisted_ota_last_result_valid(attempt->result) ||
+	    !persisted_ota_version_valid(&attempt->version)) {
+		return false;
+	}
+
+	if (!attempt->recorded) {
+		return attempt->result == PERSISTED_OTA_LAST_RESULT_NONE;
+	}
+
+	return attempt->result != PERSISTED_OTA_LAST_RESULT_NONE;
+}
+
+static bool persisted_ota_remote_policy_valid(
+	const struct persisted_ota_remote_policy *remote_policy)
+{
+	return remote_policy != NULL &&
+	       remote_policy->check_interval_hours > 0U &&
+	       c_string_is_non_empty(remote_policy->github_owner,
+				     sizeof(remote_policy->github_owner)) &&
+	       c_string_is_non_empty(remote_policy->github_repo,
+				     sizeof(remote_policy->github_repo));
+}
+
+static bool persisted_ota_valid(const struct persisted_ota *ota)
+{
+	return ota != NULL &&
+	       persisted_ota_state_valid(ota->state) &&
+	       persisted_ota_version_valid(&ota->staged_version) &&
+	       persisted_ota_attempt_valid(&ota->last_attempt) &&
+	       persisted_ota_remote_policy_valid(&ota->remote_policy);
+}
+
 static int persisted_schedule_table_validate(
 	const struct persisted_schedule_table *schedule_table,
 	const struct persisted_action_catalog *actions)
@@ -321,7 +462,7 @@ static bool persisted_config_save_request_has_changes(
 {
 	return request != NULL &&
 	       (request->has_auth || request->has_actions || request->has_relay ||
-		request->has_schedule);
+		request->has_schedule || request->has_ota);
 }
 
 static void persisted_auth_from_save_request(
@@ -374,6 +515,19 @@ static void persisted_schedule_table_from_save_request(
 	       sizeof(schedule_table->entries[0]) * copy_count);
 }
 
+static void persisted_ota_from_save_request(
+	const struct persistence_store *store,
+	const struct persisted_ota_save_request *request,
+	struct persisted_ota *ota)
+{
+	memset(ota, 0, sizeof(*ota));
+	ota->schema_version = persistence_expected_layout_version(store);
+	ota->state = request->state;
+	ota->staged_version = request->staged_version;
+	ota->last_attempt = request->last_attempt;
+	ota->remote_policy = request->remote_policy;
+}
+
 static void persisted_config_mark_section_loaded(
 	struct persisted_config *config,
 	enum persistence_section section)
@@ -398,6 +552,9 @@ static void persisted_config_mark_section_loaded(
 		break;
 	case PERSISTENCE_SECTION_SCHEDULE:
 		config->load_report.schedule = status;
+		break;
+	case PERSISTENCE_SECTION_OTA:
+		config->load_report.ota = status;
 		break;
 	default:
 		break;
@@ -436,9 +593,14 @@ static int persistence_stage_config_save_request(
 						  &staged->schedule);
 	}
 
+	if (request->has_ota) {
+		persisted_ota_from_save_request(store, &request->ota, &staged->ota);
+	}
+
 	if (!persisted_auth_valid(&staged->auth) ||
 	    !persisted_action_catalog_valid(&staged->actions) ||
-	    !persisted_relay_valid(&staged->relay)) {
+	    !persisted_relay_valid(&staged->relay) ||
+	    !persisted_ota_valid(&staged->ota)) {
 		return -EINVAL;
 	}
 
@@ -600,6 +762,25 @@ static int persistence_write_schedule_section(
 				      sizeof(canonical));
 }
 
+static int persistence_write_ota_section(struct persistence_store *store,
+					 const struct persisted_ota *ota)
+{
+	struct persisted_ota canonical;
+
+	if (!persistence_store_is_ready(store) || ota == NULL) {
+		return -EINVAL;
+	}
+
+	canonical = *ota;
+	canonical.schema_version = persistence_expected_layout_version(store);
+	if (!persisted_ota_valid(&canonical)) {
+		return -EINVAL;
+	}
+
+	return persistence_write_blob(store, PERSISTENCE_NVS_ID_OTA, &canonical,
+				      sizeof(canonical));
+}
+
 int persistence_store_save_config(
 	struct persistence_store *store,
 	struct persisted_config *config,
@@ -647,6 +828,13 @@ int persistence_store_save_config(
 		}
 	}
 
+	if (request->has_ota) {
+		ret = persistence_write_ota_section(store, &staged.ota);
+		if (ret != 0) {
+			goto reload_snapshot;
+		}
+	}
+
 	*config = staged;
 	if (request->has_auth) {
 		persisted_config_mark_section_loaded(config, PERSISTENCE_SECTION_AUTH);
@@ -662,6 +850,10 @@ int persistence_store_save_config(
 
 	if (request->has_schedule) {
 		persisted_config_mark_section_loaded(config, PERSISTENCE_SECTION_SCHEDULE);
+	}
+
+	if (request->has_ota) {
+		persisted_config_mark_section_loaded(config, PERSISTENCE_SECTION_OTA);
 	}
 
 	return 0;
@@ -747,6 +939,25 @@ int persistence_store_save_schedule(
 	save_request = (struct persisted_config_save_request){
 		.has_schedule = true,
 		.schedule = *request,
+	};
+
+	return persistence_store_save_config(store, config, &save_request);
+}
+
+int persistence_store_save_ota(
+	struct persistence_store *store,
+	struct persisted_config *config,
+	const struct persisted_ota_save_request *request)
+{
+	struct persisted_config_save_request save_request;
+
+	if (request == NULL) {
+		return -EINVAL;
+	}
+
+	save_request = (struct persisted_config_save_request){
+		.has_ota = true,
+		.ota = *request,
 	};
 
 	return persistence_store_save_config(store, config, &save_request);
@@ -985,6 +1196,66 @@ int persistence_store_load_schedule(
 	return ret;
 }
 
+int persistence_store_load_ota(
+	struct persistence_store *store,
+	struct persisted_ota *ota,
+	struct persistence_section_status *status)
+{
+	struct persisted_ota candidate;
+	struct persistence_migration_plan migration_plan;
+	enum persistence_load_state state;
+	int ret;
+
+	if (!persistence_store_is_ready(store) || ota == NULL || status == NULL) {
+		return -EINVAL;
+	}
+
+	memset(&candidate, 0, sizeof(candidate));
+	migration_plan = persistence_plan_section_migration(store,
+						  PERSISTENCE_SECTION_OTA,
+						  0U);
+	state = persistence_read_blob(store, PERSISTENCE_NVS_ID_OTA, &candidate,
+				      sizeof(candidate));
+	if (state == PERSISTENCE_LOAD_STATE_LOADED) {
+		migration_plan = persistence_plan_section_migration(store,
+						  PERSISTENCE_SECTION_OTA,
+						  candidate.schema_version);
+		if (migration_plan.action != PERSISTENCE_MIGRATION_ACTION_NONE) {
+			state = PERSISTENCE_LOAD_STATE_INCOMPATIBLE_RESET;
+		} else if (persisted_ota_valid(&candidate)) {
+			*ota = candidate;
+			*status = persistence_make_status(PERSISTENCE_SECTION_OTA,
+						      state,
+						      false,
+						      migration_plan.action,
+						      candidate.schema_version,
+						      migration_plan.expected_schema_version);
+			return 0;
+		} else {
+			state = PERSISTENCE_LOAD_STATE_INVALID_RESET;
+		}
+	}
+
+	ret = persisted_ota_defaults(store, ota);
+	if (ret != 0) {
+		return ret;
+	}
+
+	*status = persistence_make_status(PERSISTENCE_SECTION_OTA,
+					  state,
+					  false,
+					  state == PERSISTENCE_LOAD_STATE_INCOMPATIBLE_RESET ?
+						  migration_plan.action :
+						  PERSISTENCE_MIGRATION_ACTION_NONE,
+					  candidate.schema_version,
+					  migration_plan.expected_schema_version);
+	if (state == PERSISTENCE_LOAD_STATE_EMPTY_DEFAULT) {
+		return 0;
+	}
+
+	return persistence_write_ota_section(store, ota);
+}
+
 int persistence_store_load(struct persistence_store *store,
 			   struct persisted_config *config)
 {
@@ -1013,6 +1284,12 @@ int persistence_store_load(struct persistence_store *store,
 		return ret;
 	}
 
-	return persistence_store_load_schedule(store, &config->actions, &config->schedule,
+	ret = persistence_store_load_schedule(store, &config->actions, &config->schedule,
 				      &config->load_report.schedule);
+	if (ret != 0) {
+		return ret;
+	}
+
+	return persistence_store_load_ota(store, &config->ota,
+				     &config->load_report.ota);
 }

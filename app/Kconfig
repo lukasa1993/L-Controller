@@ -144,4 +144,30 @@ config APP_PANEL_LOGIN_COOLDOWN_MS
 	help
 	  Cooldown applied after repeated wrong-password attempts.
 
+config APP_OTA_CONFIRM_STABLE_WINDOW_MS
+	int "OTA confirmation stable window in milliseconds"
+	default 15000
+	range 1000 600000
+	help
+	  Healthy post-boot window reserved for a later OTA confirmation step.
+
+config APP_OTA_REMOTE_DEFAULT_CHECK_INTERVAL_HOURS
+	int "Default remote OTA check interval in hours"
+	default 24
+	range 1 168
+	help
+	  Persisted placeholder cadence for later remote OTA work.
+
+config APP_OTA_REMOTE_GITHUB_OWNER
+	string "Default OTA GitHub owner"
+	default "lukasa1993"
+	help
+	  Repo-owned GitHub Releases source reserved for later OTA plans.
+
+config APP_OTA_REMOTE_GITHUB_REPO
+	string "Default OTA GitHub repo"
+	default "L-Controller"
+	help
+	  Repo-owned GitHub Releases source reserved for later OTA plans.
+
 endmenu

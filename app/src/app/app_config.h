@@ -10,6 +10,11 @@
 #define APP_PANEL_LOGIN_FAILURE_LIMIT CONFIG_APP_PANEL_LOGIN_FAILURE_LIMIT
 #define APP_PANEL_MAX_SESSIONS CONFIG_APP_PANEL_MAX_SESSIONS
 #define APP_PANEL_PORT CONFIG_APP_PANEL_PORT
+#define APP_OTA_CONFIRM_STABLE_WINDOW_MS CONFIG_APP_OTA_CONFIRM_STABLE_WINDOW_MS
+#define APP_OTA_REMOTE_DEFAULT_CHECK_INTERVAL_HOURS                               \
+	CONFIG_APP_OTA_REMOTE_DEFAULT_CHECK_INTERVAL_HOURS
+#define APP_OTA_REMOTE_GITHUB_OWNER CONFIG_APP_OTA_REMOTE_GITHUB_OWNER
+#define APP_OTA_REMOTE_GITHUB_REPO CONFIG_APP_OTA_REMOTE_GITHUB_REPO
 #define APP_PERSISTENCE_LAYOUT_VERSION CONFIG_APP_PERSISTENCE_LAYOUT_VERSION
 #define APP_SCHEDULER_CADENCE_SECONDS CONFIG_APP_SCHEDULER_CADENCE_SECONDS
 #define APP_SCHEDULER_PROBLEM_HISTORY_CAPACITY 10U
@@ -58,11 +63,19 @@ struct app_scheduler_config {
 	uint32_t problem_history_capacity;
 };
 
+struct app_ota_config {
+	int32_t confirm_stable_window_ms;
+	uint32_t remote_default_check_interval_hours;
+	const char *remote_github_owner;
+	const char *remote_github_repo;
+};
+
 struct app_config {
 	const char *board_name;
 	struct app_wifi_config wifi;
 	struct app_reachability_config reachability;
 	struct app_recovery_config recovery;
+	struct app_ota_config ota;
 	struct app_panel_config panel;
 	struct app_persistence_config persistence;
 	struct app_scheduler_config scheduler;

@@ -7,6 +7,8 @@
 #define PERSISTED_AUTH_PASSWORD_MAX_LEN 64
 #define PERSISTED_ACTION_ID_MAX_LEN 24
 #define PERSISTED_ACTION_MAX_COUNT 8
+#define PERSISTED_OTA_GITHUB_OWNER_MAX_LEN 32
+#define PERSISTED_OTA_GITHUB_REPO_MAX_LEN 32
 #define PERSISTED_SCHEDULE_ID_MAX_LEN 24
 #define PERSISTED_SCHEDULE_MAX_COUNT 8
 #define PERSISTED_SCHEDULE_CRON_EXPRESSION_MAX_LEN 64
@@ -16,6 +18,7 @@ enum persistence_section {
 	PERSISTENCE_SECTION_ACTIONS,
 	PERSISTENCE_SECTION_RELAY,
 	PERSISTENCE_SECTION_SCHEDULE,
+	PERSISTENCE_SECTION_OTA,
 };
 
 enum persistence_load_state {
@@ -35,6 +38,24 @@ enum persisted_relay_reboot_policy {
 	PERSISTED_RELAY_REBOOT_POLICY_SAFE_OFF = 0,
 	PERSISTED_RELAY_REBOOT_POLICY_RESTORE_LAST_DESIRED = 1,
 	PERSISTED_RELAY_REBOOT_POLICY_IGNORE_LAST_DESIRED = 2,
+};
+
+enum persisted_ota_state {
+	PERSISTED_OTA_STATE_IDLE = 0,
+	PERSISTED_OTA_STATE_STAGING,
+	PERSISTED_OTA_STATE_STAGED,
+	PERSISTED_OTA_STATE_APPLY_REQUESTED,
+};
+
+enum persisted_ota_last_result_code {
+	PERSISTED_OTA_LAST_RESULT_NONE = 0,
+	PERSISTED_OTA_LAST_RESULT_STAGE_READY,
+	PERSISTED_OTA_LAST_RESULT_STAGE_FAILED,
+	PERSISTED_OTA_LAST_RESULT_APPLY_REQUESTED,
+	PERSISTED_OTA_LAST_RESULT_APPLY_REQUEST_FAILED,
+	PERSISTED_OTA_LAST_RESULT_REJECTED_SAME_VERSION,
+	PERSISTED_OTA_LAST_RESULT_REJECTED_DOWNGRADE,
+	PERSISTED_OTA_LAST_RESULT_REJECTED_INVALID_IMAGE,
 };
 
 struct persisted_auth {
@@ -59,6 +80,40 @@ struct persisted_relay {
 	uint32_t schema_version;
 	bool last_desired_state;
 	enum persisted_relay_reboot_policy reboot_policy;
+};
+
+struct persisted_ota_version {
+	bool available;
+	uint8_t major;
+	uint8_t minor;
+	uint16_t revision;
+	uint32_t build_num;
+	uint32_t image_size;
+};
+
+struct persisted_ota_attempt {
+	bool recorded;
+	enum persisted_ota_last_result_code result;
+	int32_t error_code;
+	uint32_t bytes_written;
+	bool rollback_detected;
+	int32_t rollback_reason;
+	struct persisted_ota_version version;
+};
+
+struct persisted_ota_remote_policy {
+	bool auto_update_enabled;
+	uint32_t check_interval_hours;
+	char github_owner[PERSISTED_OTA_GITHUB_OWNER_MAX_LEN];
+	char github_repo[PERSISTED_OTA_GITHUB_REPO_MAX_LEN];
+};
+
+struct persisted_ota {
+	uint32_t schema_version;
+	enum persisted_ota_state state;
+	struct persisted_ota_version staged_version;
+	struct persisted_ota_attempt last_attempt;
+	struct persisted_ota_remote_policy remote_policy;
 };
 
 struct persisted_schedule {
@@ -89,6 +144,13 @@ struct persisted_relay_save_request {
 	enum persisted_relay_reboot_policy reboot_policy;
 };
 
+struct persisted_ota_save_request {
+	enum persisted_ota_state state;
+	struct persisted_ota_version staged_version;
+	struct persisted_ota_attempt last_attempt;
+	struct persisted_ota_remote_policy remote_policy;
+};
+
 struct persisted_schedule_table_save_request {
 	uint32_t count;
 	struct persisted_schedule entries[PERSISTED_SCHEDULE_MAX_COUNT];
@@ -103,6 +165,8 @@ struct persisted_config_save_request {
 	struct persisted_relay_save_request relay;
 	bool has_schedule;
 	struct persisted_schedule_table_save_request schedule;
+	bool has_ota;
+	struct persisted_ota_save_request ota;
 };
 
 struct persistence_section_status {
@@ -119,6 +183,7 @@ struct persistence_load_report {
 	struct persistence_section_status actions;
 	struct persistence_section_status relay;
 	struct persistence_section_status schedule;
+	struct persistence_section_status ota;
 };
 
 struct persisted_config {
@@ -127,5 +192,6 @@ struct persisted_config {
 	struct persisted_action_catalog actions;
 	struct persisted_relay relay;
 	struct persisted_schedule_table schedule;
+	struct persisted_ota ota;
 	struct persistence_load_report load_report;
 };

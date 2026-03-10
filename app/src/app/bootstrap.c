@@ -6,6 +6,7 @@
 #include "app/bootstrap.h"
 #include "network/network_supervisor.h"
 #include "network/wifi_lifecycle.h"
+#include "ota/ota.h"
 #include "panel/panel_auth.h"
 #include "panel/panel_http.h"
 #include "persistence/persistence.h"
@@ -100,6 +101,7 @@ static void log_persistence_load_report(
 	log_persistence_section_status(&load_report->actions);
 	log_persistence_section_status(&load_report->relay);
 	log_persistence_section_status(&load_report->schedule);
+	log_persistence_section_status(&load_report->ota);
 }
 
 static const char *relay_state_text(bool relay_state)
@@ -124,6 +126,15 @@ static void log_persisted_snapshot_summary(const struct persisted_config *config
 		config->schedule.count,
 		relay_state_text(config->relay.last_desired_state),
 		persisted_relay_reboot_policy_text(config->relay.reboot_policy));
+
+	LOG_INF("Persistence OTA state=%s staged=%s last_attempt=%s rollback=%s remote=%s/%s every=%uh",
+		persistence_ota_state_text(config->ota.state),
+		config->ota.staged_version.available ? "present" : "none",
+		persistence_ota_last_result_text(config->ota.last_attempt.result),
+		config->ota.last_attempt.rollback_detected ? "detected" : "none",
+		config->ota.remote_policy.github_owner,
+		config->ota.remote_policy.github_repo,
+		config->ota.remote_policy.check_interval_hours);
 }
 
 static void log_relay_runtime_status(const struct app_context *app_context)
@@ -188,6 +199,56 @@ static void log_scheduler_runtime_status(const struct app_context *app_context)
 	}
 }
 
+static void log_ota_runtime_status(const struct app_context *app_context)
+{
+	struct ota_runtime_status status;
+	int ret;
+
+	ret = ota_service_copy_snapshot(&app_context->ota, &status);
+	if (ret != 0 || !status.implemented) {
+		return;
+	}
+
+	if (status.current_version.available) {
+		LOG_INF("OTA runtime ready current=%u.%u.%u+%u confirmed=%s state=%s remote=%s/%s every=%uh",
+			status.current_version.major,
+			status.current_version.minor,
+			status.current_version.revision,
+			status.current_version.build_num,
+			status.image_confirmed ? "yes" : "no",
+			persistence_ota_state_text(status.state),
+			status.remote_policy.github_owner,
+			status.remote_policy.github_repo,
+			status.remote_policy.check_interval_hours);
+	} else {
+		LOG_WRN("OTA runtime could not read the current image header state=%s remote=%s/%s every=%uh",
+			persistence_ota_state_text(status.state),
+			status.remote_policy.github_owner,
+			status.remote_policy.github_repo,
+			status.remote_policy.check_interval_hours);
+	}
+
+	if (status.staged_version.available) {
+		LOG_INF("OTA staged version=%u.%u.%u+%u",
+			status.staged_version.major,
+			status.staged_version.minor,
+			status.staged_version.revision,
+			status.staged_version.build_num);
+	}
+
+	if (status.last_attempt.recorded) {
+		LOG_INF("OTA last_attempt=%s version=%u.%u.%u+%u rollback=%s error=%d bytes=%u",
+			persistence_ota_last_result_text(status.last_attempt.result),
+			status.last_attempt.version.major,
+			status.last_attempt.version.minor,
+			status.last_attempt.version.revision,
+			status.last_attempt.version.build_num,
+			status.last_attempt.rollback_detected ? "detected" : "none",
+			status.last_attempt.error_code,
+			status.last_attempt.bytes_written);
+	}
+}
+
 static int load_app_config(struct app_context *app_context)
 {
 	int ret;
@@ -209,6 +270,13 @@ static int load_app_config(struct app_context *app_context)
 			.degraded_patience_ms = CONFIG_APP_RECOVERY_DEGRADED_PATIENCE_MS,
 			.stable_window_ms = CONFIG_APP_RECOVERY_STABLE_WINDOW_MS,
 			.cooldown_ms = CONFIG_APP_RECOVERY_COOLDOWN_MS,
+		},
+		.ota = {
+			.confirm_stable_window_ms = APP_OTA_CONFIRM_STABLE_WINDOW_MS,
+			.remote_default_check_interval_hours =
+				APP_OTA_REMOTE_DEFAULT_CHECK_INTERVAL_HOURS,
+			.remote_github_owner = APP_OTA_REMOTE_GITHUB_OWNER,
+			.remote_github_repo = APP_OTA_REMOTE_GITHUB_REPO,
 		},
 		.panel = {
 			.port = APP_PANEL_PORT,
@@ -308,7 +376,14 @@ int app_boot(struct app_context *app_context)
 		return ret;
 	}
 
+	ret = ota_service_init(&app_context->ota, app_context);
+	if (ret != 0) {
+		LOG_ERR("Failed to initialize OTA service: %d", ret);
+		return ret;
+	}
+
 	log_relay_runtime_status(app_context);
+	log_ota_runtime_status(app_context);
 
 	ret = panel_auth_service_init(&app_context->panel_auth, app_context);
 	if (ret != 0) {
