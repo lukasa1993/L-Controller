@@ -4,4 +4,7 @@
 .venv/
 build/
 app/wifi.secrets.conf
+node_modules/
+playwright-report/
+test-results/
 !.zed/settings.json

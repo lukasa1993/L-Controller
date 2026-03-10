@@ -1,0 +1,13 @@
+{
+  "name": "lnh-nordic-panel-smoke",
+  "private": true,
+  "scripts": {
+    "playwright:install": "playwright install chromium",
+    "playwright:discover": "node tests/helpers/panel-target.js",
+    "test:panel": "playwright test",
+    "test:panel:list": "playwright test --list"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.1"
+  }
+}

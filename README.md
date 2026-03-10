@@ -33,6 +33,39 @@ Set these values for a reproducible local panel login flow:
 
 The same credentials are used for browser login and the `curl` verification flow.
 
+### Playwright login smoke
+
+The repo now includes a Playwright smoke for the Phase 5+ login shell. It is intended for the flashed device only: it submits the real panel login form and only passes once the authenticated dashboard replaces the login view and protected cards such as `Device shell` and `Connectivity` render.
+
+Install the browser-test dependencies once:
+
+```sh
+npm install
+npx playwright install chromium
+```
+
+For a flashed device on the local LAN, export the same credentials that are compiled into `app/wifi.secrets.conf`:
+
+```sh
+export LNH_PANEL_USERNAME='...'
+export LNH_PANEL_PASSWORD='...'
+```
+
+Then build, flash, optionally preview the discovered URL, and run the smoke:
+
+```sh
+./scripts/build.sh
+./scripts/flash.sh
+node tests/helpers/panel-target.js
+LNH_PANEL_BASE_URL=auto npx playwright test tests/panel-login.spec.js
+```
+
+Auto-discovery probes the active private `/24` subnet on the panel HTTP port and looks for the embedded panel shell markers. Override it when needed with:
+
+- `LNH_PANEL_BASE_URL=http://<device-ip>`
+- `LNH_PANEL_SUBNET=192.168.1`
+- `LNH_PANEL_PORT=8080`
+
 ### Browser, curl, and device validation is the blocking gate
 
 Automated validation is necessary but not sufficient for Phase 8 completion. Final sign-off stays manual on real hardware and a browser on the same LAN:
