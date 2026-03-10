@@ -435,6 +435,14 @@ HTTP_SERVICE_DEFINE(panel_http_service, NULL, &panel_http_service_port,
 
 HTTP_RESOURCE_DEFINE(panel_shell_index_resource, panel_http_service, "/",
 		     &panel_shell_index_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_shell_actions_resource, panel_http_service, "/actions",
+		     &panel_shell_index_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_shell_overview_resource, panel_http_service, "/overview",
+		     &panel_shell_index_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_shell_schedules_resource, panel_http_service, "/schedules",
+		     &panel_shell_index_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_shell_updates_resource, panel_http_service, "/updates",
+		     &panel_shell_index_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_login_resource, panel_http_service, "/login",
 		     &panel_shell_login_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_main_js_resource, panel_http_service, "/main.js",

@@ -8,6 +8,7 @@ const PANEL_MARKERS = [
 	'LNH Nordic Mission Console',
 	'data-panel-page="dashboard"',
 	'id="dashboard-view"',
+	'data-panel-nav="actions"',
 	'src="/main.js"',
 ];
 

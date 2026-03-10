@@ -10,67 +10,84 @@
 	<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 	<script defer src="/main.js"></script>
 </head>
-<body data-panel-page="dashboard" class="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_24%),radial-gradient(circle_at_80%_10%,rgba(251,191,36,0.12),transparent_18%),linear-gradient(180deg,#040a10_0%,#071019_52%,#050b11_100%)] text-slate-50 antialiased">
-	<div aria-hidden="true" class="pointer-events-none fixed inset-0 bg-[linear-gradient(rgba(125,211,252,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(125,211,252,0.04)_1px,transparent_1px)] bg-[size:28px_28px] [mask-image:radial-gradient(circle_at_center,black,transparent_88%)]"></div>
-	<div class="relative mx-auto grid max-w-[1360px] gap-[18px] px-5 pt-8 pb-14 font-mono">
-		<header class="grid gap-[18px] rounded-[28px] border border-sky-100/15 bg-slate-950/55 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]">
-			<div class="grid gap-[18px] xl:grid-cols-[1.5fr_0.9fr]">
-				<div class="space-y-4">
-					<p class="m-0 text-xs uppercase tracking-[0.34em] text-sky-300">Local Authenticated Panel</p>
-					<h1 class="m-0 font-serif text-[clamp(2.6rem,5vw,4.4rem)] font-semibold leading-[0.96] tracking-[-0.02em]">LNH Nordic Mission Console</h1>
-					<p class="max-w-3xl text-[0.95rem] leading-relaxed text-slate-300">
-						This panel stays local to the LAN, trusts the firmware as the source of truth,
-						and now exposes authenticated relay control, dedicated scheduling, and staged firmware updates that only apply after an explicit operator confirmation.
-					</p>
+	<body data-panel-page="dashboard" class="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_24%),radial-gradient(circle_at_80%_10%,rgba(251,191,36,0.12),transparent_18%),linear-gradient(180deg,#040a10_0%,#071019_52%,#050b11_100%)] text-slate-50 antialiased">
+		<div aria-hidden="true" class="pointer-events-none fixed inset-0 bg-[linear-gradient(rgba(125,211,252,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(125,211,252,0.04)_1px,transparent_1px)] bg-[size:28px_28px] [mask-image:radial-gradient(circle_at_center,black,transparent_88%)]"></div>
+		<div class="relative mx-auto grid max-w-[1360px] gap-[18px] px-5 pt-8 pb-14 font-mono">
+			<header class="grid gap-[18px] rounded-[28px] border border-sky-100/15 bg-slate-950/55 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]">
+				<div class="flex flex-wrap items-start justify-between gap-4">
+					<div class="space-y-4">
+						<p id="view-eyebrow" class="m-0 text-xs uppercase tracking-[0.34em] text-sky-300">Actions First Local Control</p>
+						<div class="space-y-3">
+							<h1 id="view-title" class="m-0 font-serif text-[clamp(2.6rem,5vw,4.4rem)] font-semibold leading-[0.96] tracking-[-0.02em]">LNH Nordic Mission Console</h1>
+							<p id="view-description" class="max-w-3xl text-[0.95rem] leading-relaxed text-slate-300">
+								The protected panel now keeps direct actions, schedules, and updates on separate destinations while the firmware remains the source of truth for every visible state.
+							</p>
+						</div>
+						<div class="flex flex-wrap items-center gap-2.5">
+							<span id="session-chip" class="inline-flex items-center gap-2 rounded-full border border-sky-100/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100">Session bootstrap pending</span>
+							<span id="network-pill" class="inline-flex items-center gap-2 rounded-full border border-sky-100/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100">Status not loaded</span>
+						</div>
+					</div>
 					<div class="flex flex-wrap items-center gap-2.5">
-						<span id="session-chip" class="inline-flex items-center gap-2 rounded-full border border-sky-100/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100">Session bootstrap pending</span>
-						<span id="network-pill" class="inline-flex items-center gap-2 rounded-full border border-sky-100/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100">Status not loaded</span>
+						<button id="refresh-button" class="inline-flex w-auto items-center justify-center rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] font-semibold uppercase tracking-[0.14em] text-slate-50 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 disabled:cursor-wait disabled:opacity-60" type="button" disabled>Refresh panel</button>
+						<button id="logout-button" class="inline-flex w-auto items-center justify-center rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] font-semibold uppercase tracking-[0.14em] text-slate-50 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 disabled:cursor-wait disabled:opacity-60" type="button" disabled>Logout</button>
 					</div>
 				</div>
-				<aside class="grid content-start gap-3 rounded-[24px] border border-sky-300/35 bg-[linear-gradient(180deg,rgba(34,211,238,0.12),rgba(8,14,22,0.55))] p-[22px]">
-					<p class="m-0 text-xs uppercase tracking-[0.34em] text-sky-300">Protected Dashboard</p>
-					<h2 class="m-0 font-serif text-[1.2rem] font-semibold tracking-[-0.02em]">Redirect-driven access with live firmware truth</h2>
-					<ul class="m-0 list-disc pl-[18px] text-[0.95rem] leading-relaxed text-slate-300">
-						<li>Unauthenticated visits bounce to the dedicated `/login` route before protected data loads</li>
-						<li>Successful local authentication returns the browser straight back to the requested dashboard path</li>
-						<li>Expired sessions redirect back to login instead of leaving a mixed shell behind</li>
-						<li>Protected relay, scheduler, and OTA surfaces still refresh only from the device APIs</li>
-					</ul>
-				</aside>
-			</div>
-		</header>
+				<div class="grid gap-[18px] xl:grid-cols-[1.5fr_0.9fr]">
+					<div class="rounded-[24px] border border-sky-300/35 bg-[linear-gradient(180deg,rgba(34,211,238,0.12),rgba(8,14,22,0.55))] p-[22px]">
+						<p class="m-0 text-xs uppercase tracking-[0.34em] text-sky-300">Protected Shell</p>
+						<p class="mt-3 text-[0.95rem] leading-relaxed text-slate-200">
+							Actions react immediately, then settle from fresh device truth. Schedules and OTA stay isolated on their own pages so the primary control path is no longer buried under long status stacks.
+						</p>
+					</div>
+					<aside class="grid content-start gap-3 rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-[22px]">
+						<p class="m-0 text-xs uppercase tracking-[0.34em] text-sky-300">Navigation</p>
+						<nav id="panel-nav" class="grid gap-2 sm:grid-cols-2">
+							<a href="/overview" data-panel-nav="overview" class="inline-flex items-center justify-between rounded-[18px] border border-slate-300/15 bg-slate-950/40 px-4 py-3 text-[0.9rem] font-semibold tracking-[0.08em] text-slate-300 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 hover:text-slate-50">Overview</a>
+							<a href="/" data-panel-nav="actions" class="inline-flex items-center justify-between rounded-[18px] border border-slate-300/15 bg-slate-950/40 px-4 py-3 text-[0.9rem] font-semibold tracking-[0.08em] text-slate-300 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 hover:text-slate-50">Actions</a>
+							<a href="/schedules" data-panel-nav="schedules" class="inline-flex items-center justify-between rounded-[18px] border border-slate-300/15 bg-slate-950/40 px-4 py-3 text-[0.9rem] font-semibold tracking-[0.08em] text-slate-300 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 hover:text-slate-50">Schedules</a>
+							<a href="/updates" data-panel-nav="updates" class="inline-flex items-center justify-between rounded-[18px] border border-slate-300/15 bg-slate-950/40 px-4 py-3 text-[0.9rem] font-semibold tracking-[0.08em] text-slate-300 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 hover:text-slate-50">Updates</a>
+						</nav>
+					</aside>
+				</div>
+			</header>
 
-		<div class="flex flex-wrap items-center justify-between gap-3 rounded-full border border-sky-100/15 bg-slate-950/55 px-4 py-3 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]">
-			<div class="flex flex-wrap items-center gap-2.5">
-				<span class="inline-flex items-center gap-2 rounded-full border border-sky-100/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100">Server truth sessions only</span>
-				<span class="inline-flex items-center gap-2 rounded-full border border-sky-100/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100">Tailwind v4 browser runtime</span>
-			</div>
-			<div class="flex flex-wrap items-center gap-2.5">
-				<button id="refresh-button" class="inline-flex w-auto items-center justify-center rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] font-semibold uppercase tracking-[0.14em] text-slate-50 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 disabled:cursor-wait disabled:opacity-60" type="button" disabled>Refresh status</button>
-				<button id="logout-button" class="inline-flex w-auto items-center justify-center rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] font-semibold uppercase tracking-[0.14em] text-slate-50 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 disabled:cursor-wait disabled:opacity-60" type="button" disabled>Logout</button>
+			<section id="panel-summary" class="grid gap-4 md:grid-cols-2 xl:grid-cols-4"></section>
+
+			<section id="panel-alert" class="rounded-[18px] border border-sky-300/25 bg-[linear-gradient(180deg,rgba(125,211,252,0.08),rgba(7,16,25,0))] px-[14px] py-3 text-[0.95rem] leading-relaxed text-sky-50">
+				Checking whether this browser already has a valid local session before the protected dashboard is shown.
+			</section>
+
+			<section id="dashboard-view" class="hidden grid gap-4">
+				<section id="overview-view" data-panel-view="overview" class="hidden">
+					<div class="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
+						<div class="grid gap-4 md:grid-cols-2">
+							<article id="device-card" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
+							<article id="network-card" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
+						</div>
+						<article id="recovery-card" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
+					</div>
+				</section>
+
+				<section id="actions-view" data-panel-view="actions" class="hidden">
+					<div class="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+						<article id="relay-card" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
+						<article id="actions-info-card" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
+					</div>
+				</section>
+
+				<section id="schedules-view" data-panel-view="schedules" class="hidden">
+					<article id="scheduler-card" class="min-h-80 rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
+				</section>
+
+				<section id="updates-view" data-panel-view="updates" class="hidden">
+					<article id="update-card" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
+				</section>
+			</section>
+
+			<div aria-hidden="true" class="hidden border-emerald-400/35 text-emerald-100 border-amber-300/35 text-amber-100 border-rose-400/35 text-rose-100 border-amber-300/30 text-emerald-50 rounded-[18px] border-sky-200/20 bg-slate-950/60 p-4 rounded-lg bg-sky-300/10 px-1.5 py-0.5 text-slate-200 border-dashed text-sky-100 border-slate-300/15 text-slate-400 text-right mt-[14px] gap-2.5 pt-2.5 first:border-t-0 first:pt-0 mt-1.5 mb-1.5 mt-3 mt-4 block text-base md:grid-cols-4 md:grid-cols-2 md:items-end md:grid-cols-[minmax(0,1fr)_auto] md:items-center xl:grid-cols-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)] xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] grid-cols-[minmax(0,1fr)_auto] border-sky-300/35 bg-sky-300/10 text-sky-50 hover:text-slate-50 hover:border-sky-300/35 bg-slate-950/40 bg-slate-950/50 px-4 py-3 tracking-[0.08em] shadow-[0_18px_40px_rgba(15,23,42,0.22)] sm:grid-cols-2 text-[1.15rem] text-[1.35rem]">
+				tailwind safelist
 			</div>
 		</div>
-
-		<section id="panel-alert" class="rounded-[18px] border border-sky-300/25 bg-[linear-gradient(180deg,rgba(125,211,252,0.08),rgba(7,16,25,0))] px-[14px] py-3 text-[0.95rem] leading-relaxed text-sky-50">
-			Checking whether this browser already has a valid local session before the protected dashboard is shown.
-		</section>
-
-		<section id="dashboard-view" class="hidden">
-			<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-				<article id="device-card" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
-				<article id="network-card" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
-				<article id="recovery-card" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
-				<article id="relay-card" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
-				<article id="update-card" class="rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
-			</div>
-			<div class="mt-[18px]">
-				<article id="scheduler-card" class="min-h-80 rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"></article>
-			</div>
-		</section>
-
-		<div aria-hidden="true" class="hidden border-emerald-400/35 text-emerald-100 border-amber-300/35 text-amber-100 border-rose-400/35 text-rose-100 border-amber-300/30 text-emerald-50 rounded-[18px] border-sky-200/20 bg-slate-950/60 p-4 rounded-lg bg-sky-300/10 px-1.5 py-0.5 text-slate-200 border-dashed text-sky-100 border-slate-300/15 text-slate-400 text-right mt-[14px] gap-2.5 pt-2.5 first:border-t-0 first:pt-0 mt-1.5 mb-1.5 mt-3 mt-4 block text-base md:grid-cols-4 md:grid-cols-2 md:items-end md:grid-cols-[minmax(0,1fr)_auto] md:items-center xl:grid-cols-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)] xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] grid-cols-[minmax(0,1fr)_auto]">
-			tailwind safelist
-		</div>
-	</div>
-</body>
+	</body>
 </html>

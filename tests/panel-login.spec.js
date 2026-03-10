@@ -6,11 +6,13 @@ function escapeRegex(value) {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-test('redirects through /login and lands on the authenticated dashboard', async ({ page }) => {
+test('redirects through /login and lands on the authenticated action-first shell', async ({ page }) => {
 	const baseUrl = await resolvePanelBaseUrl(process.env);
 	const credentials = resolvePanelCredentials(baseUrl, process.env);
 	const loginUrlPattern = new RegExp(`^${escapeRegex(`${baseUrl}/login`)}(?:\\?.*)?$`);
 	const dashboardUrlPattern = new RegExp(`^${escapeRegex(baseUrl)}/?(?:\\?.*)?$`);
+	const schedulesUrlPattern = new RegExp(`^${escapeRegex(`${baseUrl}/schedules`)}(?:\\?.*)?$`);
+	const updatesUrlPattern = new RegExp(`^${escapeRegex(`${baseUrl}/updates`)}(?:\\?.*)?$`);
 
 	await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' });
 
@@ -62,7 +64,24 @@ test('redirects through /login and lands on the authenticated dashboard', async 
 	await expect(page.locator('#dashboard-view')).not.toHaveClass(/hidden/);
 	await expect(page.locator('#session-chip')).toContainText(`Authenticated as ${credentials.username}`);
 	await expect(page.locator('#panel-alert')).toContainText('Protected status, schedules, and OTA truth refreshed from the device.');
-	await expect(page.getByRole('heading', { name: 'Device shell' })).toBeVisible();
-	await expect(page.getByRole('heading', { name: 'Connectivity' })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Refresh status' })).toBeEnabled();
+	await expect(page.locator('[data-panel-nav="actions"][aria-current="page"]')).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Primary actions' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Refresh panel' })).toBeEnabled();
+
+	await page.getByRole('link', { name: 'Schedules' }).click();
+	await expect(page).toHaveURL(schedulesUrlPattern);
+	await expect(page.locator('[data-panel-nav="schedules"][aria-current="page"]')).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Schedule management' })).toBeVisible();
+	await expect(page.locator('#session-chip')).toContainText(`Authenticated as ${credentials.username}`);
+
+	await page.getByRole('link', { name: 'Updates' }).click();
+	await expect(page).toHaveURL(updatesUrlPattern);
+	await expect(page.locator('[data-panel-nav="updates"][aria-current="page"]')).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Firmware updates' })).toBeVisible();
+	await expect(page.locator('#session-chip')).toContainText(`Authenticated as ${credentials.username}`);
+
+	await page.getByRole('link', { name: 'Actions' }).click();
+	await expect(page).toHaveURL(dashboardUrlPattern);
+	await expect(page.locator('[data-panel-nav="actions"][aria-current="page"]')).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Primary actions' })).toBeVisible();
 });

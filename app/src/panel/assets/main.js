@@ -22,6 +22,7 @@ const state = {
 	scheduleSnapshot: null,
 	updateSnapshot: null,
 	refreshTimer: null,
+	activeView: 'actions',
 	relayCommandPending: false,
 	relayCommandDesiredState: false,
 	relayFeedback: null,
@@ -55,6 +56,44 @@ const pages = {
 	login: 'login',
 };
 
+const views = {
+	overview: 'overview',
+	actions: 'actions',
+	schedules: 'schedules',
+	updates: 'updates',
+};
+
+const viewConfig = {
+	[views.overview]: {
+		path: '/overview',
+		aliases: ['/overview'],
+		eyebrow: 'System Overview',
+		title: 'Device posture without the clutter',
+		description: 'Use Overview for board, network, and recovery context. The direct controls stay on the dedicated Actions page so the operator path is not buried.',
+	},
+	[views.actions]: {
+		path: '/',
+		aliases: ['/', '/actions'],
+		eyebrow: 'Actions First Local Control',
+		title: 'Primary actions stay within reach',
+		description: 'Direct controls respond immediately, then settle from live device truth. This page is the default authenticated landing experience.',
+	},
+	[views.schedules]: {
+		path: '/schedules',
+		aliases: ['/schedules'],
+		eyebrow: 'Scheduler Surface',
+		title: 'Automation lives on its own page',
+		description: 'Create, review, and edit UTC schedules without the action surface jumping around beneath your hands.',
+	},
+	[views.updates]: {
+		path: '/updates',
+		aliases: ['/updates'],
+		eyebrow: 'OTA Control',
+		title: 'Updates stay explicit and reversible',
+		description: 'Local and remote firmware staging remain isolated from the action path so reboots and uploads never obscure manual control.',
+	},
+};
+
 const connectivityLabels = {
 	healthy: 'Healthy',
 	connecting: 'Connecting',
@@ -73,13 +112,26 @@ const elements = {
 	loginSubmit: document.getElementById('login-submit'),
 	sessionChip: document.getElementById('session-chip'),
 	networkPill: document.getElementById('network-pill'),
+	panelSummary: document.getElementById('panel-summary'),
+	panelNav: document.getElementById('panel-nav'),
+	viewEyebrow: document.getElementById('view-eyebrow'),
+	viewTitle: document.getElementById('view-title'),
+	viewDescription: document.getElementById('view-description'),
 	refreshButton: document.getElementById('refresh-button'),
 	logoutButton: document.getElementById('logout-button'),
+	views: {
+		overview: document.getElementById('overview-view'),
+		actions: document.getElementById('actions-view'),
+		schedules: document.getElementById('schedules-view'),
+		updates: document.getElementById('updates-view'),
+	},
+	navLinks: Array.from(document.querySelectorAll('[data-panel-nav]')),
 	cards: {
 		device: document.getElementById('device-card'),
 		network: document.getElementById('network-card'),
 		recovery: document.getElementById('recovery-card'),
 		relay: document.getElementById('relay-card'),
+		actionsInfo: document.getElementById('actions-info-card'),
 		scheduler: document.getElementById('scheduler-card'),
 		update: document.getElementById('update-card'),
 	},
@@ -89,6 +141,8 @@ const currentPage = document.body?.dataset.panelPage === pages.login ? pages.log
 const flashStorageKey = 'lnh-panel-flash';
 const SESSION_EXPIRED_MESSAGE = 'Session expired. Sign in again.';
 
+state.activeView = currentPage === pages.dashboard ? views.actions : state.activeView;
+
 const ui = {
 	badgeBase: 'inline-flex items-center gap-2 rounded-full border border-sky-100/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100',
 	badgeOk: 'border-emerald-400/35 text-emerald-100',
@@ -96,6 +150,8 @@ const ui = {
 	badgeDanger: 'border-rose-400/35 text-rose-100',
 	buttonBase: 'inline-flex w-full items-center justify-center rounded-2xl border border-sky-100/20 bg-[linear-gradient(135deg,rgba(34,211,238,0.28),rgba(13,22,33,0.96))] px-4 py-[14px] text-[0.95rem] font-semibold uppercase tracking-[0.14em] text-slate-50 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 disabled:cursor-wait disabled:opacity-60 disabled:translate-y-0',
 	buttonGhost: 'w-auto bg-slate-950/70',
+	buttonSecondary: 'border-slate-300/15 bg-slate-950/50 text-slate-300 hover:border-sky-300/35 hover:text-slate-50',
+	buttonActive: 'border-sky-300/35 bg-sky-300/10 text-sky-50',
 	inputBase: 'w-full rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] leading-relaxed text-slate-50 outline-none placeholder:text-slate-500 focus:border-cyan-300/45 focus:ring-2 focus:ring-cyan-300/35',
 	alertBase: 'rounded-[18px] border border-sky-300/25 bg-[linear-gradient(180deg,rgba(125,211,252,0.08),rgba(7,16,25,0))] px-[14px] py-3 text-[0.95rem] leading-relaxed text-sky-50',
 	alertWarn: 'border-amber-300/30 text-amber-100',
@@ -121,6 +177,11 @@ const ui = {
 	uploadLayout: 'grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end',
 	schedulerFields: 'grid gap-3 md:grid-cols-2 xl:grid-cols-5',
 	schedulerRow: 'grid gap-3 rounded-[18px] border border-slate-300/15 bg-slate-950/60 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center',
+	navLinkBase: 'inline-flex items-center justify-between rounded-[18px] border px-4 py-3 text-[0.9rem] font-semibold tracking-[0.08em] transition duration-150 ease-out',
+	navLinkActive: 'border-sky-300/35 bg-sky-300/10 text-sky-50 shadow-[0_18px_40px_rgba(15,23,42,0.22)]',
+	navLinkInactive: 'border-slate-300/15 bg-slate-950/40 text-slate-300 hover:-translate-y-px hover:border-sky-300/35 hover:text-slate-50',
+	summaryTile: 'rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]',
+	actionButtons: 'grid gap-3 sm:grid-cols-2',
 	code: 'rounded-lg bg-sky-300/10 px-1.5 py-0.5 text-[0.95rem] leading-relaxed text-slate-200',
 	list: 'm-0 list-disc pl-[18px] text-[0.95rem] leading-relaxed text-slate-300',
 };
@@ -347,6 +408,40 @@ function loginPath(nextPath = '/') {
 	return `${url.pathname}${url.search}`;
 }
 
+function panelPathname(path = currentPath()) {
+	try {
+		return new URL(normalizeNextPath(path), window.location.origin).pathname || '/';
+	} catch (error) {
+		return '/';
+	}
+}
+
+function viewForPath(path = currentPath()) {
+	const pathname = panelPathname(path);
+	const entry = Object.entries(viewConfig).find(([, config]) => config.aliases.includes(pathname));
+	return entry?.[0] || views.actions;
+}
+
+function pathForView(view) {
+	return viewConfig[view]?.path || viewConfig[views.actions].path;
+}
+
+function setActiveView(view, { pushHistory = false } = {}) {
+	state.activeView = viewConfig[view] ? view : views.actions;
+	if (pushHistory && !isLoginPage()) {
+		const targetPath = pathForView(state.activeView);
+		if (panelPathname() !== targetPath) {
+			window.history.pushState({ view: state.activeView }, '', targetPath);
+		}
+	}
+
+	updateViewChrome();
+	toggleViewContainers();
+	if (state.authenticated) {
+		renderActiveView();
+	}
+}
+
 function navigateTo(path) {
 	window.location.assign(path);
 }
@@ -376,7 +471,7 @@ function showLoginView(message, tone = 'info') {
 	elements.logoutButton?.setAttribute('disabled', 'disabled');
 	elements.refreshButton?.setAttribute('disabled', 'disabled');
 	if (elements.sessionChip) {
-			elements.sessionChip.textContent = 'Session';
+		elements.sessionChip.textContent = 'Session';
 		elements.sessionChip.className = badgeClass('warn');
 	}
 	if (message) {
@@ -394,6 +489,8 @@ function showDashboardView() {
 		elements.sessionChip.textContent = `Authenticated as ${state.sessionUsername || 'operator'}`;
 		elements.sessionChip.className = badgeClass('ok');
 	}
+
+	setActiveView(viewForPath(currentPath()));
 }
 
 async function requestJson(url, options = {}) {
@@ -450,8 +547,234 @@ function renderCard(title, eyebrow, rows, footer = '') {
 		<p class="${ui.eyebrow}">${escapeHtml(eyebrow)}</p>
 		<h3 class="${ui.title}">${escapeHtml(title)}</h3>
 		<div class="${ui.metricList}">${metrics}</div>
-		${footer}
+			${footer}
 	`;
+}
+
+function navLinkClass(active) {
+	return classNames(ui.navLinkBase, active ? ui.navLinkActive : ui.navLinkInactive);
+}
+
+function summaryTile(title, value, detail, tone = '') {
+	return `
+		<article class="${ui.summaryTile}">
+			<div class="${ui.rowFlex}">
+				<span class="${badgeClass(tone)}">${escapeHtml(title)}</span>
+			</div>
+			<div class="mt-4">
+				<strong class="block text-[1.15rem] font-semibold text-slate-50">${escapeHtml(value)}</strong>
+				<p class="mt-2 ${ui.muted}">${escapeHtml(detail)}</p>
+			</div>
+		</article>
+	`;
+}
+
+function updateViewChrome() {
+	const meta = viewConfig[state.activeView] || viewConfig[views.actions];
+	if (elements.viewEyebrow) {
+		elements.viewEyebrow.textContent = meta.eyebrow;
+	}
+	if (elements.viewTitle) {
+		elements.viewTitle.textContent = meta.title;
+	}
+	if (elements.viewDescription) {
+		elements.viewDescription.textContent = meta.description;
+	}
+
+	elements.navLinks.forEach((link) => {
+		const view = link.dataset.panelNav || '';
+		const active = view === state.activeView;
+		link.className = navLinkClass(active);
+		if (active) {
+			link.setAttribute('aria-current', 'page');
+		} else {
+			link.removeAttribute('aria-current');
+		}
+	});
+}
+
+function toggleViewContainers() {
+	Object.entries(elements.views).forEach(([view, element]) => {
+		element?.classList.toggle('hidden', view !== state.activeView);
+	});
+}
+
+function effectiveRelaySnapshot(relay) {
+	if (!relay) {
+		return null;
+	}
+
+	if (!state.relayCommandPending) {
+		return relay;
+	}
+
+	return {
+		...relay,
+		actualState: state.relayCommandDesiredState,
+		desiredState: state.relayCommandDesiredState,
+		source: 'manual-panel',
+		pending: true,
+	};
+}
+
+function renderPanelSummary() {
+	if (!elements.panelSummary) {
+		return;
+	}
+
+	if (!state.status) {
+		elements.panelSummary.innerHTML = [
+			summaryTile('Device', 'Loading', 'Waiting for the authenticated shell to load device truth.'),
+			summaryTile('Network', 'Loading', 'Checking local reachability and connectivity state.'),
+			summaryTile('Actions', 'Loading', 'Primary control surface is not ready yet.'),
+			summaryTile('Updates', 'Loading', 'OTA state appears once the update snapshot responds.'),
+		].join('');
+		return;
+	}
+
+	const relay = effectiveRelaySnapshot(state.status.relay);
+	const networkLabel = connectivityLabels[state.status.network.connectivity] || humanizeHyphenated(state.status.network.connectivity);
+	const nextRun = state.scheduleSnapshot?.nextRun?.available
+		? `${state.scheduleSnapshot.nextRun.scheduleId} · ${formatUtcMinute(state.scheduleSnapshot.nextRun.normalizedUtcMinute)}`
+		: 'No enabled schedule queued';
+	const updateState = state.updateSnapshot?.state
+		? humanizeHyphenated(state.updateSnapshot.state)
+		: 'Unavailable';
+	const updateDetail = state.updateSnapshot
+		? (state.updateSnapshot.applyReady ? 'A staged image is ready for explicit apply.' : (state.updateSnapshot.pendingWarning || 'No staged image is pending.'))
+		: 'Update snapshot not loaded yet.';
+
+	elements.panelSummary.innerHTML = [
+		summaryTile('Device', state.status.device.board || 'Unavailable', `Panel port ${state.status.device.panelPort} · APP_READY ${boolLabel(state.status.device.ready)}`, state.status.device.ready ? 'ok' : 'warn'),
+		summaryTile('Network', networkLabel, state.status.network.ipv4Address || 'IPv4 pending', state.status.network.reachabilityOk ? 'ok' : 'warn'),
+		summaryTile('Actions', relay ? `Relay ${relayStateLabel(relay.actualState)}` : 'Unavailable', relay ? `Source ${humanizeHyphenated(relay.source)} · Next schedule ${nextRun}` : 'Relay truth is unavailable.', relay?.actualState ? 'ok' : ''),
+		summaryTile('Updates', updateState, updateDetail, state.updateSnapshot?.applyReady ? 'warn' : ''),
+	].join('');
+}
+
+function renderOverviewSurface(statusPayload) {
+	if (!elements.cards.device || !elements.cards.network || !elements.cards.recovery) {
+		return;
+	}
+
+	if (!statusPayload) {
+		elements.cards.device.innerHTML = renderCard('Device shell', 'Device', [
+			{ label: 'State', value: 'Loading' },
+		], `<div class="${ui.placeholder}">Protected device details appear here once authenticated status loads.</div>`);
+		elements.cards.network.innerHTML = renderCard('Connectivity', 'Network', [
+			{ label: 'State', value: 'Loading' },
+		], `<div class="${ui.placeholder}">Network supervision truth appears here once the device responds.</div>`);
+		elements.cards.recovery.innerHTML = renderCard('Recovery posture', 'Recovery', [
+			{ label: 'State', value: 'Loading' },
+		], `<div class="${ui.placeholder}">Recovery breadcrumbs and reset cause stay on the dedicated overview surface.</div>`);
+		return;
+	}
+
+	const networkLabel = connectivityLabels[statusPayload.network.connectivity] || statusPayload.network.connectivity;
+	const degradedCopy = statusPayload.network.connectivity === NETWORK_CONNECTIVITY_LAN_UP_UPSTREAM_DEGRADED
+		? `<div class="${ui.placeholder}">Local LAN access is healthy even though upstream internet reachability is degraded. The panel stays locally usable in this state.</div>`
+		: '';
+
+	elements.cards.device.innerHTML = renderCard('Device shell', 'Device', [
+		{ label: 'Board', value: statusPayload.device.board },
+		{ label: 'Panel port', value: statusPayload.device.panelPort },
+		{ label: 'APP_READY path', value: boolLabel(statusPayload.device.ready) },
+	]);
+
+	elements.cards.network.innerHTML = renderCard('Connectivity', 'Network', [
+		{ label: 'Connectivity', value: networkLabel },
+		{ label: 'Wi-Fi ready', value: boolLabel(statusPayload.network.wifiReady) },
+		{ label: 'Wi-Fi connected', value: boolLabel(statusPayload.network.wifiConnected) },
+		{ label: 'IPv4 bound', value: boolLabel(statusPayload.network.ipv4Bound) },
+		{ label: 'IPv4 address', value: statusPayload.network.ipv4Address || 'Pending' },
+		{ label: 'Reachability', value: boolLabel(statusPayload.network.reachabilityOk) },
+		{ label: 'Last failure stage', value: statusPayload.network.lastFailure.stage },
+	], degradedCopy);
+
+	elements.cards.recovery.innerHTML = renderCard('Recovery posture', 'Recovery', [
+		{ label: 'Reset cause available', value: boolLabel(statusPayload.recovery.available) },
+		{ label: 'Recovery reset', value: boolLabel(statusPayload.recovery.recoveryReset) },
+		{ label: 'Trigger', value: statusPayload.recovery.trigger },
+		{ label: 'Failure stage', value: statusPayload.recovery.failureStage },
+		{ label: 'Connectivity snapshot', value: statusPayload.recovery.connectivity },
+		{ label: 'Reason', value: statusPayload.recovery.reason },
+	]);
+}
+
+function renderActionsInfoCard(relay) {
+	if (!elements.cards.actionsInfo) {
+		return;
+	}
+
+	if (!relay) {
+		elements.cards.actionsInfo.innerHTML = `
+			<p class="${ui.eyebrow}">Output topology</p>
+			<h3 class="${ui.title}">Waiting for relay truth</h3>
+			<div class="${ui.placeholder}">This rail is reserved for the current output and future GPIO-backed outputs once the firmware model expands beyond a single relay.</div>
+		`;
+		return;
+	}
+
+	elements.cards.actionsInfo.innerHTML = `
+		<p class="${ui.eyebrow}">Output topology</p>
+		<div class="grid gap-[18px]">
+			<div>
+				<h3 class="${ui.title}">Ready for more outputs later</h3>
+				<p class="${ui.muted}">This shell now treats manual control as its own page and keeps a dedicated rail for output context, so future GPIO-backed relays can slot in as separate action cards without reworking the navigation again.</p>
+			</div>
+			<div class="${ui.rowFlex}">
+				<span class="${badgeClass('ok')}">Current output Relay 0</span>
+				<span class="${badgeClass()}">Future GPIO cards</span>
+				<span class="${badgeClass(relay.available ? 'ok' : 'warn')}">Runtime ${relay.available ? 'Ready' : 'Unavailable'}</span>
+			</div>
+			<div class="${ui.insetPanel}">
+				<div class="${ui.metricRow}">
+					<div>
+						<div class="${ui.metricLabel}">Current model</div>
+					</div>
+					<div class="${ui.metricValue}">Single relay output</div>
+				</div>
+				<div class="${ui.metricRow}">
+					<div>
+						<div class="${ui.metricLabel}">Prepared next step</div>
+					</div>
+					<div class="${ui.metricValue}">Multi-GPIO layout rail</div>
+				</div>
+				<div class="${ui.metricRow}">
+					<div>
+						<div class="${ui.metricLabel}">Manual source</div>
+					</div>
+					<div class="${ui.metricValue}">${escapeHtml(humanizeHyphenated(relay.source))}</div>
+				</div>
+			</div>
+			<div class="${noticeClass('info')}">Firmware data-model work for configurable multiple relays is intentionally deferred, but this page no longer assumes control must live in one long dashboard column.</div>
+		</div>
+	`;
+}
+
+function renderActionsSurface(statusPayload) {
+	const relay = effectiveRelaySnapshot(statusPayload?.relay || null);
+	renderRelayCard(relay);
+	renderActionsInfoCard(relay);
+}
+
+function renderActiveView() {
+	renderPanelSummary();
+	switch (state.activeView) {
+	case views.overview:
+		renderOverviewSurface(state.status);
+		break;
+	case views.schedules:
+		renderSchedulerSurface(state.scheduleSnapshot);
+		break;
+	case views.updates:
+		renderUpdateSurface(state.updateSnapshot || state.status?.update || null);
+		break;
+	case views.actions:
+	default:
+		renderActionsSurface(state.status);
+		break;
+	}
 }
 
 function updateVersionLabel(version) {
@@ -641,6 +964,10 @@ function updateNetworkChrome(network) {
 }
 
 function relayFeedbackState(relay) {
+	if (!relay) {
+		return null;
+	}
+
 	if (state.relayCommandPending) {
 		return {
 			tone: 'warn',
@@ -660,6 +987,17 @@ function relayFeedbackState(relay) {
 }
 
 function renderRelayCard(relay) {
+	if (!elements.cards.relay) {
+		return;
+	}
+
+	if (!relay) {
+		elements.cards.relay.innerHTML = renderCard('Primary actions', 'Manual control', [
+			{ label: 'State', value: 'Loading' },
+		], `<div class="${ui.placeholder}">The primary action surface will appear here once authenticated relay truth loads.</div>`);
+		return;
+	}
+
 	const actualState = relayStateLabel(relay.actualState);
 	const desiredState = relayStateLabel(relay.desiredState);
 	const pending = state.relayCommandPending || relay.pending;
@@ -668,18 +1006,11 @@ function renderRelayCard(relay) {
 	const mismatch = relay.actualState !== relay.desiredState;
 	const feedback = relayFeedbackState(relay);
 	const sourceClass = relaySourceBadgeClass(relay.source);
-	const buttonLabel = !available
-		? 'Relay unavailable'
-		: pending
-			? 'Sending relay command…'
-			: relay.actualState
-				? 'Turn relay off'
-				: 'Turn relay on';
 	const actionCopy = !available
 		? 'Relay control stays locked until the live runtime becomes available again.'
 		: pending
-			? 'The control stays locked until live status refresh confirms the result.'
-			: 'One tap asks the local device to change the relay, then the panel refreshes from live status.';
+			? 'The control responds immediately, then waits for the refresh cycle to confirm the requested state.'
+			: 'Press On or Off and the control will react immediately before live device truth settles the final state.';
 	const badgeMarkup = `
 		<div class="${ui.rowFlex}">
 			<span class="${badgeClass(relay.actualState ? 'ok' : '')}">Actual ${escapeHtml(actualState)}</span>
@@ -699,21 +1030,42 @@ function renderRelayCard(relay) {
 	const feedbackMarkup = feedback
 		? `<div class="${noticeClass(feedback.tone)}">${escapeHtml(feedback.message)}</div>`
 		: '';
+	const actionButtons = `
+		<div class="${ui.actionButtons}">
+			<button
+				class="${classNames(buttonClass(), relay.actualState ? ui.buttonActive : ui.buttonSecondary)}"
+				type="button"
+				data-relay-set="true"
+				${pending || blocked || !available ? 'disabled' : ''}>
+				Turn on
+			</button>
+			<button
+				class="${classNames(buttonClass(), !relay.actualState ? ui.buttonActive : ui.buttonSecondary)}"
+				type="button"
+				data-relay-set="false"
+				${pending || blocked || !available ? 'disabled' : ''}>
+				Turn off
+			</button>
+		</div>
+	`;
 
-	elements.cards.relay.innerHTML = renderCard('Relay control', 'Phase 6 live surface', [
+	elements.cards.relay.innerHTML = renderCard('Primary actions', 'Manual control', [
+		{ label: 'Active output', value: 'Relay 0' },
 		{ label: 'Actual state', value: actualState },
 		{ label: 'Remembered desired', value: desiredState },
 		{ label: 'Control path', value: available ? 'Available' : 'Unavailable' },
 		{ label: 'Reboot policy', value: humanizeHyphenated(relay.rebootPolicy) },
 	], `${badgeMarkup}
+		<div class="mt-4 rounded-[18px] border border-sky-200/20 bg-slate-950/55 p-4">
+			<div class="${ui.metricLabel}">Immediate action</div>
+			<div class="mt-2 text-[1.35rem] font-semibold text-slate-50">${escapeHtml(actualState)}</div>
+			<p class="mt-2 ${ui.muted}">${escapeHtml(actionCopy)}</p>
+		</div>
 		<div class="mt-4 grid gap-3">
-			<button class="${buttonClass()}" type="button" data-relay-toggle ${pending || blocked || !available ? 'disabled' : ''}>${escapeHtml(buttonLabel)}</button>
-			<p class="${ui.muted}">${escapeHtml(actionCopy)}</p>
+			${actionButtons}
 		</div>
 		${feedbackMarkup}
 		${noteMarkup}`);
-
-	elements.cards.relay.querySelector('[data-relay-toggle]')?.addEventListener('click', handleRelayToggle);
 }
 
 function splitCronExpression(expression) {
@@ -993,49 +1345,18 @@ function renderStatus(statusPayload, updatePayload = null) {
 	state.status = statusPayload;
 	state.updateSnapshot = updatePayload;
 	updateNetworkChrome(statusPayload.network);
-	if (!elements.cards.device || !elements.cards.network || !elements.cards.recovery || !elements.cards.relay) {
-		return;
-	}
-
-	const networkLabel = connectivityLabels[statusPayload.network.connectivity] || statusPayload.network.connectivity;
-	const degradedCopy = statusPayload.network.connectivity === NETWORK_CONNECTIVITY_LAN_UP_UPSTREAM_DEGRADED
-		? `<div class="${ui.placeholder}">Local LAN access is healthy even though upstream internet reachability is degraded. The panel keeps rendering local status in this state.</div>`
-		: '';
-
-	elements.cards.device.innerHTML = renderCard('Device shell', 'Device', [
-		{ label: 'Board', value: statusPayload.device.board },
-		{ label: 'Panel port', value: statusPayload.device.panelPort },
-		{ label: 'APP_READY path', value: boolLabel(statusPayload.device.ready) },
-	]);
-
-	elements.cards.network.innerHTML = renderCard('Connectivity', 'Network', [
-		{ label: 'Connectivity', value: networkLabel },
-		{ label: 'Wi-Fi ready', value: boolLabel(statusPayload.network.wifiReady) },
-		{ label: 'Wi-Fi connected', value: boolLabel(statusPayload.network.wifiConnected) },
-		{ label: 'IPv4 bound', value: boolLabel(statusPayload.network.ipv4Bound) },
-		{ label: 'IPv4 address', value: statusPayload.network.ipv4Address || 'Pending' },
-		{ label: 'Reachability', value: boolLabel(statusPayload.network.reachabilityOk) },
-		{ label: 'Last failure stage', value: statusPayload.network.lastFailure.stage },
-	]);
-	elements.cards.network.innerHTML += degradedCopy;
-
-	elements.cards.recovery.innerHTML = renderCard('Recovery posture', 'Recovery', [
-		{ label: 'Reset cause available', value: boolLabel(statusPayload.recovery.available) },
-		{ label: 'Recovery reset', value: boolLabel(statusPayload.recovery.recoveryReset) },
-		{ label: 'Trigger', value: statusPayload.recovery.trigger },
-		{ label: 'Failure stage', value: statusPayload.recovery.failureStage },
-		{ label: 'Connectivity snapshot', value: statusPayload.recovery.connectivity },
-		{ label: 'Reason', value: statusPayload.recovery.reason },
-	]);
-
-	renderRelayCard(statusPayload.relay);
-	renderUpdateSurface(updatePayload || statusPayload.update || null);
+	renderActiveView();
 }
 
 async function refreshDashboard({ silent = false } = {}) {
 	try {
-		const statusResult = await requestJson(routes.status, { method: 'GET' });
-		if (statusResult.response.status === 401) {
+		const [statusResult, updateResult, schedulesResult] = await Promise.all([
+			requestJson(routes.status, { method: 'GET' }),
+			requestJson(routes.updateStatus, { method: 'GET' }),
+			requestJson(routes.schedules, { method: 'GET' }),
+		]);
+
+		if ([statusResult, updateResult, schedulesResult].some((result) => result.response.status === 401)) {
 			showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
 			return false;
 		}
@@ -1043,33 +1364,25 @@ async function refreshDashboard({ silent = false } = {}) {
 		if (!statusResult.response.ok || !statusResult.data) {
 			throw new Error(`Status refresh failed (${statusResult.response.status})`);
 		}
-
-		const updateResult = await requestJson(routes.updateStatus, { method: 'GET' });
-		if (updateResult.response.status === 401) {
-			showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
-			return false;
-		}
-
 		if (!updateResult.response.ok || !updateResult.data) {
 			throw new Error(`Update refresh failed (${updateResult.response.status})`);
 		}
-
-		const schedulesResult = await requestJson(routes.schedules, { method: 'GET' });
-		if (schedulesResult.response.status === 401) {
-			showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
-			return false;
-		}
-
 		if (!schedulesResult.response.ok || !schedulesResult.data) {
 			throw new Error(`Schedule refresh failed (${schedulesResult.response.status})`);
 		}
 
-		showDashboardView();
+		state.status = statusResult.data;
 		state.scheduleSnapshot = schedulesResult.data;
 		state.updateSnapshot = updateResult.data;
-		renderStatus(statusResult.data, updateResult.data);
-		renderSchedulerSurface(schedulesResult.data);
-		setAlert('Protected status, schedules, and OTA truth refreshed from the device.', silent ? 'info' : 'success');
+		if (!state.authenticated) {
+			showDashboardView();
+		} else {
+			renderActiveView();
+		}
+		updateNetworkChrome(statusResult.data.network);
+		if (!silent) {
+			setAlert('Protected status, schedules, and OTA truth refreshed from the device.', 'success');
+		}
 		return true;
 	} catch (error) {
 		if (state.updateSnapshot?.state === 'apply-requested') {
@@ -1082,22 +1395,27 @@ async function refreshDashboard({ silent = false } = {}) {
 	}
 }
 
-async function handleRelayToggle() {
+async function handleRelaySet(desiredState) {
 	const relay = state.status?.relay;
 	if (!relay || state.relayCommandPending || relay.blocked || !relay.implemented || !relay.available) {
 		return;
 	}
 
-	const desiredState = !relay.actualState;
+	const normalizedDesiredState = Boolean(desiredState);
+	if (!state.relayCommandPending && relay.actualState === normalizedDesiredState &&
+		relay.desiredState === normalizedDesiredState) {
+		return;
+	}
+
 	state.relayCommandPending = true;
-	state.relayCommandDesiredState = desiredState;
-	setRelayFeedback(`Pending: requesting relay ${desiredState ? 'on' : 'off'} from the device…`, 'warn');
-	renderRelayCard(relay);
+	state.relayCommandDesiredState = normalizedDesiredState;
+	setRelayFeedback(`Pending: requesting relay ${normalizedDesiredState ? 'on' : 'off'} from the device…`, 'warn');
+	renderActiveView();
 
 	try {
 		const { response, data } = await requestJson(routes.relayDesiredState, {
 			method: 'POST',
-			body: JSON.stringify({ desiredState }),
+			body: JSON.stringify({ desiredState: normalizedDesiredState }),
 		});
 
 		if (response.status === 401) {
@@ -1117,7 +1435,7 @@ async function handleRelayToggle() {
 		}
 
 		setRelayFeedback(null);
-		setAlert(`Relay ${desiredState ? 'on' : 'off'} request applied.`, 'success');
+		setAlert(`Relay ${normalizedDesiredState ? 'on' : 'off'} request applied.`, 'success');
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Relay command failed.';
 		setRelayFeedback(message, 'error');
@@ -1125,9 +1443,7 @@ async function handleRelayToggle() {
 	} finally {
 		state.relayCommandPending = false;
 		state.relayCommandDesiredState = false;
-		if (state.status?.relay) {
-			renderRelayCard(state.status.relay);
-		}
+		renderActiveView();
 	}
 }
 
@@ -1274,7 +1590,7 @@ async function handleUpdateUpload() {
 
 		setUpdateFeedback(data.detail || 'Firmware image staged.', 'success');
 		setAlert(data.detail || 'Firmware image staged.', 'success');
-		await refreshDashboard({ silent: true });
+				await refreshDashboard({ silent: false });
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Firmware upload failed.';
 		setUpdateFeedback(message, 'error');
@@ -1592,10 +1908,39 @@ async function handleUpdateCardClick(event) {
 	}
 }
 
+async function handleRelayCardClick(event) {
+	const relayButton = event.target.closest('[data-relay-set]');
+	if (!relayButton) {
+		return;
+	}
+
+	await handleRelaySet(relayButton.dataset.relaySet === 'true');
+}
+
+function handlePanelNavClick(event) {
+	const navLink = event.target.closest('[data-panel-nav]');
+	if (!navLink) {
+		return;
+	}
+
+	event.preventDefault();
+	setActiveView(navLink.dataset.panelNav || views.actions, { pushHistory: true });
+}
+
+function handlePanelPopState() {
+	if (isLoginPage()) {
+		return;
+	}
+
+	setActiveView(viewForPath(currentPath()));
+}
+
 function attachEvents() {
 	elements.loginForm?.addEventListener('submit', handleLogin);
-	elements.refreshButton?.addEventListener('click', () => refreshDashboard({ silent: false }));
+	elements.refreshButton?.addEventListener('click', () => { void refreshDashboard({ silent: false }); });
 	elements.logoutButton?.addEventListener('click', handleLogout);
+	elements.panelNav?.addEventListener('click', handlePanelNavClick);
+	elements.cards.relay?.addEventListener('click', (event) => { void handleRelayCardClick(event); });
 	elements.cards.scheduler?.addEventListener('input', handleSchedulerCardInput);
 	elements.cards.scheduler?.addEventListener('change', handleSchedulerCardInput);
 	elements.cards.scheduler?.addEventListener('click', (event) => { void handleSchedulerCardClick(event); });
@@ -1606,6 +1951,7 @@ function attachEvents() {
 		}
 	});
 	elements.cards.update?.addEventListener('click', (event) => { void handleUpdateCardClick(event); });
+	window.addEventListener('popstate', handlePanelPopState);
 }
 
 function startPolling() {
@@ -1621,6 +1967,12 @@ function startPolling() {
 	}, 15000);
 }
 
+if (!isLoginPage()) {
+	state.activeView = viewForPath(currentPath());
+}
+
+updateViewChrome();
+toggleViewContainers();
 attachEvents();
 startPolling();
 bootstrapSession();
