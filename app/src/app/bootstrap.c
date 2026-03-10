@@ -10,6 +10,7 @@
 #include "panel/panel_http.h"
 #include "persistence/persistence.h"
 #include "recovery/recovery.h"
+#include "relay/relay.h"
 
 LOG_MODULE_DECLARE(app, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -101,9 +102,14 @@ static void log_persistence_load_report(
 	log_persistence_section_status(&load_report->schedule);
 }
 
-static const char *persisted_relay_desired_state_text(bool last_desired_state)
+static const char *relay_state_text(bool relay_state)
 {
-	return last_desired_state ? "on" : "off";
+	return relay_state ? "on" : "off";
+}
+
+static const char *relay_safety_note_text(const char *safety_note)
+{
+	return safety_note != NULL ? safety_note : "none";
 }
 
 static void log_persisted_snapshot_summary(const struct persisted_config *config)
@@ -116,8 +122,24 @@ static void log_persisted_snapshot_summary(const struct persisted_config *config
 		config->layout_version,
 		config->actions.count,
 		config->schedule.count,
-		persisted_relay_desired_state_text(config->relay.last_desired_state),
+		relay_state_text(config->relay.last_desired_state),
 		persisted_relay_reboot_policy_text(config->relay.reboot_policy));
+}
+
+static void log_relay_runtime_status(const struct app_context *app_context)
+{
+	const struct relay_runtime_status *status;
+
+	status = relay_service_get_status(&app_context->relay);
+	if (status == NULL || !status->implemented || !status->available) {
+		return;
+	}
+
+	LOG_INF("Relay runtime ready actual=%s desired=%s source=%s note=%s",
+		relay_state_text(status->actual_state),
+		relay_state_text(status->desired_state),
+		relay_status_source_text(status->source),
+		relay_safety_note_text(status->safety_note));
 }
 
 static int load_app_config(struct app_context *app_context)
@@ -207,6 +229,21 @@ int app_boot(struct app_context *app_context)
 		return ret;
 	}
 
+	ret = recovery_manager_init(&app_context->recovery, app_context);
+	if (ret != 0) {
+		return ret;
+	}
+
+	log_preserved_recovery_reset(app_context);
+
+	ret = relay_service_init(&app_context->relay, app_context);
+	if (ret != 0) {
+		LOG_ERR("Failed to initialize relay service: %d", ret);
+		return ret;
+	}
+
+	log_relay_runtime_status(app_context);
+
 	ret = panel_auth_service_init(&app_context->panel_auth, app_context);
 	if (ret != 0) {
 		LOG_ERR("Failed to initialize panel auth service: %d", ret);
@@ -219,12 +256,6 @@ int app_boot(struct app_context *app_context)
 		return -ENODEV;
 	}
 
-	ret = recovery_manager_init(&app_context->recovery, app_context);
-	if (ret != 0) {
-		return ret;
-	}
-
-	log_preserved_recovery_reset(app_context);
 	network_supervisor_init(&app_context->network_state, wifi_iface, &app_context->recovery);
 	recovery_manager_startup_begin(&app_context->recovery);
 
