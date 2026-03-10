@@ -1,13 +1,32 @@
 const NETWORK_CONNECTIVITY_LAN_UP_UPSTREAM_DEGRADED = 'lan-up-upstream-degraded';
 
+function createSchedulerFormState(overrides = {}) {
+	return {
+		mode: 'create',
+		scheduleId: '',
+		minute: '0',
+		hour: '*',
+		dayOfMonth: '*',
+		month: '*',
+		dayOfWeek: '*',
+		actionKey: 'relay-on',
+		enabled: true,
+		...overrides,
+	};
+}
+
 const state = {
 	authenticated: false,
 	sessionUsername: '',
 	status: null,
+	scheduleSnapshot: null,
 	refreshTimer: null,
 	relayCommandPending: false,
 	relayCommandDesiredState: false,
 	relayFeedback: null,
+	schedulerBusy: false,
+	schedulerFeedback: null,
+	schedulerForm: createSchedulerFormState(),
 };
 
 const routes = {
@@ -16,6 +35,11 @@ const routes = {
 	logout: '/api/auth/logout',
 	status: '/api/status',
 	relayDesiredState: '/api/relay/desired-state',
+	schedules: '/api/schedules',
+	scheduleCreate: '/api/schedules/create',
+	scheduleUpdate: '/api/schedules/update',
+	scheduleDelete: '/api/schedules/delete',
+	scheduleSetEnabled: '/api/schedules/set-enabled',
 };
 
 const connectivityLabels = {
@@ -73,6 +97,26 @@ function humanizeHyphenated(value) {
 		.join(' ');
 }
 
+function formatUtcMinute(normalizedUtcMinute) {
+	const date = new Date(Number(normalizedUtcMinute) * 60000);
+	if (!Number.isFinite(Number(normalizedUtcMinute)) || Number(normalizedUtcMinute) < 0 || Number.isNaN(date.getTime())) {
+		return 'Pending';
+	}
+
+	return `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+}
+
+function schedulerClockTone(clockState) {
+	switch (clockState) {
+	case 'trusted':
+		return 'badge--ok';
+	case 'degraded':
+		return 'badge--warn';
+	default:
+		return 'badge--danger';
+	}
+}
+
 function relaySourceBadgeClass(source) {
 	switch (source) {
 	case 'manual-panel':
@@ -87,6 +131,10 @@ function relaySourceBadgeClass(source) {
 
 function setRelayFeedback(message, tone = 'info') {
 	state.relayFeedback = message ? { message, tone } : null;
+}
+
+function setSchedulerFeedback(message, tone = 'info') {
+	state.schedulerFeedback = message ? { message, tone } : null;
 }
 
 function setAlert(message, tone = 'info') {
@@ -109,11 +157,20 @@ function setBusy(button, busy, label) {
 	}
 }
 
+function resetSchedulerForm(overrides = {}) {
+	state.schedulerForm = createSchedulerFormState(overrides);
+}
+
 function showLoginView(message, tone = 'info') {
 	state.authenticated = false;
+	state.status = null;
+	state.scheduleSnapshot = null;
 	state.relayCommandPending = false;
 	state.relayCommandDesiredState = false;
+	state.schedulerBusy = false;
 	setRelayFeedback(null);
+	setSchedulerFeedback(null);
+	resetSchedulerForm();
 	elements.loginView?.classList.remove('hidden');
 	elements.dashboardView?.classList.add('hidden');
 	elements.logoutButton?.setAttribute('disabled', 'disabled');
@@ -260,6 +317,279 @@ function renderRelayCard(relay) {
 	elements.cards.relay.querySelector('[data-relay-toggle]')?.addEventListener('click', handleRelayToggle);
 }
 
+function splitCronExpression(expression) {
+	const parts = String(expression || '').trim().split(/\s+/).filter(Boolean);
+	if (parts.length !== 5) {
+		return {
+			minute: '0',
+			hour: '*',
+			dayOfMonth: '*',
+			month: '*',
+			dayOfWeek: '*',
+		};
+	}
+
+	return {
+		minute: parts[0],
+		hour: parts[1],
+		dayOfMonth: parts[2],
+		month: parts[3],
+		dayOfWeek: parts[4],
+	};
+}
+
+function schedulerCronExpressionFromForm(formState) {
+	return [
+		formState.minute,
+		formState.hour,
+		formState.dayOfMonth,
+		formState.month,
+		formState.dayOfWeek,
+	].map((value) => String(value || '').trim() || '*').join(' ');
+}
+
+function syncSchedulerFormFromDom(formElement) {
+	if (!formElement) {
+		return;
+	}
+
+	const formData = new FormData(formElement);
+	state.schedulerForm = createSchedulerFormState({
+		mode: state.schedulerForm.mode,
+		scheduleId: String(formData.get('scheduleId') || '').trim(),
+		minute: String(formData.get('minute') || '').trim(),
+		hour: String(formData.get('hour') || '').trim(),
+		dayOfMonth: String(formData.get('dayOfMonth') || '').trim(),
+		month: String(formData.get('month') || '').trim(),
+		dayOfWeek: String(formData.get('dayOfWeek') || '').trim(),
+		actionKey: String(formData.get('actionKey') || '').trim(),
+		enabled: Boolean(formElement.querySelector('[name="enabled"]')?.checked),
+	});
+}
+
+function ensureSchedulerFormChoice(snapshot) {
+	const actionChoices = snapshot?.actionChoices || [];
+	if (!actionChoices.length) {
+		return;
+	}
+
+	if (!actionChoices.some((choice) => choice.key === state.schedulerForm.actionKey)) {
+		state.schedulerForm.actionKey = actionChoices[0].key;
+	}
+
+	if (state.schedulerForm.mode === 'edit') {
+		const stillExists = (snapshot?.schedules || []).some((schedule) => schedule.scheduleId === state.schedulerForm.scheduleId);
+		if (!stillExists) {
+			resetSchedulerForm({ actionKey: actionChoices[0].key });
+		}
+	}
+}
+
+function schedulerSummaryCard(title, value, detail) {
+	return `
+		<div class="scheduler-summary-card">
+			<span class="card-eyebrow">${escapeHtml(title)}</span>
+			<strong>${escapeHtml(value)}</strong>
+			<small>${escapeHtml(detail)}</small>
+		</div>
+	`;
+}
+
+function schedulerFeedbackMarkup() {
+	if (!state.schedulerFeedback) {
+		return '';
+	}
+
+	return `<div class="scheduler-feedback" data-tone="${escapeHtml(state.schedulerFeedback.tone)}">${escapeHtml(state.schedulerFeedback.message)}</div>`;
+}
+
+function renderSchedulerRows(snapshot) {
+	if (!snapshot.schedules?.length) {
+		return '<div class="scheduler-empty placeholder-copy">No saved schedules yet. Create one below to start the scheduler flow.</div>';
+	}
+
+	return snapshot.schedules.map((schedule) => `
+		<div class="scheduler-row">
+			<div class="scheduler-row-copy">
+				<div class="scheduler-row-title">
+					<strong>${escapeHtml(schedule.scheduleId)}</strong>
+					<span class="badge ${schedule.enabled ? 'badge--ok' : 'badge--warn'}">${schedule.enabled ? 'Enabled' : 'Disabled'}</span>
+					${schedule.isNextRun ? '<span class="badge badge--ok">Next run</span>' : ''}
+				</div>
+				<div class="scheduler-row-meta">
+					<span>${escapeHtml(schedule.actionLabel)}</span>
+					<code>${escapeHtml(schedule.cronExpression)}</code>
+				</div>
+			</div>
+			<div class="scheduler-row-actions">
+				<button class="button button--ghost" type="button" data-scheduler-edit="${escapeHtml(schedule.scheduleId)}" ${state.schedulerBusy ? 'disabled' : ''}>Edit</button>
+				<button class="button button--ghost" type="button" data-scheduler-toggle="${escapeHtml(schedule.scheduleId)}" data-enabled="${schedule.enabled ? 'false' : 'true'}" ${state.schedulerBusy ? 'disabled' : ''}>${schedule.enabled ? 'Disable' : 'Enable'}</button>
+				<button class="button button--ghost" type="button" data-scheduler-delete="${escapeHtml(schedule.scheduleId)}" ${state.schedulerBusy ? 'disabled' : ''}>Delete</button>
+			</div>
+		</div>
+	`).join('');
+}
+
+function renderSchedulerProblems(snapshot) {
+	if (!snapshot.problems?.length) {
+		return '<div class="placeholder-copy">No recent scheduler problems are recorded right now.</div>';
+	}
+
+	return `
+		<ul class="chrome-list scheduler-problems">
+			${snapshot.problems.map((problem) => `
+				<li>
+					<strong>${escapeHtml(humanizeHyphenated(problem.code))}</strong>
+					— ${escapeHtml(problem.scheduleId && problem.scheduleId !== 'none' ? problem.scheduleId : 'global scheduler state')}
+					${problem.actionLabel && problem.actionLabel !== 'none' ? ` · ${escapeHtml(problem.actionLabel)}` : ''}
+					${Number(problem.normalizedUtcMinute) >= 0 ? ` · ${escapeHtml(formatUtcMinute(problem.normalizedUtcMinute))}` : ''}
+				</li>
+			`).join('')}
+		</ul>
+	`;
+}
+
+function renderSchedulerForm(snapshot) {
+	const actionChoices = snapshot.actionChoices || [];
+	const formState = state.schedulerForm;
+	const cronPreview = schedulerCronExpressionFromForm(formState);
+	const primaryLabel = state.schedulerBusy
+		? (formState.mode === 'edit' ? 'Saving schedule…' : 'Creating schedule…')
+		: (formState.mode === 'edit' ? 'Save schedule changes' : 'Create schedule');
+	const heading = formState.mode === 'edit'
+		? `Edit ${formState.scheduleId}`
+		: 'Create schedule';
+
+	return `
+		<div class="scheduler-panel">
+			<p class="card-eyebrow">${escapeHtml(formState.mode === 'edit' ? 'Edit schedule' : 'Create schedule')}</p>
+			<h3>${escapeHtml(heading)}</h3>
+			<form class="scheduler-form-grid" data-scheduler-form>
+				<div class="field">
+					<label for="schedule-id">Schedule ID</label>
+					<input id="schedule-id" class="input" name="scheduleId" value="${escapeHtml(formState.scheduleId)}" ${formState.mode === 'edit' ? 'readonly' : ''} required>
+				</div>
+				<div class="field">
+					<label for="schedule-action">Action</label>
+					<select id="schedule-action" class="input" name="actionKey">
+						${actionChoices.map((choice) => `<option value="${escapeHtml(choice.key)}" ${choice.key === formState.actionKey ? 'selected' : ''}>${escapeHtml(choice.label)}</option>`).join('')}
+					</select>
+				</div>
+				<div class="scheduler-field-grid">
+					<div class="field">
+						<label for="cron-minute">Minute</label>
+						<input id="cron-minute" class="input" name="minute" value="${escapeHtml(formState.minute)}" placeholder="0" required>
+					</div>
+					<div class="field">
+						<label for="cron-hour">Hour</label>
+						<input id="cron-hour" class="input" name="hour" value="${escapeHtml(formState.hour)}" placeholder="*" required>
+					</div>
+					<div class="field">
+						<label for="cron-dom">Day of month</label>
+						<input id="cron-dom" class="input" name="dayOfMonth" value="${escapeHtml(formState.dayOfMonth)}" placeholder="*" required>
+					</div>
+					<div class="field">
+						<label for="cron-month">Month</label>
+						<input id="cron-month" class="input" name="month" value="${escapeHtml(formState.month)}" placeholder="*" required>
+					</div>
+					<div class="field">
+						<label for="cron-dow">Day of week</label>
+						<input id="cron-dow" class="input" name="dayOfWeek" value="${escapeHtml(formState.dayOfWeek)}" placeholder="*" required>
+					</div>
+				</div>
+				<label class="scheduler-toggle">
+					<input type="checkbox" name="enabled" ${formState.enabled ? 'checked' : ''}>
+					<span>Enabled immediately after save</span>
+				</label>
+				<div class="scheduler-help">
+					All schedule fields are explicit <code>UTC</code>. Preview: <code>${escapeHtml(cronPreview)}</code>
+				</div>
+				<div class="button-row">
+					<button class="button" type="submit" ${state.schedulerBusy ? 'disabled' : ''}>${escapeHtml(primaryLabel)}</button>
+					${formState.mode === 'edit' ? `<button class="button button--ghost" type="button" data-scheduler-cancel ${state.schedulerBusy ? 'disabled' : ''}>Cancel edit</button>` : ''}
+				</div>
+			</form>
+		</div>
+	`;
+}
+
+function renderSchedulerSurface(snapshot) {
+	if (!elements.cards.scheduler) {
+		return;
+	}
+
+	if (!snapshot) {
+		elements.cards.scheduler.innerHTML = renderCard('Schedule management', 'Phase 7 live surface', [
+			{ label: 'State', value: 'Loading' },
+		], '<div class="placeholder-copy">Authenticated schedule routes will populate this surface once the device responds.</div>');
+		return;
+	}
+
+	ensureSchedulerFormChoice(snapshot);
+	const nextRunCopy = snapshot.nextRun?.available
+		? `${formatUtcMinute(snapshot.nextRun.normalizedUtcMinute)} · ${snapshot.nextRun.actionLabel}`
+		: 'No future enabled run is currently queued';
+	const lastResultCopy = snapshot.lastResult?.available
+		? `${humanizeHyphenated(snapshot.lastResult.code)} · ${formatUtcMinute(snapshot.lastResult.normalizedUtcMinute)}`
+		: 'No last result recorded yet';
+	const clockCopy = snapshot.clockTrusted
+		? 'Trusted UTC time acquired'
+		: `Clock ${humanizeHyphenated(snapshot.clockState)}`;
+	const automationCopy = snapshot.automationActive
+		? 'Automation active for enabled schedules'
+		: 'Automation inactive until clock trust and enabled schedules align';
+	const historyCopy = snapshot.problemCount
+		? `${snapshot.problemCount} recent scheduler problems recorded`
+		: 'No recent scheduler problems';
+
+	elements.cards.scheduler.innerHTML = `
+		<p class="card-eyebrow">Phase 7 live surface</p>
+		<div class="scheduler-shell">
+			<div>
+				<h3>Schedule management</h3>
+				<p class="muted">Create, edit, enable, disable, and delete UTC cron schedules without exposing internal action wiring. Manual relay control semantics stay unchanged.</p>
+			</div>
+			<div class="scheduler-header">
+				<div class="scheduler-panel">
+					<p class="card-eyebrow">Clock and automation</p>
+					<div class="scheduler-badge-row">
+						<span class="badge ${escapeHtml(schedulerClockTone(snapshot.clockState))}">Clock ${escapeHtml(humanizeHyphenated(snapshot.clockState))}</span>
+						<span class="badge ${snapshot.automationActive ? 'badge--ok' : 'badge--warn'}">Automation ${snapshot.automationActive ? 'Active' : 'Inactive'}</span>
+						<span class="badge">UTC only</span>
+					</div>
+					<div class="scheduler-help">
+						${escapeHtml(clockCopy)}${snapshot.degradedReason && snapshot.degradedReason !== 'none' ? ` · ${escapeHtml(humanizeHyphenated(snapshot.degradedReason))}` : ''}
+					</div>
+				</div>
+				<div class="scheduler-panel">
+					<p class="card-eyebrow">Scheduler history</p>
+					<div class="scheduler-help">${escapeHtml(historyCopy)}</div>
+					<div class="scheduler-help">${escapeHtml(automationCopy)}</div>
+				</div>
+			</div>
+			<div class="scheduler-summary-grid">
+				${schedulerSummaryCard('Next run', nextRunCopy, snapshot.nextRun?.available ? `${snapshot.nextRun.scheduleId} · ${snapshot.nextRun.actionKey}` : 'Trusted time is required before a next run can appear')}
+				${schedulerSummaryCard('Last result', lastResultCopy, snapshot.lastResult?.available ? `${snapshot.lastResult.scheduleId || 'scheduler'} · ${snapshot.lastResult.actionLabel}` : 'A due schedule minute must run before last result appears')}
+				${schedulerSummaryCard('Clock', clockCopy, snapshot.degradedReason && snapshot.degradedReason !== 'none' ? humanizeHyphenated(snapshot.degradedReason) : 'Scheduler uses future-only UTC baselines')}
+				${schedulerSummaryCard('Schedule counts', `${snapshot.enabledCount}/${snapshot.scheduleCount} enabled`, `Up to ${snapshot.maxSchedules} schedules in this phase`) }
+			</div>
+			${schedulerFeedbackMarkup()}
+			<div class="scheduler-layout">
+				<div class="scheduler-panel">
+					<p class="card-eyebrow">Saved schedules</p>
+					<div class="scheduler-help">Next run, create, edit, disable, and delete flows all refresh from live device truth after each mutation.</div>
+					<div class="scheduler-list">${renderSchedulerRows(snapshot)}</div>
+				</div>
+				${renderSchedulerForm(snapshot)}
+			</div>
+			<div class="scheduler-panel">
+				<p class="card-eyebrow">Recent problems and history</p>
+				${renderSchedulerProblems(snapshot)}
+			</div>
+		</div>
+	`;
+}
+
 function renderStatus(statusPayload) {
 	state.status = statusPayload;
 	updateNetworkChrome(statusPayload.network);
@@ -297,33 +627,39 @@ function renderStatus(statusPayload) {
 
 	renderRelayCard(statusPayload.relay);
 
-	elements.cards.scheduler.innerHTML = renderCard('Scheduler surface', 'Phase 7 placeholder', [
-		{ label: 'Implemented', value: boolLabel(statusPayload.scheduler.implemented) },
-		{ label: 'Saved schedules', value: statusPayload.scheduler.scheduleCount },
-		{ label: 'Enabled schedules', value: statusPayload.scheduler.enabledCount },
-	], `<div class="placeholder-copy">${escapeHtml(statusPayload.scheduler.placeholder)}</div>`);
-
 	elements.cards.update.innerHTML = renderCard('Update surface', 'Phase 8 placeholder', [
 		{ label: 'Implemented', value: boolLabel(statusPayload.update.implemented) },
 		{ label: 'Contract', value: 'Read-only placeholder only' },
 	], `<div class="placeholder-copy">${escapeHtml(statusPayload.update.placeholder)}</div>`);
 }
 
-async function refreshStatus({ silent = false } = {}) {
+async function refreshDashboard({ silent = false } = {}) {
 	try {
-		const { response, data } = await requestJson(routes.status, { method: 'GET' });
-		if (response.status === 401) {
+		const statusResult = await requestJson(routes.status, { method: 'GET' });
+		if (statusResult.response.status === 401) {
 			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
 			return false;
 		}
 
-		if (!response.ok || !data) {
-			throw new Error(`Status refresh failed (${response.status})`);
+		if (!statusResult.response.ok || !statusResult.data) {
+			throw new Error(`Status refresh failed (${statusResult.response.status})`);
+		}
+
+		const schedulesResult = await requestJson(routes.schedules, { method: 'GET' });
+		if (schedulesResult.response.status === 401) {
+			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			return false;
+		}
+
+		if (!schedulesResult.response.ok || !schedulesResult.data) {
+			throw new Error(`Schedule refresh failed (${schedulesResult.response.status})`);
 		}
 
 		showDashboardView();
-		renderStatus(data);
-		setAlert('Protected status refreshed from the device.', silent ? 'info' : 'success');
+		state.scheduleSnapshot = schedulesResult.data;
+		renderStatus(statusResult.data);
+		renderSchedulerSurface(schedulesResult.data);
+		setAlert('Protected status and schedules refreshed from the device.', silent ? 'info' : 'success');
 		return true;
 	} catch (error) {
 		setAlert(error instanceof Error ? error.message : 'Status refresh failed.', 'error');
@@ -359,9 +695,9 @@ async function handleRelayToggle() {
 			throw new Error(`Relay command failed: ${detail}`);
 		}
 
-		const refreshed = await refreshStatus({ silent: true });
+		const refreshed = await refreshDashboard({ silent: true });
 		if (!refreshed) {
-			setRelayFeedback('Relay command was accepted, but live status refresh did not complete yet.', 'warn');
+			setRelayFeedback('Relay command was accepted, but live refresh did not complete yet.', 'warn');
 			return;
 		}
 
@@ -380,13 +716,116 @@ async function handleRelayToggle() {
 	}
 }
 
+function schedulerApiErrorMessage(data, fallbackPrefix) {
+	const fieldPrefix = data?.field ? `${humanizeHyphenated(String(data.field).replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`))}: ` : '';
+	return `${fallbackPrefix}${fieldPrefix}${data?.detail || data?.error || 'Unknown error.'}`;
+}
+
+async function runSchedulerMutation(route, payload) {
+	state.schedulerBusy = true;
+	setSchedulerFeedback('Refreshing scheduler truth after this change…', 'warn');
+	renderSchedulerSurface(state.scheduleSnapshot);
+
+	try {
+		const { response, data } = await requestJson(route, {
+			method: 'POST',
+			body: JSON.stringify(payload),
+		});
+
+		if (response.status === 401) {
+			showLoginView('The device no longer trusts this browser session. Log in again.', 'warn');
+			return false;
+		}
+
+		if (!response.ok || !data?.accepted) {
+			throw new Error(schedulerApiErrorMessage(data, 'Schedule update failed: '));
+		}
+
+		const refreshed = await refreshDashboard({ silent: true });
+		if (!refreshed) {
+			setSchedulerFeedback('The schedule change was accepted, but the live scheduler refresh did not complete yet.', 'warn');
+			return false;
+		}
+
+		setSchedulerFeedback(null);
+		setAlert(data.detail || 'Schedule updated.', 'success');
+		return true;
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Schedule update failed.';
+		setSchedulerFeedback(message, 'error');
+		setAlert(message, 'error');
+		return false;
+	} finally {
+		state.schedulerBusy = false;
+		renderSchedulerSurface(state.scheduleSnapshot);
+	}
+}
+
+async function handleSchedulerFormSubmit() {
+	const formState = state.schedulerForm;
+	const payload = {
+		scheduleId: formState.scheduleId.trim(),
+		cronExpression: schedulerCronExpressionFromForm(formState),
+		actionKey: formState.actionKey,
+		enabled: formState.enabled,
+	};
+
+	if (!payload.scheduleId || !payload.actionKey) {
+		setSchedulerFeedback('Enter a schedule ID and choose an action before saving.', 'warn');
+		setAlert('Enter a schedule ID and choose an action before saving.', 'warn');
+		renderSchedulerSurface(state.scheduleSnapshot);
+		return;
+	}
+
+	const route = formState.mode === 'edit' ? routes.scheduleUpdate : routes.scheduleCreate;
+	const ok = await runSchedulerMutation(route, payload);
+	if (ok) {
+		resetSchedulerForm({ actionKey: state.scheduleSnapshot?.actionChoices?.[0]?.key || 'relay-on' });
+		renderSchedulerSurface(state.scheduleSnapshot);
+	}
+}
+
+function loadSchedulerEdit(scheduleId) {
+	const schedule = state.scheduleSnapshot?.schedules?.find((entry) => entry.scheduleId === scheduleId);
+	if (!schedule) {
+		setAlert('That schedule is no longer available to edit.', 'warn');
+		return;
+	}
+
+	resetSchedulerForm({
+		mode: 'edit',
+		scheduleId: schedule.scheduleId,
+		actionKey: schedule.actionKey,
+		enabled: schedule.enabled,
+		...splitCronExpression(schedule.cronExpression),
+	});
+	setSchedulerFeedback(`Editing ${schedule.scheduleId}. Save to keep the new cron or action values.`, 'info');
+	renderSchedulerSurface(state.scheduleSnapshot);
+}
+
+async function handleSchedulerToggle(scheduleId, enabled) {
+	await runSchedulerMutation(routes.scheduleSetEnabled, { scheduleId, enabled });
+}
+
+async function handleSchedulerDelete(scheduleId) {
+	if (!window.confirm(`Delete schedule ${scheduleId}?`)) {
+		return;
+	}
+
+	const ok = await runSchedulerMutation(routes.scheduleDelete, { scheduleId });
+	if (ok && state.schedulerForm.mode === 'edit' && state.schedulerForm.scheduleId === scheduleId) {
+		resetSchedulerForm({ actionKey: state.scheduleSnapshot?.actionChoices?.[0]?.key || 'relay-on' });
+		renderSchedulerSurface(state.scheduleSnapshot);
+	}
+}
+
 async function bootstrapSession() {
 	setAlert('Checking whether this browser already has a valid local session…', 'info');
 	try {
 		const { response, data } = await requestJson(routes.session, { method: 'GET' });
 		if (response.ok && data?.authenticated) {
 			state.sessionUsername = data.username || 'operator';
-			await refreshStatus({ silent: true });
+			await refreshDashboard({ silent: true });
 			return;
 		}
 		showLoginView('Log in with the configured local admin credentials to unlock protected status.', 'info');
@@ -417,7 +856,7 @@ async function handleLogin(event) {
 		if (response.ok && data?.authenticated) {
 			state.sessionUsername = username;
 			elements.loginForm?.reset();
-			await refreshStatus({ silent: false });
+			await refreshDashboard({ silent: false });
 			return;
 		}
 
@@ -446,6 +885,8 @@ async function handleLogout() {
 		state.relayCommandPending = false;
 		state.relayCommandDesiredState = false;
 		setRelayFeedback(null);
+		setSchedulerFeedback(null);
+		resetSchedulerForm();
 		showLoginView('Session cleared. Log in again to view protected status.', 'success');
 	} catch (error) {
 		setAlert('Logout request failed, but the browser session may already be invalid.', 'warn');
@@ -455,10 +896,63 @@ async function handleLogout() {
 	}
 }
 
+function handleSchedulerCardInput(event) {
+	const form = event.target.closest('[data-scheduler-form]');
+	if (!form) {
+		return;
+	}
+
+	syncSchedulerFormFromDom(form);
+	if (state.schedulerFeedback?.tone === 'error') {
+		setSchedulerFeedback(null);
+	}
+}
+
+async function handleSchedulerCardClick(event) {
+	const editButton = event.target.closest('[data-scheduler-edit]');
+	if (editButton) {
+		loadSchedulerEdit(editButton.dataset.schedulerEdit || '');
+		return;
+	}
+
+	const toggleButton = event.target.closest('[data-scheduler-toggle]');
+	if (toggleButton) {
+		await handleSchedulerToggle(toggleButton.dataset.schedulerToggle || '', toggleButton.dataset.enabled === 'true');
+		return;
+	}
+
+	const deleteButton = event.target.closest('[data-scheduler-delete]');
+	if (deleteButton) {
+		await handleSchedulerDelete(deleteButton.dataset.schedulerDelete || '');
+		return;
+	}
+
+	if (event.target.closest('[data-scheduler-cancel]')) {
+		resetSchedulerForm({ actionKey: state.scheduleSnapshot?.actionChoices?.[0]?.key || 'relay-on' });
+		setSchedulerFeedback(null);
+		renderSchedulerSurface(state.scheduleSnapshot);
+	}
+}
+
+async function handleSchedulerCardSubmit(event) {
+	const form = event.target.closest('[data-scheduler-form]');
+	if (!form) {
+		return;
+	}
+
+	event.preventDefault();
+	syncSchedulerFormFromDom(form);
+	await handleSchedulerFormSubmit();
+}
+
 function attachEvents() {
 	elements.loginForm?.addEventListener('submit', handleLogin);
-	elements.refreshButton?.addEventListener('click', () => refreshStatus({ silent: false }));
+	elements.refreshButton?.addEventListener('click', () => refreshDashboard({ silent: false }));
 	elements.logoutButton?.addEventListener('click', handleLogout);
+	elements.cards.scheduler?.addEventListener('input', handleSchedulerCardInput);
+	elements.cards.scheduler?.addEventListener('change', handleSchedulerCardInput);
+	elements.cards.scheduler?.addEventListener('click', (event) => { void handleSchedulerCardClick(event); });
+	elements.cards.scheduler?.addEventListener('submit', (event) => { void handleSchedulerCardSubmit(event); });
 }
 
 function startPolling() {
@@ -467,8 +961,8 @@ function startPolling() {
 	}
 
 	state.refreshTimer = window.setInterval(() => {
-		if (state.authenticated) {
-			refreshStatus({ silent: true });
+		if (state.authenticated && !state.schedulerBusy && !state.relayCommandPending) {
+			refreshDashboard({ silent: true });
 		}
 	}, 15000);
 }

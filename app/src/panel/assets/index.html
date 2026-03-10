@@ -129,6 +129,14 @@
 			gap: 16px;
 		}
 
+		.scheduler-section {
+			margin-top: 18px;
+		}
+
+		.scheduler-surface {
+			min-height: 320px;
+		}
+
 		@media (min-width: 860px) {
 			.status-grid {
 				grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -301,57 +309,170 @@
 			color: var(--text);
 		}
 
-			.placeholder-copy {
-				color: #d4eef8;
-				background: linear-gradient(180deg, rgba(125, 211, 252, 0.08), rgba(7, 16, 25, 0));
-				border: 1px dashed rgba(125, 211, 252, 0.24);
-				border-radius: 18px;
-				padding: 14px;
-				margin-top: 16px;
+		.placeholder-copy {
+			color: #d4eef8;
+			background: linear-gradient(180deg, rgba(125, 211, 252, 0.08), rgba(7, 16, 25, 0));
+			border: 1px dashed rgba(125, 211, 252, 0.24);
+			border-radius: 18px;
+			padding: 14px;
+			margin-top: 16px;
+		}
+
+		.relay-badge-row,
+		.scheduler-badge-row,
+		.scheduler-row-actions,
+		.button-row,
+		.inline-fields {
+			display: flex;
+			gap: 10px;
+			flex-wrap: wrap;
+		}
+
+		.relay-action,
+		.scheduler-shell,
+		.scheduler-list,
+		.scheduler-problems,
+		.scheduler-form-grid,
+		.scheduler-field-grid {
+			display: grid;
+			gap: 12px;
+		}
+
+		.relay-action,
+		.scheduler-header,
+		.scheduler-layout,
+		.scheduler-summary-grid {
+			margin-top: 16px;
+		}
+
+		.scheduler-shell {
+			gap: 18px;
+		}
+
+		.scheduler-header {
+			display: grid;
+			gap: 16px;
+		}
+
+		@media (min-width: 980px) {
+			.scheduler-header {
+				grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
 			}
 
-			.relay-badge-row {
-				display: flex;
-				gap: 10px;
-				flex-wrap: wrap;
-				margin-top: 16px;
+			.scheduler-layout {
+				grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
 			}
+		}
 
-			.relay-action {
-				display: grid;
-				gap: 10px;
-				margin-top: 16px;
-			}
+		.scheduler-summary-grid {
+			display: grid;
+			gap: 12px;
+		}
 
-			.relay-action-copy {
-				margin: 0;
+		@media (min-width: 860px) {
+			.scheduler-summary-grid {
+				grid-template-columns: repeat(4, minmax(0, 1fr));
 			}
+		}
 
-			.relay-note,
-			.relay-feedback {
-				margin-top: 14px;
-				padding: 12px 14px;
-				border-radius: 18px;
-				border: 1px solid rgba(125, 211, 252, 0.24);
-				background: linear-gradient(180deg, rgba(125, 211, 252, 0.08), rgba(7, 16, 25, 0));
-				color: #dff8ff;
-			}
+		.scheduler-summary-card,
+		.scheduler-panel {
+			border: 1px solid rgba(125, 211, 252, 0.18);
+			border-radius: 18px;
+			padding: 16px;
+			background: rgba(6, 12, 20, 0.55);
+		}
 
-			.relay-note--warn,
-			.relay-feedback[data-tone="warn"] {
-				border-color: rgba(251, 191, 36, 0.3);
-				color: #ffe7a6;
-			}
+		.scheduler-summary-card strong,
+		.scheduler-row-title strong {
+			display: block;
+			font-size: 1rem;
+		}
 
-			.relay-feedback[data-tone="error"] {
-				border-color: rgba(251, 113, 133, 0.34);
-				color: #ffd4da;
-			}
+		.scheduler-summary-card span,
+		.scheduler-summary-card small,
+		.scheduler-row-meta,
+		.scheduler-help,
+		.scheduler-empty,
+		.scheduler-problems li {
+			color: var(--muted);
+		}
 
-			.relay-feedback[data-tone="success"] {
-				border-color: rgba(52, 211, 153, 0.34);
-				color: #cffff0;
+		.scheduler-row {
+			display: grid;
+			gap: 12px;
+			padding: 14px;
+			border: 1px solid rgba(157, 182, 203, 0.14);
+			border-radius: 18px;
+			background: rgba(8, 15, 24, 0.58);
+		}
+
+		@media (min-width: 860px) {
+			.scheduler-row {
+				grid-template-columns: minmax(0, 1fr) auto;
+				align-items: center;
 			}
+		}
+
+		.scheduler-row-title,
+		.scheduler-row-meta {
+			display: flex;
+			gap: 10px;
+			flex-wrap: wrap;
+			align-items: center;
+		}
+
+		.scheduler-row-meta code,
+		.scheduler-help code {
+			padding: 2px 6px;
+			border-radius: 8px;
+			background: rgba(125, 211, 252, 0.1);
+		}
+
+		.scheduler-field-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		@media (min-width: 980px) {
+			.scheduler-field-grid {
+				grid-template-columns: repeat(5, minmax(0, 1fr));
+			}
+		}
+
+		.scheduler-toggle {
+			display: inline-flex;
+			align-items: center;
+			gap: 10px;
+		}
+
+		.scheduler-feedback,
+		.relay-note,
+		.relay-feedback {
+			padding: 12px 14px;
+			border-radius: 18px;
+			border: 1px solid rgba(125, 211, 252, 0.24);
+			background: linear-gradient(180deg, rgba(125, 211, 252, 0.08), rgba(7, 16, 25, 0));
+			color: #dff8ff;
+		}
+
+		.scheduler-feedback[data-tone="warn"],
+		.relay-note--warn,
+		.relay-feedback[data-tone="warn"] {
+			border-color: rgba(251, 191, 36, 0.3);
+			color: #ffe7a6;
+		}
+
+		.scheduler-feedback[data-tone="error"],
+		.relay-feedback[data-tone="error"] {
+			border-color: rgba(251, 113, 133, 0.34);
+			color: #ffd4da;
+		}
+
+		.scheduler-feedback[data-tone="success"],
+		.relay-feedback[data-tone="success"] {
+			border-color: rgba(52, 211, 153, 0.34);
+			color: #cffff0;
+		}
 		</style>
 	<script defer src="/main.js"></script>
 </head>
@@ -362,22 +483,23 @@
 				<div class="space-y-4">
 					<p class="overline">Local Authenticated Panel</p>
 					<h1>LNH Nordic Mission Console</h1>
-						<p class="muted max-w-3xl">
-							This panel stays local to the LAN, trusts the firmware as the source of truth,
-							and now exposes one authenticated relay toggle while keeping scheduler and update controls deferred.
-						</p>
+					<p class="muted max-w-3xl">
+						This panel stays local to the LAN, trusts the firmware as the source of truth,
+						and now exposes authenticated relay control plus full schedule management while firmware update work stays deferred.
+					</p>
 					<div class="badge-row">
 						<span id="session-chip" class="badge">Session bootstrap pending</span>
 						<span id="network-pill" class="badge">Status not loaded</span>
 					</div>
 				</div>
 					<aside class="hero-note">
-						<p class="overline">Phase 6 Boundary</p>
-						<h2>Single relay control, nothing broader</h2>
+						<p class="overline">Phase 7 Boundary</p>
+						<h2>Relay control plus dedicated scheduling</h2>
 						<ul class="chrome-list muted">
 							<li>Single local operator account with cookie-backed server sessions</li>
-							<li>One relay-centric toggle backed by the protected status and relay APIs</li>
-							<li>Scheduler and update controls remain read-only or deferred in this phase</li>
+							<li>One relay-centric manual toggle still backed by the protected status and relay APIs</li>
+							<li>Dedicated schedule create, edit, enable, disable, and delete flow using UTC cron input</li>
+							<li>Firmware update controls remain deferred to a later phase</li>
 						</ul>
 					</aside>
 			</div>
@@ -437,8 +559,10 @@
 				<article id="network-card" class="card"></article>
 				<article id="recovery-card" class="card"></article>
 				<article id="relay-card" class="card"></article>
-				<article id="scheduler-card" class="card"></article>
 				<article id="update-card" class="card"></article>
+			</div>
+			<div class="scheduler-section">
+				<article id="scheduler-card" class="card scheduler-surface"></article>
 			</div>
 		</section>
 	</div>
