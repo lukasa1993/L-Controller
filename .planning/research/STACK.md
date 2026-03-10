@@ -1,7 +1,7 @@
 # Stack Research
 
-**Domain:** Mission-critical Nordic/Zephyr embedded relay controller with local HTTP admin panel, OTA, persistence, and scheduling
-**Researched:** 2026-03-08
+**Domain:** Mission-critical embedded control firmware with operator-configured GPIO-backed relay actions
+**Researched:** 2026-03-11
 **Confidence:** HIGH
 
 ## Recommended Stack
@@ -10,103 +10,76 @@
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| Nordic Connect SDK | 3.2.x line already used in repo | Primary firmware platform | Matches the working brownfield codebase and keeps Wi-Fi, build, and board support aligned with the existing project |
-| Zephyr networking (`wifi_mgmt`, `net_mgmt`, Connection Manager) | Zephyr 4.2.x line via current NCS | Wi-Fi association, IP lifecycle, connectivity monitoring | Official Zephyr path for Wi-Fi-capable applications; reduces custom link-state boilerplate and gives clear connectivity events |
-| Zephyr HTTP Server | Zephyr 4.2.x line | Local HTTP admin panel, static asset serving, API endpoints | Official server supports static resources, static filesystem resources, and dynamic handlers without inventing a custom socket server |
-| Settings subsystem + NVS backend | Zephyr 4.2.x line | Persistent configuration/state | Official settings API is the standard way to persist key-value configuration; NVS is the conservative choice for non-filesystem storage |
-| Task Watchdog + hardware watchdog fallback | Zephyr 4.2.x line | Conservative recovery supervision | Official pattern for supervising multiple critical execution paths while still escalating to hardware reset if the scheduler or software watchdog fails |
-| MCUboot + sysbuild + DFU image APIs | Zephyr 4.2.x line | Safe firmware upgrade foundation | Official upgrade path for Zephyr devices; gives image-slot discipline, rollback/confirm semantics, and build-time integration |
-| MCUmgr over UDP plus custom HTTP upload path | Zephyr 4.2.x line | Remote management/update path and local operator upload path | MCUmgr is the official remote-management stack over IP, while the panel upload can write to a secondary image using DFU APIs |
-| Devicetree-driven GPIO (`gpio_dt_spec`) | Zephyr 4.2.x line | Relay control abstraction | Keeps hardware bindings declarative and portable instead of scattering pin numbers through application logic |
+| Nordic Connect SDK | v3.2.1 | Keep the current firmware, networking, HTTP, storage, and board support baseline | The repo already runs on this stack, and the milestone is a data-model and UI/API evolution rather than a platform migration |
+| Zephyr GPIO + devicetree device model | Bundled with NCS v3.2.1 | Represent physical outputs behind compile-time known controllers and descriptors | Official docs center GPIO integration around devicetree-backed devices and `gpio_dt_spec`-style bindings, which supports a safe allowlisted output model better than arbitrary raw pin entry |
+| Existing typed persistence layer over NVS-backed storage | Repo baseline | Persist action catalogs, relay metadata, and schedules with schema/version checks | The repo already validates typed sections on boot; this milestone needs richer action records and safe migration, not a new storage system |
+| Existing Zephyr HTTP service + panel JSON contracts | Repo baseline | Serve action-management and schedule-selection APIs to the embedded panel | The panel already uses exact-path JSON routes and live refresh cycles; extending that surface is lower risk than introducing a new transport |
 
-### Supporting Libraries / Subsystems
+### Supporting Libraries
 
-| Library / Subsystem | Version | Purpose | When to Use |
-|---------------------|---------|---------|-------------|
-| LittleFS | Zephyr 4.2.x line | Optional mutable file storage | Use only if you truly need writable filesystem-backed assets or large mutable blobs; not required for core config |
-| `k_work` / `k_work_delayable` on dedicated workqueues | Zephyr 4.2.x line | Deferred work, retries, scheduling engine internals | Use for action dispatch, reconnect backoff, and scheduled execution instead of blocking callbacks |
-| Flash map / image partitions | Zephyr 4.2.x line | OTA slot layout and storage boundaries | Required once MCUboot and persistent storage partitions are introduced |
-| Zephyr JSON helpers or minimal fixed-schema parsing | Zephyr 4.2.x line | HTTP request/response payloads | Use only for a constrained control API; keep payload schemas small and deterministic |
+| Library | Version | Purpose | When to Use |
+|---------|---------|---------|-------------|
+| Existing scheduler compiler/validator | Repo baseline | Reject schedules that reference invalid actions or invalid cron expressions | Keep using it whenever action edits, deletes, or migrations can affect schedule validity |
+| Existing panel asset pipeline | Repo baseline | Keep the browser UI as authored HTML/JS/CSS served from firmware | Use it for action CRUD screens and shared action-choice rendering so manual control and schedules stay aligned |
+| Existing mutex-guarded action dispatcher | Repo baseline | Preserve one serialized execution path for manual and scheduled actions | Reuse it after the catalog becomes configurable so execution semantics do not fork |
 
 ### Development Tools
 
 | Tool | Purpose | Notes |
 |------|---------|-------|
-| `west build --sysbuild` | Build app + MCUboot together | Needed once OTA bootloader support is added |
-| `twister` | Unit/integration test execution | Use for subsystem tests once modules exist; especially useful for scheduler/action logic |
-| Existing `scripts/*.sh` wrappers | Local developer workflow | Preserve these wrappers, but evolve them to support sysbuild, image packaging, and update artifacts |
+| `./scripts/validate.sh` | Build-first regression signal | Keep as the default automated gate while adding focused tests for persistence migration and action validation |
+| Browser smoke plus device-side verification | Verify action CRUD, schedule selection, and GPIO actuation on real hardware | This milestone changes operator flow and hardware binding assumptions, so browser-only checks are not enough |
 
-## Installation / Enablement Notes
+## Installation
 
 ```bash
-# Build with MCUboot once OTA work starts
-west build -b nrf7002dk/nrf5340/cpuapp --sysbuild app
-
-# Typical follow-on targets
-west flash
-west debug
+# No new package manager dependencies are recommended for this milestone.
+# Stay on the current Nordic/Zephyr toolchain and extend the existing app modules.
+./scripts/validate.sh
 ```
 
 ## Alternatives Considered
 
 | Recommended | Alternative | When to Use Alternative |
 |-------------|-------------|-------------------------|
-| Settings + NVS | Settings + ZMS | Consider ZMS only if you later need storage behavior that clearly benefits from it and you validate it thoroughly on target |
-| Build-authored HTML/JS assets embedded as static resources | Static filesystem resources via LittleFS | Use static filesystem resources if you need a writable/mounted web asset volume; otherwise embedded gzip assets are simpler and safer |
-| MCUmgr over UDP for network management | Fully custom remote update protocol | Only choose custom transport if MCUmgr cannot satisfy operational requirements after proof-of-concept validation |
-| Dedicated supervisor modules around Zephyr networking | Monolithic event handling in `main.c` | Only acceptable for throwaway demos, not for a mission-critical controller |
+| Store operator-selected logical output IDs that resolve to approved GPIO bindings in firmware | Store arbitrary port/pin tuples directly from the UI | Only use raw tuples if the board support package already exposes a safe runtime-resolvable registry and you can still enforce a strict allowlist |
+| Extend the current typed action catalog and schedule validation flow | Introduce a second config store just for output/action admin | Only use a separate store if action capacity or write frequency grows enough that section isolation becomes a measurable issue |
+| Add generic action-management routes and keep one dispatcher | Keep `/api/relay/desired-state` as the primary control route forever | Only keep the relay-only route if the milestone is explicitly limited to one hard-wired relay and no operator-created actions |
 
 ## What NOT to Use
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| Legacy connectivity APIs such as `net_context` in application code | Zephyr explicitly marks the legacy connectivity API as something applications should not use | Socket APIs, `wifi_mgmt`, `net_mgmt`, and Connection Manager |
-| FCB as the default new settings backend | Zephyr guidance favors NVS (and now NVS/ZMS) for non-filesystem settings storage | Settings + NVS |
-| HTML assembled as C string fragments | Hard to maintain, review, test, and compress; violates the desired frontend separation | Author real `.html` / `.js` files and embed or serve them as assets |
-| Reboot-on-any-network-error logic | Creates recovery loops and masks root causes | Explicit Wi-Fi state machine with retry budgets and only escalate on confirmed stuck states |
-| Writing update payloads into the active image without bootloader discipline | High brick risk | Secondary slot + MCUboot + image confirmation |
+| Arbitrary user-entered GPIO port/pin strings as the source of truth | Too easy to create invalid, unsafe, or board-specific configurations the runtime cannot trust | Persist an operator-facing action record that references a firmware-known output binding |
+| Separate action lists for manual control and scheduling | UI drift and schedule breakage become almost guaranteed | Keep one persisted action catalog that both pages consume |
+| Auto-seeding built-in `relay0.on` / `relay0.off` alongside the new configurable catalog | It preserves old hidden assumptions and makes migration harder to reason about | Migrate to explicit configured actions with a documented compatibility path |
+| Adding a database, filesystem, or cloud service for this milestone | Completely disproportionate to an 8-action embedded admin surface | Keep the existing typed persistence model |
 
 ## Stack Patterns by Variant
 
-**If UI assets are effectively immutable between firmware releases:**
-- Author UI files normally in a dedicated frontend directory
-- Gzip/embed them as Zephyr HTTP static resources at build time
-- Prefer this for v1 because it is simpler and more tamper-resistant
+**If the hardware still exposes only one real relay path:**
+- Use a generic action record anyway.
+- Resolve it to the single approved output binding behind the firmware boundary.
 
-**If UI assets must be writable or replaced independently:**
-- Serve them from a mounted filesystem via `HTTP_RESOURCE_TYPE_STATIC_FS`
-- Accept the extra storage/mount/corruption surface area
-- Use only after the simpler embedded-asset path is proven
-
-**If remote fleet-style updates become operationally important:**
-- Keep MCUboot as the image authority
-- Reuse DFU image-writing APIs underneath either MCUmgr or a controlled pull client
-- Do not invent a second incompatible image format
+**If more GPIO-backed outputs are added later:**
+- Keep the same action schema and add more approved output bindings.
+- Do not change schedule or dispatcher contracts just because the binding list grows.
 
 ## Version Compatibility
 
 | Package A | Compatible With | Notes |
 |-----------|-----------------|-------|
-| Current repo NCS 3.2.1 workspace | Zephyr 4.2.x line in the workspace | Already present in the brownfield repo according to codebase mapping |
-| Sysbuild | MCUboot | Officially supported path for building bootloader + application together |
-| Zephyr HTTP Server | Static resources / static filesystem resources | Both are first-class official server resource types |
-| Settings subsystem | NVS / ZMS backends | Official docs currently recommend NVS and ZMS for non-filesystem storage |
+| Nordic Connect SDK `v3.2.1` | Existing repo modules and scripts | Recommended baseline for the milestone because the repo already builds and flashes on it |
+| Zephyr GPIO/devicetree APIs | Existing relay, panel, scheduler, and persistence modules | The milestone should extend current modules instead of switching subsystems |
 
 ## Sources
 
-- https://docs.zephyrproject.org/latest/connectivity/networking/api/http_server.html — HTTP server resource model, static/static-FS resources
-- https://docs.zephyrproject.org/latest/connectivity/networking/api/wifi.html — Wi-Fi management API
-- https://docs.zephyrproject.org/latest/connectivity/networking/conn_mgr/main.html — Connection Manager overview
-- https://docs.zephyrproject.org/apidoc/latest/group__net__mgmt.html — L4 connectivity events
-- https://docs.zephyrproject.org/latest/services/storage/settings/index.html — settings subsystem, recommended backends
-- https://docs.zephyrproject.org/latest/services/storage/nvs/nvs.html — NVS storage details
-- https://docs.zephyrproject.org/latest/services/task_wdt/index.html — task watchdog + hardware fallback
-- https://docs.zephyrproject.org/latest/hardware/peripherals/watchdog.html — hardware watchdog API
-- https://docs.zephyrproject.org/latest/services/device_mgmt/dfu.html — DFU image handling
-- https://docs.zephyrproject.org/latest/services/device_mgmt/mcumgr.html — MCUmgr transports and capabilities
-- https://docs.zephyrproject.org/latest/build/sysbuild/index.html — sysbuild integration
-- Repo codebase map in `.planning/codebase/ARCHITECTURE.md` and `.planning/codebase/STACK.md`
+- [Zephyr GPIO docs](https://docs.zephyrproject.org/latest/hardware/peripherals/gpio.html) - verified the device-tree-backed GPIO model and runtime API expectations
+- [Zephyr devicetree how-tos](https://docs.zephyrproject.org/latest/build/dts/howtos.html) - verified alias/device lookup patterns and compile-time device references
+- [Zephyr settings docs](https://docs.zephyrproject.org/latest/services/storage/settings/index.html) - verified boot-time settings loading and commit semantics for interdependent configuration
+- [Zephyr NVS docs](https://docs.zephyrproject.org/latest/services/storage/nvs/nvs.html) - verified flash-backed key/value storage behavior and write constraints
+- Local repo inspection - `app/src/actions/actions.c`, `app/src/panel/panel_http.c`, `app/src/panel/panel_status.c`, `app/src/persistence/persistence.c`, `app/src/persistence/persistence_types.h`, `app/src/scheduler/scheduler.c`
 
 ---
-*Stack research for: mission-critical Nordic/Zephyr embedded relay controller*
-*Researched: 2026-03-08*
+*Stack research for: configurable relay actions*
+*Researched: 2026-03-11*

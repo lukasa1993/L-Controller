@@ -1,68 +1,173 @@
 # Pitfalls Research
 
-**Domain:** Mission-critical embedded relay controller with local panel and OTA
-**Researched:** 2026-03-08
+**Domain:** Brownfield configurable relay action management in an embedded local panel
+**Researched:** 2026-03-11
 **Confidence:** HIGH
 
 ## Critical Pitfalls
 
-| Pitfall | Why It Hurts | Warning Signs | Prevention Strategy | Phase |
-|---------|---------------|---------------|---------------------|-------|
-| Continuing as a `main.c` god-object | Changes become unsafe, hard to review, and impossible to reason about under fault conditions | Merge conflicts, duplicated state, scattered globals, fragile startup edits | Refactor into explicit modules before feature growth | Phase 1 |
-| Treating every Wi-Fi failure as a reboot condition | Causes reboot storms and hides whether normal reconnect logic works | Device resets during AP blips, DHCP stalls trigger full restart, uptime never stabilizes | Use a connectivity state machine, retry budgets, backoff, and escalation thresholds | Phase 2 |
-| Feeding the watchdog from one central “happy path” | A stuck subsystem can be masked while the watchdog is still fed | UI hangs but device never resets, network worker deadlocks without detection | Use task watchdog channels per critical subsystem plus hardware watchdog fallback | Phase 2 |
-| Mixing blocking work into network callbacks or system workqueue paths | Leads to latency spikes, deadlocks, and missed timers | Slow HTTP responses, delayed reconnects, watchdog starvation | Use dedicated workqueues and keep callbacks short/non-blocking | Phase 2 |
-| Writing mutable config carelessly to flash | Power loss or frequent writes can corrupt config or wear storage early | Settings disappear after reboot, intermittent boot failures, frequent storage commits | Centralize config writes, debounce commits, version schemas, and validate on load | Phase 3 |
-| Building auth as “local means safe” | Local HTTP still faces LAN threats, browser tricks, and weak-password risks | Default password stays unchanged, sessions never expire, CSRF-like surprises | Require explicit credential setup, use secure cookie rules available to HTTP, add CSRF protection, rate-limit login attempts | Phase 3 |
-| Coupling UI markup to C code | Slows iteration and increases firmware risk for simple panel changes | Large string blobs in firmware code, broken escaping, poor reviewability | Keep UI as authored HTML/JS assets and embed/serve them cleanly | Phase 3 |
-| Shipping OTA without rollback/confirm discipline | Failed updates can brick devices or boot-loop forever | Device dies after interrupted upload, new image never proves health, manual recovery required | Use MCUboot slots, image confirmation after healthy boot, and explicit failure handling | Phase 6 |
-| Scheduling jobs without a trustworthy time strategy | Jobs fire at wrong times after reboot or network loss | Duplicate triggers, missed jobs, drift after power cycles | Define v1 time source and boot-time behavior explicitly before exposing cron UX | Phase 5 |
-| Letting HTTP handlers manipulate GPIO directly | Bypasses action validation, scheduling, auditing, and safety rules | Different code paths toggle relay inconsistently | Route all mutations through a single action engine and relay service | Phase 4 |
+### Pitfall 1: Treating raw GPIO input as safe operator truth
 
-## Security / Reliability Mistakes
+**What goes wrong:**
+The panel stores port/pin data the firmware cannot safely resolve or should never drive, so actions look configured but fail or behave dangerously on hardware.
 
-| Mistake | Risk | Better Approach |
-|---------|------|-----------------|
-| Storing secrets or sessions in ad-hoc raw flash blobs | Corruption and migration pain | Use a single persistence subsystem with typed versioning |
-| Adding remote exposure before the local control path is hardened | Premature threat surface expansion | Keep v1 LAN-only and revisit later with a fresh threat model |
-| Treating OTA delivery and OTA boot safety as one concern | Update transport may work while boot safety is still broken | Separate upload/download path from image validation/boot-confirm path |
-| Assuming relay control is trivial GPIO toggling | Unsafe startup states can energize hardware unexpectedly | Define safe default states and relay ownership rules first |
+**Why it happens:**
+It feels simpler to let the browser submit "GPIO 0.13" directly and skip a firmware-owned binding model.
 
-## “Looks Done But Isn’t” Checklist
+**How to avoid:**
+Persist actions against approved output bindings defined by firmware, then validate every action against that binding registry before exposing it.
 
-- [ ] Wi-Fi reconnect tested against AP power cycle, DHCP delay, and DNS/reachability loss separately
-- [ ] Watchdog proves recovery from a truly stuck worker, not just normal slow paths
-- [ ] Config survives brownout/reboot during write
-- [ ] OTA proves success, interrupted upload, bad image, and rollback behavior
-- [ ] Scheduler behavior is defined for boot, missed jobs, and time resynchronization
-- [ ] Relay defaults are verified on cold boot, warm boot, and failed startup
-- [ ] Panel auth is tested from a real browser session flow, not just direct API calls
+**Warning signs:**
+Action records contain raw GPIO text, or the runtime has to guess which Zephyr device maps to a user-entered string.
+
+**Phase to address:**
+Phase 9 - data model and migration foundation
+
+---
+
+### Pitfall 2: Keeping manual control and schedules on separate action lists
+
+**What goes wrong:**
+The Actions page shows one set of names while the scheduler form shows another, and deleting or renaming an action breaks only one surface.
+
+**Why it happens:**
+Teams optimize each page independently and leave the shared catalog for later.
+
+**How to avoid:**
+Make one persisted action catalog the source of truth and feed both manual and scheduled flows from it.
+
+**Warning signs:**
+`panel_status` builds `actionChoices` from hard-coded JSON while the Actions page uses separate rules.
+
+**Phase to address:**
+Phase 10 - panel/API surface
+
+---
+
+### Pitfall 3: Editing or deleting actions without schedule impact handling
+
+**What goes wrong:**
+Schedules keep stale `action_id` references and fail only when a minute becomes due.
+
+**Why it happens:**
+Action CRUD looks like a panel concern, so schedule integrity is forgotten.
+
+**How to avoid:**
+Revalidate schedules after every action mutation, reject destructive changes when schedules still depend on an action, or migrate them explicitly.
+
+**Warning signs:**
+Action delete/update code paths do not call schedule validation or scheduler reload.
+
+**Phase to address:**
+Phase 9 and Phase 10
+
+---
+
+### Pitfall 4: Leaving built-in relay actions alive after the new model ships
+
+**What goes wrong:**
+The firmware silently reseeds `relay0.on` and `relay0.off`, so the UI never truly becomes configuration-driven and migration stays half-finished.
+
+**Why it happens:**
+Keeping legacy paths feels safer than choosing a clean migration boundary.
+
+**How to avoid:**
+Decide whether legacy IDs are migrated once, translated compatibly, or explicitly invalidated - then remove unconditional reseeding from steady-state behavior.
+
+**Warning signs:**
+Action init still auto-adds built-ins no matter what the stored catalog contains.
+
+**Phase to address:**
+Phase 9 - data model and migration foundation
+
+---
+
+### Pitfall 5: UI placeholders that hide the real backend contract
+
+**What goes wrong:**
+The UI says "not configured yet," but a hidden relay-only route still exists and continues to bypass the future action model.
+
+**Why it happens:**
+The placeholder is added as UX debt while the backend keeps its old exact route.
+
+**How to avoid:**
+Move manual execution to the catalog model as part of the same milestone, or clearly mark the relay-only route as migration-only and remove it from the panel.
+
+**Warning signs:**
+`/api/relay/desired-state` remains the only manual-control endpoint after configurable actions are introduced.
+
+**Phase to address:**
+Phase 10 - panel/API surface
+
+## Technical Debt Patterns
+
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Reuse `relay_on` boolean inside `persisted_action` for every future action type | Fastest way to ship relay CRUD | Forces another schema rewrite when non-relay actions arrive | Only acceptable if paired with a clearly versioned migration plan |
+| Rewrite the whole action catalog for every no-op update | Simplifies persistence code | Extra flash churn and harder diffing of real changes | Acceptable at current tiny scale if writes stay bounded and validated |
+| Keep schedule forms defaulting to `relay-on` | Minimal JS changes | Breaks as soon as actions become configurable | Never after this milestone starts |
+
+## Integration Gotchas
+
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| Panel -> actions | Sending public labels instead of stable keys/IDs | Send stable public keys and resolve to canonical `action_id` in firmware |
+| Actions -> scheduler | Mutating actions without reloading scheduler | Save the catalog, then revalidate/reload schedules before reporting success |
+| Persistence -> boot | Accepting stale schema silently | Keep the current typed version checks and define the migration outcome clearly |
+
+## Performance Traps
+
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| Full snapshot refresh after every tiny mutation | UI feels chatty and firmware work spikes | Accept the current refresh loop for now, but keep mutation endpoints efficient and bounded | Mostly acceptable at current scale of 8 actions / 8 schedules |
+| Excess flash writes from repeated action edits/no-ops | Wear grows faster than expected | Detect unchanged saves and avoid writing on no-op edits where possible | Becomes meaningful when operators tune actions frequently |
+
+## Security Mistakes
+
+| Mistake | Risk | Prevention |
+|---------|------|------------|
+| Exposing unauthenticated action CRUD routes | Local attackers can rewire automation behavior | Keep the same authenticated route discipline as schedules and OTA |
+| Allowing unsafe action IDs or labels into JSON/HTML without validation | Broken UX and possible injection bugs | Reuse strict operator-safe ID rules and escape UI output consistently |
+
+## UX Pitfalls
+
+| Pitfall | User Impact | Better Approach |
+|---------|-------------|-----------------|
+| Showing only raw internal IDs | Operators cannot tell what they are scheduling | Show label, state, and binding summary everywhere |
+| Letting delete succeed while silently removing schedule targets | Automation appears "saved" but stops working later | Block delete or force an explicit operator decision about dependent schedules |
+
+## "Looks Done But Isn't" Checklist
+
+- [ ] **Action creation:** Verify the saved action actually appears on the Actions page and in schedule choices.
+- [ ] **Action deletion:** Verify dependent schedules are blocked, migrated, or removed intentionally.
+- [ ] **Migration:** Verify old persisted built-in relay IDs do not survive as hidden duplicate behavior.
+- [ ] **Manual execution:** Verify there is no UI path that still bypasses the configured action catalog.
+
+## Recovery Strategies
+
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| Broken migration | HIGH | Boot into safe defaults, preserve diagnostics, and force operator reconfiguration instead of driving unknown hardware |
+| Invalid action edit | MEDIUM | Reject the save, keep prior catalog intact, and show the blocking reason in the panel |
+| Stale schedule references | MEDIUM | Reload scheduler, mark affected schedules invalid/disabled, and expose the failure in the schedule surface |
 
 ## Pitfall-to-Phase Mapping
 
-| Pitfall | Phase | Verification |
-|---------|-------|--------------|
-| `main.c` god-object | Phase 1 | Subsystems build behind explicit module boundaries |
-| Reboot-on-disconnect logic | Phase 2 | Fault injection shows reconnect before reset escalation |
-| Weak watchdog design | Phase 2 | Simulated stuck workers trigger the intended escalation path |
-| Unsafe config persistence | Phase 3 | Reboot during write preserves or cleanly recovers config |
-| UI/C coupling | Phase 3 | Panel assets change without C string editing |
-| Direct GPIO from HTTP path | Phase 4 | All command paths go through action engine APIs |
-| Bad schedule/time semantics | Phase 5 | Defined tests for drift, missed jobs, and reboot behavior |
-| Unsafe OTA flow | Phase 6 | Update/rollback/confirm scenarios pass on hardware |
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| Unsafe raw GPIO configuration | Phase 9 | CRUD tests and hardware checks prove only approved bindings can be saved/executed |
+| Split manual/schedule catalogs | Phase 10 | One action appears identically in Actions and Schedules |
+| Stale schedule references | Phase 10 | Delete/edit flows show explicit behavior for dependent schedules |
+| Legacy built-ins lingering | Phase 9 | Boot and migration tests prove built-ins are migrated or removed intentionally |
+| Relay-only bypass route | Phase 10 | Browser flow uses configured actions, not hidden relay toggles |
 
 ## Sources
 
-- https://docs.zephyrproject.org/latest/services/task_wdt/index.html
-- https://docs.zephyrproject.org/latest/hardware/peripherals/watchdog.html
-- https://docs.zephyrproject.org/latest/connectivity/networking/api/http_server.html
-- https://docs.zephyrproject.org/latest/connectivity/networking/api/wifi.html
-- https://docs.zephyrproject.org/latest/connectivity/networking/conn_mgr/main.html
-- https://docs.zephyrproject.org/latest/services/storage/settings/index.html
-- https://docs.zephyrproject.org/latest/services/device_mgmt/dfu.html
-- https://docs.zephyrproject.org/latest/services/device_mgmt/mcumgr.html
-- Project context in `.planning/PROJECT.md`
+- [Zephyr GPIO docs](https://docs.zephyrproject.org/latest/hardware/peripherals/gpio.html)
+- [Zephyr settings docs](https://docs.zephyrproject.org/latest/services/storage/settings/index.html)
+- [Zephyr NVS docs](https://docs.zephyrproject.org/latest/services/storage/nvs/nvs.html)
+- Local repo inspection - `app/src/actions/actions.c`, `app/src/panel/panel_http.c`, `app/src/panel/panel_status.c`, `app/src/panel/assets/main.js`, `app/src/persistence/persistence.c`, `app/src/scheduler/scheduler.c`
 
 ---
-*Pitfalls research for: mission-critical embedded relay controller*
-*Researched: 2026-03-08*
+*Pitfalls research for: configurable relay actions*
+*Researched: 2026-03-11*

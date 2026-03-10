@@ -1,156 +1,127 @@
 # Project Research Summary
 
 **Project:** LNH Nordic
-**Domain:** Mission-critical Nordic/Zephyr embedded relay controller with local web operations
-**Researched:** 2026-03-08
+**Domain:** Embedded local-control firmware with operator-configured relay actions
+**Researched:** 2026-03-11
 **Confidence:** HIGH
 
 ## Executive Summary
 
-This project is best treated as a serious embedded control product, not as a “Wi-Fi demo plus a small web server.” The official Zephyr/Nordic path supports the major building blocks already needed here: Wi-Fi lifecycle management, connectivity monitoring, HTTP serving, persistent settings, watchdog supervision, and bootloader-backed firmware updates. That means the biggest architectural risk is not missing platform capability — it is keeping too much logic coupled inside a single `main.c` and then layering mission-critical behavior on top of that.
+This milestone should not introduce a new platform. The correct move is to keep the existing Nordic/Zephyr panel, persistence, scheduler, and dispatcher stack, then replace the last fixed relay assumptions with one operator-managed action catalog. The key architectural boundary is that the browser should configure named actions, while the firmware remains the only owner of which GPIO-backed outputs are valid and safe to drive.
 
-The recommended approach is to first establish clean subsystem boundaries and conservative supervision, then add the local control plane, then wire the first real action (relay on/off), then add scheduling, and finally harden OTA. OTA should rely on MCUboot/sysbuild and image-slot discipline, while the web panel should use authored HTML/JS assets embedded or served as proper files rather than generated markup in C.
+The biggest risk is migration: the shipped system still seeds built-in `relay0.on` / `relay0.off` actions and the panel/scheduler contracts are hard-coded around those two choices. The milestone needs an explicit migration layer, then a shared public action catalog so the Actions page and Schedules page consume the same configured action list.
 
 ## Key Findings
 
 ### Recommended Stack
 
-Use official Zephyr/Nordic building blocks instead of custom infrastructure.
+Keep the current NCS v3.2.1 stack and existing Zephyr HTTP/persistence modules. Official Zephyr docs continue to reinforce a devicetree-backed GPIO model and flash-backed settings/NVS patterns, which fits an embedded allowlisted output-binding approach much better than arbitrary raw GPIO entry from the browser.
 
 **Core technologies:**
-- Zephyr `wifi_mgmt`, `net_mgmt`, and Connection Manager — Wi-Fi/IP lifecycle and event-driven supervision
-- Zephyr HTTP Server — local panel, static assets, and API endpoints
-- Settings subsystem with NVS backend — conservative persistent config storage
-- Task Watchdog with hardware watchdog fallback — layered supervision and reset escalation
-- MCUboot + sysbuild + DFU APIs — safe firmware update foundation
-- MCUmgr over UDP plus custom HTTP upload handling — remote management/update transport and operator upload path
-- Devicetree GPIO abstractions — safe relay control boundaries
+- Nordic Connect SDK `v3.2.1`: keep the existing firmware and board baseline
+- Zephyr GPIO/devicetree model: use firmware-known output bindings for safe hardware ownership
+- Existing typed persistence layer: extend schema and migration instead of replacing storage
 
 ### Expected Features
 
 **Must have (table stakes):**
-- Local authenticated admin panel
-- Robust Wi-Fi supervision and reconnection
-- Manual relay control
-- Persistent config storage
-- Scheduled actions
-- Safe OTA path
+- Relay action CRUD with operator-safe name/ID and approved output binding
+- Configured-action visibility on the Actions page and schedule action picker
+- Real gating so only valid configured actions are executable or schedulable
+- Safe migration for old built-in action IDs and schedule references
 
-**Should have (competitive / structural):**
-- Generic action engine
-- Event/audit visibility
-- Future-ready integration framework
+**Should have (competitive):**
+- Clear reasons when an action is unavailable
+- Schedule-impact protection on action edit/delete
+- Generic action schema shape that can support future non-relay actions
 
 **Defer (v2+):**
-- Multi-user access control
-- Public/cloud remote management
-- Rich third-party SDK integrations
+- Arbitrary pin discovery from the browser
+- Non-relay action implementations
+- Bulk/template workflows for many outputs
 
 ### Architecture Approach
 
-The brownfield repo should become a small composition root plus isolated services: config store, network supervisor, recovery manager, HTTP/auth layer, action engine, scheduler, relay driver, OTA service, and telemetry. All control mutations should flow through the action engine; all health decisions should flow through the recovery manager.
+Grow `actions/` into the catalog owner, add exact action-management routes in `panel_http`, publish catalog snapshots through `panel_status`, keep schedules storing only canonical `action_id`, and resolve configured actions to firmware-known output bindings before dispatch. This keeps manual control, scheduling, and persistence aligned while preserving the mission-critical runtime boundaries already in the repo.
 
 **Major components:**
-1. `app_core` — startup ordering and wiring
-2. `net_supervisor` + `recovery_manager` — connectivity and fault handling
-3. `http_service` + `auth_service` — local operator interface
-4. `action_engine` + `relay_driver` — first business function
-5. `scheduler_service` — cron-style automation
-6. `ota_service` — image staging and swap flow
+1. Action catalog service - CRUD, public keys/labels, migration, and dispatcher lookup
+2. Output binding registry - approved GPIO-backed outputs hidden behind firmware-owned bindings
+3. Panel/API layer - action management plus schedule selection from the shared catalog
+4. Scheduler integration - schedule validation/reload when the action catalog changes
 
 ### Critical Pitfalls
 
-1. **Growing the system inside `main.c`** — split modules before feature growth
-2. **Rebooting on transient Wi-Fi issues** — use retry budgets and escalation thresholds
-3. **Weak watchdog feeding strategy** — supervise critical subsystems individually
-4. **Unsafe config writes** — centralize persistence and validate schemas
-5. **Unsafe OTA boot path** — require slot-based updates and image confirmation
+1. **Unsafe raw GPIO configuration** - store logical output bindings, not arbitrary pin text
+2. **Split action catalogs** - keep one source of truth for Actions and Schedules
+3. **Stale schedule references** - revalidate/reload schedules after every action mutation
+4. **Legacy built-ins lingering** - define migration behavior explicitly and remove unconditional seeding
+5. **Relay-only bypass paths** - do not leave the panel on `/api/relay/desired-state` once the catalog exists
 
 ## Implications for Roadmap
 
-Based on research, the likely safe phase structure is:
+Based on research, suggested phase structure:
 
-### Phase 1: Foundation Refactor
-**Rationale:** architecture risk is currently the biggest blocker
-**Delivers:** module boundaries, typed config model, relay abstraction, service skeletons
-**Avoids:** `main.c` sprawl
+### Phase 9: Action Data Model and Migration
+**Rationale:** The current shipped state still hard-codes built-in relay action IDs, so schema and migration must move first.
+**Delivers:** Configurable action records, approved output-binding model, boot/save validation, migration path from legacy built-ins.
+**Addresses:** Relay action CRUD foundation, visibility gating, legacy compatibility.
+**Avoids:** Unsafe GPIO storage and hidden built-in fallback behavior.
 
-### Phase 2: Network Supervision & Recovery
-**Rationale:** mission-critical behavior starts with fault handling, not the UI
-**Delivers:** Wi-Fi state machine, reachability policy, watchdog/escalation model
-**Uses:** Wi-Fi management, Connection Manager, task watchdog
-
-### Phase 3: Local Control Plane
-**Rationale:** panel/auth/config need stable system boundaries underneath
-**Delivers:** persistent settings, single-user auth, HTTP panel shell, status endpoints
-**Uses:** settings subsystem, HTTP server, embedded UI assets
-
-### Phase 4: Action Engine & Relay Control
-**Rationale:** first real product function should land on top of the control plane
-**Delivers:** validated relay on/off action path from UI/API to hardware
-**Implements:** action engine + relay driver
-
-### Phase 5: Scheduling
-**Rationale:** scheduling depends on persistent config and action abstractions
-**Delivers:** cron-style jobs triggering relay actions with defined time semantics
-**Avoids:** hidden time drift / missed-job ambiguity
-
-### Phase 6: OTA Lifecycle
-**Rationale:** safest once the system is structured enough to test boot/update health clearly
-**Delivers:** MCUboot/sysbuild integration, upload/pull staging, confirm/rollback flow
-**Uses:** DFU APIs and slot-based boot discipline
+### Phase 10: Action Management UI and Shared API Surface
+**Rationale:** Once the catalog exists safely, the panel and scheduler can both consume it.
+**Delivers:** Actions-page management, schedule picker from shared catalog, delete/edit impact handling, generic action execution path.
+**Uses:** Existing HTTP server, panel asset pipeline, scheduler reload path.
+**Implements:** Shared public action catalog across Actions and Schedules.
 
 ### Phase Ordering Rationale
 
-- Subsystem boundaries come before feature breadth.
-- Recovery and connectivity come before operator UX.
-- Scheduler comes after action abstractions and persistence exist.
-- OTA comes after structure is stable enough to validate the boot/update lifecycle seriously.
+- Migration and validation have to land before UI CRUD, otherwise the panel will only paper over old built-in assumptions.
+- The scheduler should keep depending on `action_id`, so the catalog must be stable before the UI starts mutating it.
+- This order removes the relay-only bypass path without putting hardware safety at risk.
 
 ### Research Flags
 
 Phases likely needing deeper research during planning:
-- **Phase 5:** time source strategy, missed-job semantics, and clock sync behavior
-- **Phase 6:** exact remote-pull OTA transport and packaging policy
+- **Phase 9:** exact migration behavior for existing persisted `relay0.on` / `relay0.off` references
+- **Phase 10:** operator experience for deleting or disabling actions that existing schedules still depend on
 
 Phases with standard patterns:
-- **Phase 2:** Wi-Fi supervision and task watchdog architecture
-- **Phase 3:** HTTP server + settings-backed local panel pattern
+- **Phase 10:** authenticated exact-route JSON CRUD and shared snapshot rendering follow established repo conventions
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Strong official Zephyr coverage for the needed subsystems |
-| Features | MEDIUM | Feature expectations are partly domain inference and user-driven |
-| Architecture | HIGH | Brownfield refactor path is clear and platform-aligned |
-| Pitfalls | HIGH | Risks are concrete and directly tied to the requested system behavior |
+| Stack | HIGH | Repo already runs on the recommended stack and official docs support the hardware/storage constraints |
+| Features | HIGH | Directly grounded in the current shipped gaps and user-requested operator flow |
+| Architecture | HIGH | Existing module boundaries map cleanly to the needed changes |
+| Pitfalls | HIGH | Risks are visible in the current relay-only assumptions and migration boundary |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- Exact v1 time source and cron semantics for schedules
-- Exact remote-pull OTA transport/policy and artifact format
-- Whether UI assets stay embedded-only or later move to filesystem-backed static serving
+- Legacy migration policy: decide whether old built-in actions are translated, replaced, or invalidated at boot
+- Binding model detail: decide whether operator configuration chooses from approved output IDs only or also configures output labels separately
 
 ## Sources
 
 ### Primary
-- https://docs.zephyrproject.org/latest/connectivity/networking/api/http_server.html
-- https://docs.zephyrproject.org/latest/connectivity/networking/api/wifi.html
-- https://docs.zephyrproject.org/latest/connectivity/networking/conn_mgr/main.html
-- https://docs.zephyrproject.org/latest/services/storage/settings/index.html
-- https://docs.zephyrproject.org/latest/services/task_wdt/index.html
-- https://docs.zephyrproject.org/latest/services/device_mgmt/dfu.html
-- https://docs.zephyrproject.org/latest/services/device_mgmt/mcumgr.html
-- https://docs.zephyrproject.org/latest/build/sysbuild/index.html
+- [Zephyr GPIO docs](https://docs.zephyrproject.org/latest/hardware/peripherals/gpio.html)
+- [Zephyr devicetree how-tos](https://docs.zephyrproject.org/latest/build/dts/howtos.html)
+- [Zephyr settings docs](https://docs.zephyrproject.org/latest/services/storage/settings/index.html)
+- [Zephyr NVS docs](https://docs.zephyrproject.org/latest/services/storage/nvs/nvs.html)
 
-### Project context
-- `.planning/PROJECT.md`
-- `.planning/codebase/ARCHITECTURE.md`
-- `.planning/codebase/STACK.md`
+### Local codebase
+- `app/src/actions/actions.c`
+- `app/src/panel/panel_http.c`
+- `app/src/panel/panel_status.c`
+- `app/src/panel/assets/main.js`
+- `app/src/persistence/persistence.c`
+- `app/src/persistence/persistence_types.h`
+- `app/src/scheduler/scheduler.c`
 
 ---
-*Research completed: 2026-03-08*
+*Research completed: 2026-03-11*
 *Ready for roadmap: yes*

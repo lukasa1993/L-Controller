@@ -1,8 +1,8 @@
 # Feature Research
 
-**Domain:** Mission-critical embedded relay controller with local authenticated web panel
-**Researched:** 2026-03-08
-**Confidence:** MEDIUM
+**Domain:** Configurable relay action management for a local embedded control panel
+**Researched:** 2026-03-11
+**Confidence:** HIGH
 
 ## Feature Landscape
 
@@ -10,107 +10,95 @@
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Local authenticated admin panel | Operators expect a safe way to control and inspect the device | MEDIUM | Single-user auth is enough for v1, but session handling still needs discipline |
-| Manual relay control | Core product behavior; device is not useful without it | LOW | Must support explicit on/off with safe default state handling |
-| Persistent configuration | Operators expect settings and schedules to survive reboot | MEDIUM | Split static build-time config from mutable runtime config |
-| Robust Wi-Fi reconnect | A networked controller is expected to recover from normal AP issues | MEDIUM | Must tolerate drops without rebooting on every disconnect |
-| Health / status visibility | Operators need to know if Wi-Fi, scheduler, auth, and relay subsystems are healthy | MEDIUM | Include connectivity state, last error, and uptime-ish signals |
-| OTA update path with rollback discipline | Embedded networked products are expected to be maintainable in the field | HIGH | Safe update mechanics matter more than update frequency |
-| Scheduled actions | Once relay control exists, timer/cron behavior is a natural expectation | MEDIUM | Requires a clear time source strategy |
-| Safe recovery behavior | Mission-critical operators expect the system to fail controlled, not chaotically | HIGH | Watchdogs, supervision, and recovery thresholds are part of the product, not just implementation detail |
+| Action CRUD | An operator-configured action flow is not real unless actions can be created, reviewed, updated, and removed | MEDIUM | Needs safe ID rules, label/name support, and persistence-backed mutations |
+| Validation-before-use | Users expect unconfigured or invalid outputs to stay unavailable instead of failing at execution time | MEDIUM | Must be enforced in backend routes and reflected in panel status |
+| Shared catalog across manual control and schedules | If an action exists, operators expect it to appear consistently anywhere it can be used | MEDIUM | Current repo splits on fixed public keys; this must move to dynamic catalog-derived choices |
+| Enable/disable and visibility state | Operators need to temporarily remove actions from use without deleting history/configuration | LOW | Schedules must respect the same enablement state |
+| Dependency-aware delete/edit behavior | Deleting or changing an action must not silently break schedules | HIGH | Requires schedule reference checks, warnings, and possibly block-or-disable policies |
+| Clear hardware summary in UI | A named action is not enough; operators need to know which GPIO-backed output it controls | LOW | Keep the display operator-safe and avoid raw internal-only wiring jargon where possible |
 
 ### Differentiators (Competitive Advantage)
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Generic action engine | Lets the product grow beyond relay control without re-architecting | HIGH | Important structurally even if only one action is implemented initially |
-| Presets / scenes | Makes repeated operational workflows fast | MEDIUM | Naturally builds on action abstractions |
-| Remote-pull OTA policies | Reduces manual operator effort in managed deployments | HIGH | Introduce only after basic safe OTA works |
-| Future SDK / integration framework | Enables downstream value without touching the relay core each time | HIGH | Should be architected early but filled in later |
-| Event/audit log | Improves trust and troubleshooting | MEDIUM | Helpful for mission-critical operations and post-failure diagnosis |
+| Migration assistant for built-in relay actions | Lets existing devices move from `relay0.on/off` to configured actions without surprise | HIGH | Strong differentiator because it avoids "factory reset to use the new model" pressure |
+| Usage visibility | Shows whether an action is referenced by one or more schedules before edit/delete | MEDIUM | Makes schedule safety tangible in the admin flow |
+| Action health/status badge | Explains why an action is blocked, unavailable, or hidden | LOW | Keeps "not configured yet" honest and operator-visible |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| Public internet exposure of the panel | Feels convenient for remote access | Expands the threat model dramatically and conflicts with the local HTTP deployment assumption | Keep v1 local-LAN-only |
-| Reboot on every repeated Wi-Fi issue | Feels like a quick reliability fix | Causes reboot storms and hides whether the network layer can self-heal | Use retry budgets and explicit escalation rules |
-| Multi-user roles and account administration in v1 | Sounds more “complete” | Adds large auth complexity without helping the single-operator use case | Single local admin account first |
-| User-authored scripting language in the device | Seems flexible | Large safety, validation, and persistence burden on constrained hardware | Structured action types with fixed schemas |
-| Runtime-generated HTML in C | Seems easy early on | Becomes unmaintainable and blocks frontend iteration | Author real HTML/JS assets and embed/serve them |
+| Arbitrary raw pin entry for any controller/pin | Feels flexible | Hard to validate safely across boards, easy to misconfigure, and misaligned with Zephyr's devicetree-oriented hardware model | Persist a logical binding selected from a compile-time output registry |
+| Multi-type action DSL in the first configurable milestone | Sounds future-proof | Delays the concrete relay flow and explodes validation surface too early | Make the data model extensible, but ship only configurable relay actions now |
+| Silent schedule repair when an action is deleted | Feels convenient | Can change automation semantics without operator consent | Block delete, require reassignment, or disable affected schedules with an explicit warning |
+| Separate "manual outputs" and "schedule outputs" inventories | Seems simpler per page | Causes drift and inconsistent operator truth | One action catalog exposed differently per surface |
 
 ## Feature Dependencies
 
 ```text
-Authenticated panel
-    └──requires──> persistent config
-                         └──supports──> schedules
-                                           └──triggers──> action engine
-                                                             └──calls──> relay driver
+Configured output registry
+    └──requires──> Action catalog CRUD
+                         ├──requires──> Validation-before-use
+                         ├──requires──> Shared panel/API serialization
+                         └──enables──> Schedule action selection
 
-OTA updates
-    └──requires──> MCUboot / image-slot layout
+Dependency-aware delete/edit
+    └──requires──> Schedule reference inspection
 
-Remote-pull OTA
-    └──requires──> robust networking supervisor
-
-Audit / event log
-    └──enhances──> recovery diagnosis and operator trust
+Migration from built-ins
+    └──conflicts with──> Silent boot-time reseeding of fixed actions
 ```
 
 ### Dependency Notes
 
-- **Authenticated panel requires persistent config:** credentials, session secrets, and settings must survive reboot safely.
-- **Schedules require persistent config and a time strategy:** otherwise jobs vanish or execute unpredictably after reset.
-- **Action engine requires relay driver abstraction:** hardware control should not be implemented directly inside HTTP handlers or schedulers.
-- **OTA requires bootloader discipline:** update delivery is useless unless the boot path can validate, swap, and recover safely.
+- **Action catalog CRUD requires configured output registry:** action records need a safe hardware binding target before they can be executed or scheduled.
+- **Schedule action selection requires shared serialization:** the schedule form should consume the same action metadata that the Actions page shows.
+- **Delete/edit safety requires schedule reference inspection:** otherwise an operator can create orphaned or behavior-shifted schedules accidentally.
+- **Migration conflicts with built-in reseeding:** the backend cannot both auto-seed fixed relay actions and claim that configured actions are the only usable actions.
 
 ## MVP Definition
 
-### Launch With (v1)
+### Launch With (v1.1)
 
-- [ ] Modular firmware structure with clear subsystem boundaries — foundation for all future work
-- [ ] Robust Wi-Fi supervision and conservative recovery — core reliability requirement
-- [ ] Local authenticated panel with authored HTML/JS assets — operational control surface
-- [ ] Single relay activation/deactivation action — first business function
-- [ ] Persistent configuration store — required for auth, actions, and schedules
-- [ ] Local scheduler for relay actions — core automation use case
-- [ ] OTA path (local upload + remote pull-capable architecture) — maintainability requirement
+- [ ] Create, list, edit, enable/disable, and delete configured relay actions
+- [ ] Persist action records with safe validation and migration behavior
+- [ ] Show configured relay actions on the Actions page instead of fixed built-in buttons
+- [ ] Make configured actions selectable in schedule create/edit forms
+- [ ] Block execution and scheduling when an action is unconfigured, invalid, or disabled
+- [ ] Protect schedules from silent breakage when referenced actions change
 
 ### Add After Validation (v1.x)
 
-- [ ] More relay channels — add after the first channel architecture proves out
-- [ ] Event/audit history views — add once the basic control flow is stable
-- [ ] Action presets / scenes — add once relay/action primitives are trustworthy
-- [ ] AP fallback or local provisioning mode — only if field operations prove it is needed
+- [ ] Action usage counters / "used by schedules" hints
+- [ ] Explicit operator test action for a configured output
+- [ ] Better migration or import helpers for moving from legacy built-ins
 
 ### Future Consideration (v2+)
 
-- [ ] Third-party SDK / integration actions — defer until core action engine is stable
-- [ ] Multi-user or role-based auth — defer unless operator reality demands it
-- [ ] Public/cloud remote management — defer until the local-only product is proven and threat model is revisited
+- [ ] Multiple relay/output channels per board
+- [ ] Non-relay action types and integration-backed actions
+- [ ] Bulk action templates or grouped actions
 
 ## Feature Prioritization Matrix
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| Modular subsystem split | HIGH | MEDIUM | P1 |
-| Wi-Fi supervisor | HIGH | MEDIUM | P1 |
-| Authenticated local panel | HIGH | MEDIUM | P1 |
-| Relay on/off action | HIGH | LOW | P1 |
-| Persistent config | HIGH | MEDIUM | P1 |
-| Scheduler | HIGH | MEDIUM | P1 |
-| OTA foundation | HIGH | HIGH | P1 |
-| Event log | MEDIUM | MEDIUM | P2 |
-| Presets / scenes | MEDIUM | MEDIUM | P2 |
-| SDK integrations | MEDIUM | HIGH | P3 |
+| Action CRUD | HIGH | MEDIUM | P1 |
+| Validation-before-use | HIGH | MEDIUM | P1 |
+| Shared action catalog for Actions + Schedules | HIGH | MEDIUM | P1 |
+| Dependency-aware delete/edit behavior | HIGH | HIGH | P1 |
+| Migration from built-ins | MEDIUM | HIGH | P2 |
+| Usage visibility | MEDIUM | MEDIUM | P2 |
+| Action health/status badge | MEDIUM | LOW | P2 |
+| Multi-type action support | LOW | HIGH | P3 |
 
 ## Sources
 
-- User-stated product goals in `.planning/PROJECT.md`
-- Existing brownfield repo capabilities from `.planning/codebase/ARCHITECTURE.md`
-- Official Zephyr docs for HTTP server, Wi-Fi management, settings, watchdog, and DFU, used to ground what the platform naturally supports
+- User-requested milestone scope from conversation
+- Local repo analysis of `app/src/actions`, `app/src/panel`, `app/src/scheduler`, and `app/src/persistence`
+- [Zephyr GPIO API](https://docs.zephyrproject.org/latest/hardware/peripherals/gpio.html) and [Devicetree how-tos](https://docs.zephyrproject.org/latest/build/dts/howtos.html) for the hardware-binding constraints that shape the feature set
 
 ---
-*Feature research for: mission-critical embedded relay controller*
-*Researched: 2026-03-08*
+*Feature research for: configurable relay action management*
+*Researched: 2026-03-11*
