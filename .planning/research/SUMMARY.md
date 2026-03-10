@@ -1,126 +1,135 @@
 # Project Research Summary
 
 **Project:** LNH Nordic
-**Domain:** Embedded local-control firmware with operator-configured relay actions
+**Domain:** Configurable relay action management for an embedded local control panel
 **Researched:** 2026-03-11
 **Confidence:** HIGH
 
 ## Executive Summary
 
-This milestone should not introduce a new platform. The correct move is to keep the existing Nordic/Zephyr panel, persistence, scheduler, and dispatcher stack, then replace the last fixed relay assumptions with one operator-managed action catalog. The key architectural boundary is that the browser should configure named actions, while the firmware remains the only owner of which GPIO-backed outputs are valid and safe to drive.
+This milestone should not introduce a new platform. The repo already has the right base: Nordic/Zephyr firmware, typed NVS-backed persistence, authenticated panel routes, a shared dispatcher, and schedules. The missing layer is a real operator-managed action catalog that replaces built-in relay assumptions with named, validated, configurable relay actions.
 
-The biggest risk is migration: the shipped system still seeds built-in `relay0.on` / `relay0.off` actions and the panel/scheduler contracts are hard-coded around those two choices. The milestone needs an explicit migration layer, then a shared public action catalog so the Actions page and Schedules page consume the same configured action list.
+The safest design is to keep hardware knowledge in firmware through a compile-time output registry and let operator-managed actions reference approved logical bindings. Research across the current codebase and official Zephyr GPIO, Settings, and NVS guidance points in the same direction: do not treat arbitrary raw GPIO strings as trusted runtime truth, do not split manual and scheduled action catalogs, and do not let migration leave hidden built-in relay paths alive.
+
+The highest-risk areas are migration from `relay0.on` / `relay0.off`, schedule integrity when actions are edited or deleted, and flash wear from noisy persistence writes. The roadmap should therefore start with the binding model and migration rules before shipping panel CRUD.
 
 ## Key Findings
 
 ### Recommended Stack
 
-Keep the current NCS v3.2.1 stack and existing Zephyr HTTP/persistence modules. Official Zephyr docs continue to reinforce a devicetree-backed GPIO model and flash-backed settings/NVS patterns, which fits an embedded allowlisted output-binding approach much better than arbitrary raw GPIO entry from the browser.
+The recommended stack is mostly the current stack. The milestone needs new schema, catalog, UI/API, and runtime integration work, not new infrastructure.
 
 **Core technologies:**
-- Nordic Connect SDK `v3.2.1`: keep the existing firmware and board baseline
-- Zephyr GPIO/devicetree model: use firmware-known output bindings for safe hardware ownership
-- Existing typed persistence layer: extend schema and migration instead of replacing storage
+- Nordic Connect SDK `v3.2.1`: keep the current firmware/platform baseline
+- Zephyr GPIO plus devicetree device model: represent approved hardware outputs safely
+- Existing typed persistence over NVS-backed storage: persist action config with validation and migration
+- Existing panel HTTP plus JSON contracts: expose CRUD and schedule-choice surfaces
+- Existing dispatcher plus scheduler: keep one execution path for manual and scheduled work
 
 ### Expected Features
 
+The table-stakes flow is straightforward: create relay actions, validate the binding before use, show them under Actions, and make them selectable from Schedules through one shared catalog. Operators also need safe edit/delete behavior so schedules do not silently break.
+
 **Must have (table stakes):**
-- Relay action CRUD with operator-safe name/ID and approved output binding
-- Configured-action visibility on the Actions page and schedule action picker
-- Real gating so only valid configured actions are executable or schedulable
-- Safe migration for old built-in action IDs and schedule references
+- Action CRUD for configured relay actions
+- Validation-before-use
+- Shared catalog for Actions and Schedules
+- Enable/disable state
+- Safe delete/edit behavior for referenced actions
+- Safe migration from built-in relay assumptions
 
 **Should have (competitive):**
-- Clear reasons when an action is unavailable
-- Schedule-impact protection on action edit/delete
-- Generic action schema shape that can support future non-relay actions
+- Usage visibility for schedule references
+- Action health/status badges
+- Migration assistance for existing devices
 
 **Defer (v2+):**
-- Arbitrary pin discovery from the browser
-- Non-relay action implementations
-- Bulk/template workflows for many outputs
+- Non-relay action types
+- Multi-output expansion
+- Bulk templates or grouped actions
 
 ### Architecture Approach
 
-Grow `actions/` into the catalog owner, add exact action-management routes in `panel_http`, publish catalog snapshots through `panel_status`, keep schedules storing only canonical `action_id`, and resolve configured actions to firmware-known output bindings before dispatch. This keeps manual control, scheduling, and persistence aligned while preserving the mission-critical runtime boundaries already in the repo.
+The new architecture boundary is an output registry plus an action catalog service. The output registry owns approved hardware bindings. The action catalog service owns operator-managed records, public labels/keys, migration, and referential integrity. Panel routes, scheduler choices, and execution all consume that shared truth.
 
 **Major components:**
-1. Action catalog service - CRUD, public keys/labels, migration, and dispatcher lookup
-2. Output binding registry - approved GPIO-backed outputs hidden behind firmware-owned bindings
-3. Panel/API layer - action management plus schedule selection from the shared catalog
-4. Scheduler integration - schedule validation/reload when the action catalog changes
+1. Output registry - maps logical output IDs to approved GPIO bindings
+2. Action catalog service - owns configured relay actions and public metadata
+3. Persistence/migration boundary - validates and commits action plus schedule changes safely
+4. Panel CRUD/API surface - lets operators manage configured actions
+5. Scheduler and dispatcher integration - use the same configured action catalog
 
 ### Critical Pitfalls
 
-1. **Unsafe raw GPIO configuration** - store logical output bindings, not arbitrary pin text
-2. **Split action catalogs** - keep one source of truth for Actions and Schedules
-3. **Stale schedule references** - revalidate/reload schedules after every action mutation
-4. **Legacy built-ins lingering** - define migration behavior explicitly and remove unconditional seeding
-5. **Relay-only bypass paths** - do not leave the panel on `/api/relay/desired-state` once the catalog exists
+1. **Unsafe raw GPIO configuration** - avoid by using approved logical bindings instead of arbitrary pin entry
+2. **Split manual and schedule catalogs** - avoid by feeding both pages from one persisted action catalog
+3. **Stale schedule references** - avoid by validating or blocking destructive action edits/deletes
+4. **Legacy built-ins lingering** - avoid by defining an explicit migration/removal plan for `relay0.on` / `relay0.off`
+5. **Relay-only bypass routes surviving** - avoid by moving manual execution onto the configured action model
 
 ## Implications for Roadmap
 
 Based on research, suggested phase structure:
 
-### Phase 9: Action Data Model and Migration
-**Rationale:** The current shipped state still hard-codes built-in relay action IDs, so schema and migration must move first.
-**Delivers:** Configurable action records, approved output-binding model, boot/save validation, migration path from legacy built-ins.
-**Addresses:** Relay action CRUD foundation, visibility gating, legacy compatibility.
-**Avoids:** Unsafe GPIO storage and hidden built-in fallback behavior.
+### Phase 9: Output Binding Model and Migration
+**Rationale:** safe hardware binding and schema migration must exist before operators can manage actions
+**Delivers:** output registry, persistence schema changes, boot validation, and legacy relay-action migration policy
+**Addresses:** validation-before-use, migration, hidden built-in removal
+**Avoids:** unsafe raw GPIO config and half-migrated runtime behavior
 
-### Phase 10: Action Management UI and Shared API Surface
-**Rationale:** Once the catalog exists safely, the panel and scheduler can both consume it.
-**Delivers:** Actions-page management, schedule picker from shared catalog, delete/edit impact handling, generic action execution path.
-**Uses:** Existing HTTP server, panel asset pipeline, scheduler reload path.
-**Implements:** Shared public action catalog across Actions and Schedules.
+### Phase 10: Action Catalog CRUD and Shared UI/API Projection
+**Rationale:** once the data model is safe, the panel needs a real operator-managed catalog surface
+**Delivers:** authenticated action CRUD routes, Actions page management UI, dynamic schedule action choices, and dependency-aware edit/delete rules
+**Uses:** existing panel/auth stack and persistence boundary
+**Implements:** one shared catalog for Actions and Schedules
+
+### Phase 11: Runtime Integration and Verification
+**Rationale:** configured actions are only complete once manual control, schedules, migration, and hardware execution all use the same truth
+**Delivers:** dispatcher/runtime integration, schedule execution validation, and end-to-end browser/device verification
+**Uses:** existing dispatcher, scheduler, relay runtime, and validation scripts
 
 ### Phase Ordering Rationale
 
-- Migration and validation have to land before UI CRUD, otherwise the panel will only paper over old built-in assumptions.
-- The scheduler should keep depending on `action_id`, so the catalog must be stable before the UI starts mutating it.
-- This order removes the relay-only bypass path without putting hardware safety at risk.
+- Binding and migration rules come first because they constrain every later UI/API decision.
+- CRUD and shared projection come second because Actions and Schedules must evolve together.
+- Runtime verification comes last because it depends on the final catalog, schedule, and migration contract.
 
 ### Research Flags
 
 Phases likely needing deeper research during planning:
-- **Phase 9:** exact migration behavior for existing persisted `relay0.on` / `relay0.off` references
-- **Phase 10:** operator experience for deleting or disabling actions that existing schedules still depend on
+- **Phase 9:** exact migration behavior from built-in relay IDs to configured actions
+- **Phase 11:** final executable-action model for schedule/manual control if one configured relay resource yields multiple operations
 
 Phases with standard patterns:
-- **Phase 10:** authenticated exact-route JSON CRUD and shared snapshot rendering follow established repo conventions
+- **Phase 10:** CRUD, protected routes, and snapshot projection follow established repo patterns
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Repo already runs on the recommended stack and official docs support the hardware/storage constraints |
-| Features | HIGH | Directly grounded in the current shipped gaps and user-requested operator flow |
-| Architecture | HIGH | Existing module boundaries map cleanly to the needed changes |
-| Pitfalls | HIGH | Risks are visible in the current relay-only assumptions and migration boundary |
+| Stack | HIGH | Grounded in official Zephyr docs and the current repo baseline |
+| Features | HIGH | Directly constrained by the user request and the repo's current fixed relay assumptions |
+| Architecture | HIGH | Integration points are visible in actions, panel, scheduler, and persistence modules |
+| Pitfalls | HIGH | Risks are concrete and already visible in the current implementation |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- Legacy migration policy: decide whether old built-in actions are translated, replaced, or invalidated at boot
-- Binding model detail: decide whether operator configuration chooses from approved output IDs only or also configures output labels separately
+- Migration policy: seed one configured relay action automatically, or require explicit post-upgrade configuration
+- Execution model: whether schedule/manual surfaces target derived `on/off` executable choices or a higher-level configured output plus desired-state field
 
 ## Sources
 
-### Primary
+### Primary (HIGH confidence)
 - [Zephyr GPIO docs](https://docs.zephyrproject.org/latest/hardware/peripherals/gpio.html)
-- [Zephyr devicetree how-tos](https://docs.zephyrproject.org/latest/build/dts/howtos.html)
-- [Zephyr settings docs](https://docs.zephyrproject.org/latest/services/storage/settings/index.html)
+- [Zephyr Devicetree how-tos](https://docs.zephyrproject.org/latest/build/dts/howtos.html)
+- [Zephyr Settings docs](https://docs.zephyrproject.org/latest/services/storage/settings/index.html)
 - [Zephyr NVS docs](https://docs.zephyrproject.org/latest/services/storage/nvs/nvs.html)
+- Local repo analysis of `app/src/actions`, `app/src/panel`, `app/src/persistence`, and `app/src/scheduler`
 
-### Local codebase
-- `app/src/actions/actions.c`
-- `app/src/panel/panel_http.c`
-- `app/src/panel/panel_status.c`
-- `app/src/panel/assets/main.js`
-- `app/src/persistence/persistence.c`
-- `app/src/persistence/persistence_types.h`
-- `app/src/scheduler/scheduler.c`
+### Secondary (MEDIUM confidence)
+- Existing planning context in `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, and `.planning/codebase/`
 
 ---
 *Research completed: 2026-03-11*
