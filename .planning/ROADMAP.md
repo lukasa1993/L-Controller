@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Persistent Configuration** - Establish durable, validated storage for auth, actions, relay state rules, and schedules (completed 2026-03-09)
 - [ ] **Phase 5: Local Control Panel** - Ship the authenticated local HTTP panel with authored HTML/JS assets and operator status views
 - [x] **Phase 6: Action Engine & Relay Control** - Implement the generic action path and the first real relay on/off behavior (completed 2026-03-10)
-- [ ] **Phase 7: Scheduling** - Add cron-style local scheduling for relay actions with deterministic reboot/time behavior
+- [x] **Phase 7: Scheduling** - Add cron-style local scheduling for relay actions with deterministic reboot/time behavior (completed 2026-03-10)
 - [ ] **Phase 8: OTA Lifecycle** - Deliver bootloader-backed local upload and remote-pull firmware updates with rollback discipline
 
 ## Phase Details
@@ -128,7 +128,7 @@ Plans:
 Plans:
 - [x] 07-01: Define the time model, schedule schema, and missed-job semantics
 - [x] 07-02: Implement the scheduler engine and persistent job storage
-- [ ] 07-03: Add schedule management endpoints/UI and validate execution behavior
+- [x] 07-03: Add schedule management endpoints/UI and validate execution behavior *(approved browser/curl/device verification recorded on 2026-03-10)*
 
 ### Phase 8: OTA Lifecycle
 **Goal**: Introduce safe firmware update lifecycle support for local upload and remote pull using a rollback-capable boot flow.

@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 7
 current_phase_name: scheduling
 current_plan: 3
-status: executing
-stopped_at: Completed 07-02-PLAN.md
-last_updated: "2026-03-10T06:58:09.984Z"
+status: verifying
+stopped_at: Completed 07-03-PLAN.md
+last_updated: "2026-03-10T07:32:37.930Z"
 last_activity: 2026-03-10
 progress:
   total_phases: 8
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 19
-  completed_plans: 18
+  completed_plans: 19
   percent: 95
 ---
 
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Core value:** The device must reliably and safely execute configured local control actions—even through Wi-Fi disruption or subsystem faults—without unnecessary operator intervention.
-**Current focus:** Scheduling
+**Current focus:** Scheduling verification
 
 ## Current Position
 
@@ -32,21 +32,21 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 **Current Phase Name:** scheduling
 **Current Plan:** 3
 **Total Plans in Phase:** 3
-**Status:** Ready to execute
+**Status:** Phase complete — ready for verification
 **Last Activity:** 2026-03-10
-**Last Activity Description:** Completed 07-02 live scheduler runtime and status
+**Last Activity Description:** Completed 07-03 schedule management, validation flow, and approved device checkpoint
 
-Phase: 7 of 8 (scheduling) — in progress
+Phase: 7 of 8 (scheduling) — complete
 Plan: 3 of 3 in current phase
-Status: Ready to execute next plan
-Last activity: 2026-03-10 — Completed 07-02 live scheduler runtime and status
+Status: Phase complete — ready for verification
+Last activity: 2026-03-10 — Completed 07-03 schedule management, validation flow, and approved device checkpoint
 
-Progress: [██████████] 95%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 18
+- Total plans completed: 19
 - Average duration: 69.2 min
 - Total execution time: 15.0 hours
 
@@ -59,8 +59,8 @@ Progress: [██████████] 95%
 | Phase 01-foundation-refactor P03 | 7 min | 4 tasks | 4 files |
 
 **Recent Trend:**
-- Last 5 plans: Phase 04 plan 01 (13 min), Phase 04 plan 02 (6 min), Phase 04 plan 03 (4h 15m), Phase 05 plan 01 (3 min), Phase 05 plan 02 (5 min)
-- Trend: Human-approved hardware checkpoints still dominate elapsed time while implementation plans remain short.
+- Last 5 plans: Phase 06 plan 02 (4m), Phase 06 plan 03 (6 min + approved human verification), Phase 07 plan 01 (10m), Phase 07 plan 02 (13 min), Phase 07 plan 03 (6min + approved human verification)
+- Trend: Recent plans remain short, while elapsed time still clusters around blocking hardware/browser verification steps.
 
 *Updated after each plan completion*
 | Phase 02-wi-fi-supervision P01 | 4 min | 3 tasks | 7 files |
@@ -78,6 +78,7 @@ Progress: [██████████] 95%
 | Phase 06-action-engine-relay-control P03 | 6 min (auto tasks) + approved human verification | 4 tasks | 8 files |
 | Phase 07-scheduling P01 | 10m | 3 tasks | 10 files |
 | Phase 07 P02 | 13 min | 4 tasks | 12 files |
+| Phase 07-scheduling P03 | 6min | 4 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -148,6 +149,9 @@ Recent decisions affecting current work:
 - [Phase 07]: Trusted time comes from a scheduler-owned Zephyr SNTP helper that prefers DHCP-provided NTP and falls back to an app-configured server.
 - [Phase 07]: The live scheduler runs from one delayable minute-boundary work item and recomputes from the current UTC minute instead of backfilling missed work.
 - [Phase 07]: Manual and scheduled commands share one dispatcher mutex and skip already-applied desired-state writes to avoid race windows and flash churn.
+- [Phase 07-scheduling]: Authenticated schedule management stays on exact /api/schedules routes with thin handlers while the scheduler and dispatcher remain the runtime owners.
+- [Phase 07-scheduling]: The operator UI shows public action keys and labels instead of raw internal action IDs while still refreshing from server truth after every schedule mutation.
+- [Phase 07-scheduling]: Phase 7 completion remains build-first and only closes after the documented browser/curl/device checklist is explicitly approved.
 
 ### Pending Todos
 
@@ -160,6 +164,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T06:58:09.981Z
-Stopped at: Completed 07-02-PLAN.md
+Last session: 2026-03-10T07:32:37.928Z
+Stopped at: Completed 07-03-PLAN.md
 Resume file: None
