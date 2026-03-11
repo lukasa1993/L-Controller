@@ -11,6 +11,7 @@
 #include "network/network_supervisor.h"
 #include "panel/panel_status.h"
 #include "persistence/persistence.h"
+#include "relay/relay.h"
 #include "recovery/recovery.h"
 
 static const char *panel_status_json_bool(bool value)
@@ -40,6 +41,167 @@ static int panel_status_append(char *buffer,
 
 	*offset += (size_t)written;
 	return 0;
+}
+
+static char panel_status_hex_nibble(uint8_t value)
+{
+	return value < 10U ? (char)('0' + value) : (char)('A' + (value - 10U));
+}
+
+static int panel_status_append_json_string(char *buffer,
+					    size_t buffer_len,
+					    size_t *offset,
+					    const char *value)
+{
+	const char *text = value != NULL ? value : "";
+	size_t index;
+	int ret;
+
+	ret = panel_status_append(buffer, buffer_len, offset, "\"");
+	if (ret != 0) {
+		return ret;
+	}
+
+	for (index = 0U; text[index] != '\0'; ++index) {
+		const unsigned char current = (unsigned char)text[index];
+
+		switch (current) {
+		case '\\':
+		case '"':
+			ret = panel_status_append(buffer,
+						 buffer_len,
+						 offset,
+						 "\\%c",
+						 (char)current);
+			break;
+		case '\b':
+			ret = panel_status_append(buffer, buffer_len, offset, "\\b");
+			break;
+		case '\f':
+			ret = panel_status_append(buffer, buffer_len, offset, "\\f");
+			break;
+		case '\n':
+			ret = panel_status_append(buffer, buffer_len, offset, "\\n");
+			break;
+		case '\r':
+			ret = panel_status_append(buffer, buffer_len, offset, "\\r");
+			break;
+		case '\t':
+			ret = panel_status_append(buffer, buffer_len, offset, "\\t");
+			break;
+		default:
+			if (current < 0x20U) {
+				ret = panel_status_append(buffer,
+							 buffer_len,
+							 offset,
+							 "\\u00%c%c",
+							 panel_status_hex_nibble((uint8_t)(current >> 4U)),
+							 panel_status_hex_nibble((uint8_t)(current & 0x0FU)));
+			} else {
+				ret = panel_status_append(buffer,
+							 buffer_len,
+							 offset,
+							 "%c",
+							 (char)current);
+			}
+			break;
+		}
+
+		if (ret != 0) {
+			return ret;
+		}
+	}
+
+	return panel_status_append(buffer, buffer_len, offset, "\"");
+}
+
+static const char *panel_status_action_command_key(enum persisted_action_command command)
+{
+	switch (command) {
+	case PERSISTED_ACTION_COMMAND_RELAY_ON:
+		return "relay-on";
+	case PERSISTED_ACTION_COMMAND_RELAY_OFF:
+		return "relay-off";
+	case PERSISTED_ACTION_COMMAND_NONE:
+	default:
+		return "unknown";
+	}
+}
+
+static const char *panel_status_action_command_label(enum persisted_action_command command)
+{
+	switch (command) {
+	case PERSISTED_ACTION_COMMAND_RELAY_ON:
+		return "Turn on";
+	case PERSISTED_ACTION_COMMAND_RELAY_OFF:
+		return "Turn off";
+	case PERSISTED_ACTION_COMMAND_NONE:
+	default:
+		return "Unknown";
+	}
+}
+
+static const char *panel_status_action_state_code(enum action_catalog_state state)
+{
+	switch (state) {
+	case ACTION_CATALOG_STATE_READY:
+		return "ready";
+	case ACTION_CATALOG_STATE_DISABLED:
+		return "disabled";
+	case ACTION_CATALOG_STATE_NEEDS_ATTENTION:
+	default:
+		return "needs-attention";
+	}
+}
+
+static const char *panel_status_action_state_detail(const struct persisted_action *action,
+						    enum action_catalog_state state)
+{
+	if (action == NULL) {
+		return "Action details are unavailable.";
+	}
+
+	switch (state) {
+	case ACTION_CATALOG_STATE_READY:
+		return "Action is valid and enabled.";
+	case ACTION_CATALOG_STATE_DISABLED:
+		return "Action is saved but currently disabled.";
+	case ACTION_CATALOG_STATE_NEEDS_ATTENTION:
+	default:
+		if (!relay_output_binding_is_valid(action->output_key)) {
+			return "Choose an approved output before this action can be used.";
+		}
+
+		if (!relay_command_is_valid(action->command)) {
+			return "Choose a supported relay command before this action can be used.";
+		}
+
+		return "Action needs attention before it can be used.";
+	}
+}
+
+static void panel_status_format_action_output_summary(const struct persisted_action *action,
+						      char *buffer,
+						      size_t buffer_len)
+{
+	const struct relay_output_binding *binding;
+	const char *output_label;
+	const char *command_label;
+
+	if (buffer == NULL || buffer_len == 0U) {
+		return;
+	}
+
+	if (action == NULL) {
+		snprintf(buffer, buffer_len, "Unavailable");
+		return;
+	}
+
+	binding = relay_output_binding_find(action->output_key);
+	output_label = binding != NULL && binding->display_name != NULL ?
+		binding->display_name : "Unknown output";
+	command_label = panel_status_action_command_label(action->command);
+	snprintf(buffer, buffer_len, "%s - %s", output_label, command_label);
 }
 
 static const char *panel_status_scheduler_action_label(const char *action_id)
@@ -479,6 +641,387 @@ int panel_status_render_schedule_snapshot_json(struct app_context *app_context,
 			panel_status_scheduler_action_key(schedule->action_id),
 			panel_status_scheduler_action_label(schedule->action_id),
 			panel_status_json_bool(is_next_run));
+		if (ret != 0) {
+			return ret;
+		}
+	}
+
+	ret = panel_status_append(buffer, buffer_len, &offset, "]}");
+	if (ret != 0) {
+		return ret;
+	}
+
+	return (int)offset;
+}
+
+int panel_status_render_action_snapshot_json(struct app_context *app_context,
+					     char *buffer,
+					     size_t buffer_len)
+{
+	const struct persisted_action_catalog *catalog;
+	size_t output_choice_count;
+	size_t offset = 0U;
+	uint32_t action_count;
+	size_t output_index;
+	uint32_t action_index;
+	int ret;
+
+	if (app_context == NULL || buffer == NULL || buffer_len == 0U) {
+		return -EINVAL;
+	}
+
+	catalog = &app_context->persisted_config.actions;
+	action_count = MIN(catalog->count, PERSISTED_ACTION_MAX_COUNT);
+	output_choice_count = relay_output_binding_count();
+
+	ret = panel_status_append(
+		buffer,
+		buffer_len,
+		&offset,
+		"{"
+		"\"implemented\":true,"
+		"\"actionCount\":%u,"
+		"\"maxActions\":%u,"
+		"\"empty\":%s,"
+		"\"emptyState\":{\"title\":",
+		action_count,
+		PERSISTED_ACTION_MAX_COUNT,
+		panel_status_json_bool(action_count == 0U));
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = panel_status_append_json_string(buffer,
+						 buffer_len,
+						 &offset,
+						 "No configured actions");
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = panel_status_append(buffer,
+				 buffer_len,
+				 &offset,
+				 ",\"detail\":");
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = panel_status_append_json_string(
+		buffer,
+		buffer_len,
+		&offset,
+		"Create your first action to bind an approved output and relay command.");
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = panel_status_append(
+		buffer,
+		buffer_len,
+		&offset,
+		"},\"commandChoices\":[");
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = panel_status_append(buffer,
+				 buffer_len,
+				 &offset,
+				 "{\"commandKey\":");
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = panel_status_append_json_string(buffer,
+						 buffer_len,
+						 &offset,
+						 "relay-on");
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = panel_status_append(buffer,
+				 buffer_len,
+				 &offset,
+				 ",\"label\":");
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = panel_status_append_json_string(buffer,
+						 buffer_len,
+						 &offset,
+						 "Turn on");
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = panel_status_append(buffer,
+				 buffer_len,
+				 &offset,
+				 "},{\"commandKey\":");
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = panel_status_append_json_string(buffer,
+						 buffer_len,
+						 &offset,
+						 "relay-off");
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = panel_status_append(buffer,
+				 buffer_len,
+				 &offset,
+				 ",\"label\":");
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = panel_status_append_json_string(buffer,
+						 buffer_len,
+						 &offset,
+						 "Turn off");
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = panel_status_append(buffer,
+				 buffer_len,
+				 &offset,
+				 "}],\"outputChoices\":[");
+	if (ret != 0) {
+		return ret;
+	}
+
+	for (output_index = 0U; output_index < output_choice_count; ++output_index) {
+		const struct relay_output_binding *binding = relay_output_binding_get(output_index);
+
+		if (binding == NULL) {
+			continue;
+		}
+
+		ret = panel_status_append(buffer,
+					 buffer_len,
+					 &offset,
+					 "%s{\"outputKey\":",
+					 output_index == 0U ? "" : ",");
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append_json_string(buffer,
+							 buffer_len,
+							 &offset,
+							 binding->output_key);
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append(buffer,
+					 buffer_len,
+					 &offset,
+					 ",\"label\":");
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append_json_string(buffer,
+							 buffer_len,
+							 &offset,
+							 binding->display_name);
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append(buffer, buffer_len, &offset, "}");
+		if (ret != 0) {
+			return ret;
+		}
+	}
+
+	ret = panel_status_append(buffer, buffer_len, &offset, "],\"actions\":[");
+	if (ret != 0) {
+		return ret;
+	}
+
+	for (action_index = 0U; action_index < action_count; ++action_index) {
+		const struct persisted_action *action = &catalog->entries[action_index];
+		const struct relay_output_binding *binding = relay_output_binding_find(action->output_key);
+		const enum action_catalog_state action_state = action_dispatcher_action_state(action);
+		char output_summary[96];
+
+		panel_status_format_action_output_summary(action,
+						       output_summary,
+						       sizeof(output_summary));
+
+		ret = panel_status_append(buffer,
+					 buffer_len,
+					 &offset,
+					 "%s{\"actionId\":",
+					 action_index == 0U ? "" : ",");
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append_json_string(buffer,
+							 buffer_len,
+							 &offset,
+							 action->action_id);
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append(buffer,
+					 buffer_len,
+					 &offset,
+					 ",\"displayName\":");
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append_json_string(buffer,
+							 buffer_len,
+							 &offset,
+							 action->display_name);
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append(
+			buffer,
+			buffer_len,
+			&offset,
+			",\"enabled\":%s,\"type\":\"relay-command\",\"commandKey\":",
+			panel_status_json_bool(action->enabled));
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append_json_string(buffer,
+							 buffer_len,
+							 &offset,
+							 panel_status_action_command_key(action->command));
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append(buffer,
+					 buffer_len,
+					 &offset,
+					 ",\"commandLabel\":");
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append_json_string(buffer,
+							 buffer_len,
+							 &offset,
+							 panel_status_action_command_label(action->command));
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append(buffer,
+					 buffer_len,
+					 &offset,
+					 ",\"outputKey\":");
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append_json_string(buffer,
+							 buffer_len,
+							 &offset,
+							 action->output_key);
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append(buffer,
+					 buffer_len,
+					 &offset,
+					 ",\"outputLabel\":");
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append_json_string(buffer,
+							 buffer_len,
+							 &offset,
+							 binding != NULL ? binding->display_name : "Unknown output");
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append(buffer,
+					 buffer_len,
+					 &offset,
+					 ",\"outputSummary\":");
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append_json_string(buffer,
+							 buffer_len,
+							 &offset,
+							 output_summary);
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append(buffer,
+					 buffer_len,
+					 &offset,
+					 ",\"usability\":");
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append_json_string(buffer,
+							 buffer_len,
+							 &offset,
+							 action_dispatcher_action_state_text(action_state));
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append(buffer,
+					 buffer_len,
+					 &offset,
+					 ",\"usabilityCode\":");
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append_json_string(buffer,
+							 buffer_len,
+							 &offset,
+							 panel_status_action_state_code(action_state));
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append(buffer,
+					 buffer_len,
+					 &offset,
+					 ",\"usabilityDetail\":");
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append_json_string(buffer,
+							 buffer_len,
+							 &offset,
+							 panel_status_action_state_detail(action, action_state));
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = panel_status_append(buffer, buffer_len, &offset, "}");
 		if (ret != 0) {
 			return ret;
 		}

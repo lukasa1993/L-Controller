@@ -21,6 +21,7 @@
 #include "panel/panel_http.h"
 #include "panel/panel_status.h"
 #include "persistence/persistence.h"
+#include "relay/relay.h"
 
 LOG_MODULE_REGISTER(panel_http, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -28,6 +29,7 @@ HTTP_SERVER_REGISTER_HEADER_CAPTURE(panel_http_cookie_header, "Cookie");
 HTTP_SERVER_REGISTER_HEADER_CAPTURE(panel_http_content_type_header, "Content-Type");
 HTTP_SERVER_REGISTER_HEADER_CAPTURE(panel_http_content_length_header, "Content-Length");
 
+#define PANEL_ACTION_COMMAND_KEY_MAX_LEN 16
 #define PANEL_SCHEDULE_ACTION_KEY_MAX_LEN 16
 #define PANEL_UPDATE_ERROR_MAX_LEN 48
 #define PANEL_UPDATE_DETAIL_MAX_LEN 224
@@ -63,6 +65,23 @@ struct panel_status_route_context {
 	struct app_context *app_context;
 	char set_cookie_header[96];
 	char response_body[PANEL_STATUS_RESPONSE_BODY_LEN];
+	struct http_header headers[1];
+};
+
+struct panel_action_snapshot_route_context {
+	struct app_context *app_context;
+	char set_cookie_header[96];
+	char response_body[PANEL_STATUS_RESPONSE_BODY_LEN];
+	struct http_header headers[1];
+};
+
+struct panel_action_mutation_route_context {
+	struct app_context *app_context;
+	uint8_t request_body[256];
+	size_t request_body_len;
+	bool request_too_large;
+	char set_cookie_header[96];
+	char response_body[512];
 	struct http_header headers[1];
 };
 
@@ -139,6 +158,14 @@ struct panel_schedule_delete_payload {
 	char schedule_id[PERSISTED_SCHEDULE_ID_MAX_LEN];
 };
 
+struct panel_action_payload {
+	char action_id[PERSISTED_ACTION_ID_MAX_LEN];
+	char display_name[PERSISTED_ACTION_DISPLAY_NAME_MAX_LEN];
+	char output_key[PERSISTED_ACTION_OUTPUT_KEY_MAX_LEN];
+	char command_key[PANEL_ACTION_COMMAND_KEY_MAX_LEN];
+	bool enabled;
+};
+
 static const uint8_t index_html_gz[] = {
 #include "panel/index.html.gz.inc"
 };
@@ -159,6 +186,9 @@ static struct panel_login_route_context panel_auth_login_route_ctx;
 static struct panel_auth_route_context panel_auth_logout_route_ctx;
 static struct panel_auth_route_context panel_auth_session_route_ctx;
 static struct panel_status_route_context panel_status_route_ctx;
+static struct panel_action_snapshot_route_context panel_action_snapshot_route_ctx;
+static struct panel_action_mutation_route_context panel_action_create_route_ctx;
+static struct panel_action_mutation_route_context panel_action_update_route_ctx;
 static struct panel_relay_route_context panel_relay_route_ctx;
 static struct panel_schedule_snapshot_route_context panel_schedule_snapshot_route_ctx;
 static struct panel_schedule_mutation_route_context panel_schedule_create_route_ctx;
@@ -237,6 +267,21 @@ static int panel_status_handler(struct http_client_ctx *client,
 				 const struct http_request_ctx *request_ctx,
 				 struct http_response_ctx *response_ctx,
 				 void *user_data);
+static int panel_action_snapshot_handler(struct http_client_ctx *client,
+					 enum http_data_status status,
+					 const struct http_request_ctx *request_ctx,
+					 struct http_response_ctx *response_ctx,
+					 void *user_data);
+static int panel_action_create_handler(struct http_client_ctx *client,
+				       enum http_data_status status,
+				       const struct http_request_ctx *request_ctx,
+				       struct http_response_ctx *response_ctx,
+				       void *user_data);
+static int panel_action_update_handler(struct http_client_ctx *client,
+				       enum http_data_status status,
+				       const struct http_request_ctx *request_ctx,
+				       struct http_response_ctx *response_ctx,
+				       void *user_data);
 static int panel_relay_command_handler(struct http_client_ctx *client,
 				       enum http_data_status status,
 				       const struct http_request_ctx *request_ctx,
@@ -331,6 +376,36 @@ static struct http_resource_detail_dynamic panel_status_resource_detail = {
 	},
 	.cb = panel_status_handler,
 	.user_data = &panel_status_route_ctx,
+};
+
+static struct http_resource_detail_dynamic panel_action_snapshot_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_DYNAMIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
+		.content_type = "application/json",
+	},
+	.cb = panel_action_snapshot_handler,
+	.user_data = &panel_action_snapshot_route_ctx,
+};
+
+static struct http_resource_detail_dynamic panel_action_create_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_DYNAMIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_POST),
+		.content_type = "application/json",
+	},
+	.cb = panel_action_create_handler,
+	.user_data = &panel_action_create_route_ctx,
+};
+
+static struct http_resource_detail_dynamic panel_action_update_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_DYNAMIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_POST),
+		.content_type = "application/json",
+	},
+	.cb = panel_action_update_handler,
+	.user_data = &panel_action_update_route_ctx,
 };
 
 static struct http_resource_detail_dynamic panel_relay_resource_detail = {
@@ -472,6 +547,12 @@ HTTP_RESOURCE_DEFINE(panel_auth_session_resource, panel_http_service, "/api/auth
 			     &panel_auth_session_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_status_resource, panel_http_service, "/api/status",
 			     &panel_status_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_action_snapshot_resource, panel_http_service, "/api/actions",
+		     &panel_action_snapshot_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_action_create_resource, panel_http_service, "/api/actions/create",
+		     &panel_action_create_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_action_update_resource, panel_http_service, "/api/actions/update",
+		     &panel_action_update_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_relay_resource, panel_http_service, "/api/relay/desired-state",
 			     &panel_relay_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_schedule_snapshot_resource, panel_http_service,
@@ -511,6 +592,17 @@ static void panel_login_route_reset(struct panel_login_route_context *route_ctx)
 	}
 
 	route_ctx->request_body_len = 0;
+	route_ctx->request_too_large = false;
+}
+
+static void panel_action_route_reset(
+	struct panel_action_mutation_route_context *route_ctx)
+{
+	if (route_ctx == NULL) {
+		return;
+	}
+
+	route_ctx->request_body_len = 0U;
 	route_ctx->request_too_large = false;
 }
 
@@ -1225,6 +1317,221 @@ static void panel_http_update_reboot_work_handler(struct k_work *work)
 	sys_reboot(SYS_REBOOT_COLD);
 }
 
+static enum persisted_action_command panel_http_action_command_from_key(
+	const char *command_key)
+{
+	if (command_key == NULL) {
+		return PERSISTED_ACTION_COMMAND_NONE;
+	}
+
+	if (strcmp(command_key, "relay-on") == 0) {
+		return PERSISTED_ACTION_COMMAND_RELAY_ON;
+	}
+
+	if (strcmp(command_key, "relay-off") == 0) {
+		return PERSISTED_ACTION_COMMAND_RELAY_OFF;
+	}
+
+	return PERSISTED_ACTION_COMMAND_NONE;
+}
+
+static void panel_http_copy_action_save_request(
+	const struct persisted_action_catalog *catalog,
+	struct persisted_action_catalog_save_request *request)
+{
+	uint32_t copy_count;
+
+	memset(request, 0, sizeof(*request));
+	if (catalog == NULL) {
+		return;
+	}
+
+	copy_count = MIN(catalog->count, PERSISTED_ACTION_MAX_COUNT);
+	request->count = copy_count;
+	memcpy(request->entries,
+	       catalog->entries,
+	       sizeof(request->entries[0]) * copy_count);
+}
+
+static int panel_http_find_action_index(
+	const struct persisted_action_catalog_save_request *request,
+	const char *action_id)
+{
+	uint32_t index;
+
+	if (request == NULL || action_id == NULL) {
+		return -1;
+	}
+
+	for (index = 0U; index < request->count; ++index) {
+		if (strcmp(request->entries[index].action_id, action_id) == 0) {
+			return (int)index;
+		}
+	}
+
+	return -1;
+}
+
+static int panel_http_actions_save_and_reload(
+	struct app_context *app_context,
+	const struct persisted_action_catalog_save_request *request)
+{
+	int ret;
+
+	ret = persistence_store_save_actions(&app_context->persistence,
+					    &app_context->persisted_config,
+					    request);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = scheduler_service_reload(&app_context->scheduler);
+	if (ret != 0) {
+		LOG_ERR("Failed to reload scheduler after action save: %d", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+static bool panel_http_parse_action_payload(const char *json,
+					    bool require_action_id,
+					    struct panel_action_payload *payload)
+{
+	bool parsed;
+
+	if (payload == NULL) {
+		return false;
+	}
+
+	memset(payload, 0, sizeof(*payload));
+	parsed = panel_http_parse_string_field(json,
+					       "displayName",
+					       payload->display_name,
+					       sizeof(payload->display_name)) &&
+		panel_http_parse_string_field(json,
+					       "outputKey",
+					       payload->output_key,
+					       sizeof(payload->output_key)) &&
+		panel_http_parse_string_field(json,
+					       "commandKey",
+					       payload->command_key,
+					       sizeof(payload->command_key)) &&
+		panel_http_parse_bool_field(json, "enabled", &payload->enabled);
+	if (!parsed) {
+		return false;
+	}
+
+	if (!require_action_id) {
+		return true;
+	}
+
+	return panel_http_parse_string_field(json,
+					     "actionId",
+					     payload->action_id,
+					     sizeof(payload->action_id));
+}
+
+static int panel_http_write_action_error_response(
+	struct http_response_ctx *response_ctx,
+	enum http_status status_code,
+	char *buffer,
+	size_t buffer_len,
+	const char *error,
+	const char *detail,
+	const char *field)
+{
+	if (field != NULL && field[0] != '\0') {
+		return panel_http_write_json_response(response_ctx,
+						      status_code,
+						      buffer,
+						      buffer_len,
+						      "{\"accepted\":false,\"error\":\"%s\",\"field\":\"%s\",\"detail\":\"%s\"}",
+						      error,
+						      field,
+						      detail);
+	}
+
+	return panel_http_write_json_response(response_ctx,
+					      status_code,
+					      buffer,
+					      buffer_len,
+					      "{\"accepted\":false,\"error\":\"%s\",\"detail\":\"%s\"}",
+					      error,
+					      detail);
+}
+
+static int panel_http_write_action_success_response(
+	struct http_response_ctx *response_ctx,
+	char *buffer,
+	size_t buffer_len,
+	const char *action_id,
+	const char *detail)
+{
+	return panel_http_write_json_response(response_ctx,
+					      HTTP_200_OK,
+					      buffer,
+					      buffer_len,
+					      "{\"accepted\":true,\"actionId\":\"%s\",\"detail\":\"%s\"}",
+					      action_id,
+					      detail);
+}
+
+static int panel_http_write_action_save_failure(
+	struct http_response_ctx *response_ctx,
+	char *buffer,
+	size_t buffer_len,
+	int error_code)
+{
+	switch (error_code) {
+	case -ENOSPC:
+		return panel_http_write_action_error_response(
+			response_ctx,
+			HTTP_409_CONFLICT,
+			buffer,
+			buffer_len,
+			"action-capacity-reached",
+			"The configured-action catalog already stores the maximum number of actions for this phase.",
+			"displayName");
+	case -ENOENT:
+		return panel_http_write_action_error_response(
+			response_ctx,
+			HTTP_404_NOT_FOUND,
+			buffer,
+			buffer_len,
+			"action-not-found",
+			"The requested action was not found in persistent storage.",
+			"actionId");
+	case -EADDRINUSE:
+		return panel_http_write_action_error_response(
+			response_ctx,
+			HTTP_409_CONFLICT,
+			buffer,
+			buffer_len,
+			"scheduled-command-conflict",
+			"Existing schedules would conflict with this action change. Update the affected schedules first.",
+			"outputKey");
+	case -EINVAL:
+		return panel_http_write_action_error_response(
+			response_ctx,
+			HTTP_400_BAD_REQUEST,
+			buffer,
+			buffer_len,
+			"invalid-action-request",
+			"The configured action request was rejected before it could be saved.",
+			NULL);
+	default:
+		return panel_http_write_action_error_response(
+			response_ctx,
+			HTTP_500_INTERNAL_SERVER_ERROR,
+			buffer,
+			buffer_len,
+			"action-save-failed",
+			"The configured action could not be saved.",
+			NULL);
+	}
+}
+
 static bool panel_http_schedule_id_is_operator_safe(const char *schedule_id)
 {
 	size_t index;
@@ -1689,6 +1996,436 @@ static int panel_auth_session_handler(struct http_client_ctx *client,
 				    sizeof(route_ctx->response_body),
 				    "{\"authenticated\":true,\"username\":\"%s\"}",
 				    route_ctx->auth_service->app_context->persisted_config.auth.username);
+	return ret;
+}
+
+static int panel_action_snapshot_handler(struct http_client_ctx *client,
+					 enum http_data_status status,
+					 const struct http_request_ctx *request_ctx,
+					 struct http_response_ctx *response_ctx,
+					 void *user_data)
+{
+	struct panel_action_snapshot_route_context *route_ctx = user_data;
+	bool authenticated = false;
+	int ret;
+
+	ARG_UNUSED(client);
+
+	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	    response_ctx == NULL) {
+		return -EINVAL;
+	}
+
+	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+		return 0;
+	}
+
+	ret = panel_http_require_authenticated(request_ctx,
+					 response_ctx,
+					 route_ctx->app_context,
+					 route_ctx->headers,
+					 route_ctx->set_cookie_header,
+					 sizeof(route_ctx->set_cookie_header),
+					 route_ctx->response_body,
+					 sizeof(route_ctx->response_body),
+					 &authenticated);
+	if (ret != 0 || !authenticated) {
+		return ret;
+	}
+
+	ret = panel_status_render_action_snapshot_json(route_ctx->app_context,
+						 route_ctx->response_body,
+						 sizeof(route_ctx->response_body));
+	if (ret < 0) {
+		return panel_http_write_json_response(response_ctx,
+					 HTTP_500_INTERNAL_SERVER_ERROR,
+					 route_ctx->response_body,
+					 sizeof(route_ctx->response_body),
+					 "{\"error\":\"action-render-failed\"}");
+	}
+
+	response_ctx->status = HTTP_200_OK;
+	response_ctx->body = (const uint8_t *)route_ctx->response_body;
+	response_ctx->body_len = (size_t)ret;
+	response_ctx->final_chunk = true;
+	return 0;
+}
+
+static int panel_action_create_handler(struct http_client_ctx *client,
+				       enum http_data_status status,
+				       const struct http_request_ctx *request_ctx,
+				       struct http_response_ctx *response_ctx,
+				       void *user_data)
+{
+	struct panel_action_mutation_route_context *route_ctx = user_data;
+	struct persisted_action_catalog_save_request save_request;
+	struct panel_action_payload payload;
+	struct persisted_action *entry;
+	enum persisted_action_command command;
+	bool authenticated = false;
+	char action_id[PERSISTED_ACTION_ID_MAX_LEN];
+	int ret;
+
+	ARG_UNUSED(client);
+
+	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	    response_ctx == NULL) {
+		return -EINVAL;
+	}
+
+	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_action_route_reset(route_ctx);
+		return 0;
+	}
+
+	if (request_ctx->data_len + route_ctx->request_body_len >= sizeof(route_ctx->request_body)) {
+		route_ctx->request_too_large = true;
+	} else if (request_ctx->data_len > 0) {
+		memcpy(route_ctx->request_body + route_ctx->request_body_len,
+		       request_ctx->data,
+		       request_ctx->data_len);
+		route_ctx->request_body_len += request_ctx->data_len;
+	}
+
+	if (status != HTTP_SERVER_DATA_FINAL) {
+		return 0;
+	}
+
+	ret = panel_http_require_authenticated(request_ctx,
+					 response_ctx,
+					 route_ctx->app_context,
+					 route_ctx->headers,
+					 route_ctx->set_cookie_header,
+					 sizeof(route_ctx->set_cookie_header),
+					 route_ctx->response_body,
+					 sizeof(route_ctx->response_body),
+					 &authenticated);
+	if (ret != 0 || !authenticated) {
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	if (route_ctx->request_too_large) {
+		ret = panel_http_write_action_error_response(response_ctx,
+					     HTTP_400_BAD_REQUEST,
+					     route_ctx->response_body,
+					     sizeof(route_ctx->response_body),
+					     "payload-too-large",
+					     "Reduce the action payload size and try again.",
+					     NULL);
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	route_ctx->request_body[route_ctx->request_body_len] = '\0';
+	if (!panel_http_parse_action_payload((char *)route_ctx->request_body, false, &payload)) {
+		ret = panel_http_write_action_error_response(response_ctx,
+					     HTTP_400_BAD_REQUEST,
+					     route_ctx->response_body,
+					     sizeof(route_ctx->response_body),
+					     "invalid-request",
+					     "Provide displayName, outputKey, commandKey, and enabled in the action request body.",
+					     NULL);
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	if (payload.display_name[0] == '\0') {
+		ret = panel_http_write_action_error_response(response_ctx,
+					     HTTP_400_BAD_REQUEST,
+					     route_ctx->response_body,
+					     sizeof(route_ctx->response_body),
+					     "invalid-display-name",
+					     "Enter a display name before saving this action.",
+					     "displayName");
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	command = panel_http_action_command_from_key(payload.command_key);
+	if (!relay_output_binding_is_valid(payload.output_key)) {
+		ret = panel_http_write_action_error_response(response_ctx,
+					     HTTP_400_BAD_REQUEST,
+					     route_ctx->response_body,
+					     sizeof(route_ctx->response_body),
+					     "invalid-binding",
+					     "Choose one of the approved output bindings before saving this action.",
+					     "outputKey");
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	if (!relay_command_is_valid(command)) {
+		ret = panel_http_write_action_error_response(response_ctx,
+					     HTTP_400_BAD_REQUEST,
+					     route_ctx->response_body,
+					     sizeof(route_ctx->response_body),
+					     "invalid-command",
+					     "Choose a supported relay command before saving this action.",
+					     "commandKey");
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	panel_http_copy_action_save_request(&route_ctx->app_context->persisted_config.actions,
+					    &save_request);
+	if (save_request.count >= PERSISTED_ACTION_MAX_COUNT) {
+		ret = panel_http_write_action_save_failure(response_ctx,
+					   route_ctx->response_body,
+					   sizeof(route_ctx->response_body),
+					   -ENOSPC);
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	ret = action_dispatcher_generate_action_id(&route_ctx->app_context->persisted_config.actions,
+						      payload.display_name,
+						      NULL,
+						      action_id,
+						      sizeof(action_id));
+	if (ret == -ENAMETOOLONG) {
+		ret = panel_http_write_action_error_response(response_ctx,
+					     HTTP_400_BAD_REQUEST,
+					     route_ctx->response_body,
+					     sizeof(route_ctx->response_body),
+					     "invalid-display-name",
+					     "Choose a shorter display name so the device can generate a stable action ID.",
+					     "displayName");
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	if (ret != 0) {
+		ret = panel_http_write_action_save_failure(response_ctx,
+					   route_ctx->response_body,
+					   sizeof(route_ctx->response_body),
+					   ret);
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	entry = &save_request.entries[save_request.count];
+	memset(entry, 0, sizeof(*entry));
+	strncpy(entry->action_id, action_id, sizeof(entry->action_id) - 1U);
+	strncpy(entry->display_name, payload.display_name, sizeof(entry->display_name) - 1U);
+	strncpy(entry->output_key, payload.output_key, sizeof(entry->output_key) - 1U);
+	entry->enabled = payload.enabled;
+	entry->type = PERSISTED_ACTION_TYPE_RELAY_COMMAND;
+	entry->command = command;
+	if (!action_dispatcher_action_record_valid(entry, false)) {
+		ret = panel_http_write_action_error_response(response_ctx,
+					     HTTP_400_BAD_REQUEST,
+					     route_ctx->response_body,
+					     sizeof(route_ctx->response_body),
+					     "invalid-action",
+					     "The device rejected this configured action before save.",
+					     NULL);
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	save_request.count++;
+	ret = panel_http_actions_save_and_reload(route_ctx->app_context, &save_request);
+	if (ret != 0) {
+		ret = panel_http_write_action_save_failure(response_ctx,
+					   route_ctx->response_body,
+					   sizeof(route_ctx->response_body),
+					   ret);
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	ret = panel_http_write_action_success_response(response_ctx,
+				       route_ctx->response_body,
+				       sizeof(route_ctx->response_body),
+				       action_id,
+				       "Configured action created.");
+	panel_action_route_reset(route_ctx);
+	return ret;
+}
+
+static int panel_action_update_handler(struct http_client_ctx *client,
+				       enum http_data_status status,
+				       const struct http_request_ctx *request_ctx,
+				       struct http_response_ctx *response_ctx,
+				       void *user_data)
+{
+	struct panel_action_mutation_route_context *route_ctx = user_data;
+	struct persisted_action_catalog_save_request save_request;
+	struct panel_action_payload payload;
+	struct persisted_action updated_action;
+	enum persisted_action_command command;
+	bool authenticated = false;
+	int index;
+	int ret;
+
+	ARG_UNUSED(client);
+
+	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	    response_ctx == NULL) {
+		return -EINVAL;
+	}
+
+	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_action_route_reset(route_ctx);
+		return 0;
+	}
+
+	if (request_ctx->data_len + route_ctx->request_body_len >= sizeof(route_ctx->request_body)) {
+		route_ctx->request_too_large = true;
+	} else if (request_ctx->data_len > 0) {
+		memcpy(route_ctx->request_body + route_ctx->request_body_len,
+		       request_ctx->data,
+		       request_ctx->data_len);
+		route_ctx->request_body_len += request_ctx->data_len;
+	}
+
+	if (status != HTTP_SERVER_DATA_FINAL) {
+		return 0;
+	}
+
+	ret = panel_http_require_authenticated(request_ctx,
+					 response_ctx,
+					 route_ctx->app_context,
+					 route_ctx->headers,
+					 route_ctx->set_cookie_header,
+					 sizeof(route_ctx->set_cookie_header),
+					 route_ctx->response_body,
+					 sizeof(route_ctx->response_body),
+					 &authenticated);
+	if (ret != 0 || !authenticated) {
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	if (route_ctx->request_too_large) {
+		ret = panel_http_write_action_error_response(response_ctx,
+					     HTTP_400_BAD_REQUEST,
+					     route_ctx->response_body,
+					     sizeof(route_ctx->response_body),
+					     "payload-too-large",
+					     "Reduce the action payload size and try again.",
+					     NULL);
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	route_ctx->request_body[route_ctx->request_body_len] = '\0';
+	if (!panel_http_parse_action_payload((char *)route_ctx->request_body, true, &payload)) {
+		ret = panel_http_write_action_error_response(response_ctx,
+					     HTTP_400_BAD_REQUEST,
+					     route_ctx->response_body,
+					     sizeof(route_ctx->response_body),
+					     "invalid-request",
+					     "Provide actionId, displayName, outputKey, commandKey, and enabled in the action request body.",
+					     NULL);
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	if (!action_dispatcher_action_id_is_operator_safe(payload.action_id)) {
+		ret = panel_http_write_action_error_response(response_ctx,
+					     HTTP_400_BAD_REQUEST,
+					     route_ctx->response_body,
+					     sizeof(route_ctx->response_body),
+					     "invalid-action-id",
+					     "The action ID is not valid for this update request.",
+					     "actionId");
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	if (payload.display_name[0] == '\0') {
+		ret = panel_http_write_action_error_response(response_ctx,
+					     HTTP_400_BAD_REQUEST,
+					     route_ctx->response_body,
+					     sizeof(route_ctx->response_body),
+					     "invalid-display-name",
+					     "Enter a display name before saving this action.",
+					     "displayName");
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	command = panel_http_action_command_from_key(payload.command_key);
+	if (!relay_output_binding_is_valid(payload.output_key)) {
+		ret = panel_http_write_action_error_response(response_ctx,
+					     HTTP_400_BAD_REQUEST,
+					     route_ctx->response_body,
+					     sizeof(route_ctx->response_body),
+					     "invalid-binding",
+					     "Choose one of the approved output bindings before saving this action.",
+					     "outputKey");
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	if (!relay_command_is_valid(command)) {
+		ret = panel_http_write_action_error_response(response_ctx,
+					     HTTP_400_BAD_REQUEST,
+					     route_ctx->response_body,
+					     sizeof(route_ctx->response_body),
+					     "invalid-command",
+					     "Choose a supported relay command before saving this action.",
+					     "commandKey");
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	panel_http_copy_action_save_request(&route_ctx->app_context->persisted_config.actions,
+					    &save_request);
+	index = panel_http_find_action_index(&save_request, payload.action_id);
+	if (index < 0) {
+		ret = panel_http_write_action_save_failure(response_ctx,
+					   route_ctx->response_body,
+					   sizeof(route_ctx->response_body),
+					   -ENOENT);
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	memset(&updated_action, 0, sizeof(updated_action));
+	strncpy(updated_action.action_id,
+		payload.action_id,
+		sizeof(updated_action.action_id) - 1U);
+	strncpy(updated_action.display_name,
+		payload.display_name,
+		sizeof(updated_action.display_name) - 1U);
+	strncpy(updated_action.output_key,
+		payload.output_key,
+		sizeof(updated_action.output_key) - 1U);
+	updated_action.enabled = payload.enabled;
+	updated_action.type = PERSISTED_ACTION_TYPE_RELAY_COMMAND;
+	updated_action.command = command;
+	if (!action_dispatcher_action_record_valid(&updated_action, false)) {
+		ret = panel_http_write_action_error_response(response_ctx,
+					     HTTP_400_BAD_REQUEST,
+					     route_ctx->response_body,
+					     sizeof(route_ctx->response_body),
+					     "invalid-action",
+					     "The device rejected this configured action before save.",
+					     NULL);
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	save_request.entries[index] = updated_action;
+	ret = panel_http_actions_save_and_reload(route_ctx->app_context, &save_request);
+	if (ret != 0) {
+		ret = panel_http_write_action_save_failure(response_ctx,
+					   route_ctx->response_body,
+					   sizeof(route_ctx->response_body),
+					   ret);
+		panel_action_route_reset(route_ctx);
+		return ret;
+	}
+
+	ret = panel_http_write_action_success_response(response_ctx,
+				       route_ctx->response_body,
+				       sizeof(route_ctx->response_body),
+				       payload.action_id,
+				       "Configured action updated.");
+	panel_action_route_reset(route_ctx);
 	return ret;
 }
 
@@ -3005,6 +3742,9 @@ int panel_http_server_init(struct panel_http_server *server,
 	panel_auth_logout_route_ctx.auth_service = &app_context->panel_auth;
 	panel_auth_session_route_ctx.auth_service = &app_context->panel_auth;
 	panel_status_route_ctx.app_context = app_context;
+	panel_action_snapshot_route_ctx.app_context = app_context;
+	panel_action_create_route_ctx.app_context = app_context;
+	panel_action_update_route_ctx.app_context = app_context;
 	panel_relay_route_ctx.app_context = app_context;
 	panel_schedule_snapshot_route_ctx.app_context = app_context;
 	panel_schedule_create_route_ctx.app_context = app_context;
@@ -3016,6 +3756,8 @@ int panel_http_server_init(struct panel_http_server *server,
 	panel_update_apply_route_ctx.app_context = app_context;
 	panel_update_clear_route_ctx.app_context = app_context;
 	panel_update_upload_route_ctx.app_context = app_context;
+	panel_action_route_reset(&panel_action_create_route_ctx);
+	panel_action_route_reset(&panel_action_update_route_ctx);
 	panel_update_upload_route_reset(&panel_update_upload_route_ctx);
 	if (!panel_update_reboot_work_ready) {
 		k_work_init_delayable(&panel_update_reboot_work,
