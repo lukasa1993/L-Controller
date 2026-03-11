@@ -6,6 +6,8 @@
 #define PERSISTED_AUTH_USERNAME_MAX_LEN 32
 #define PERSISTED_AUTH_PASSWORD_MAX_LEN 64
 #define PERSISTED_ACTION_ID_MAX_LEN 24
+#define PERSISTED_ACTION_DISPLAY_NAME_MAX_LEN 40
+#define PERSISTED_ACTION_OUTPUT_KEY_MAX_LEN 24
 #define PERSISTED_ACTION_MAX_COUNT 8
 #define PERSISTED_OTA_GITHUB_OWNER_MAX_LEN 32
 #define PERSISTED_OTA_GITHUB_REPO_MAX_LEN 32
@@ -63,6 +65,24 @@ enum persisted_ota_last_result_code {
 	PERSISTED_OTA_LAST_RESULT_ROLLED_BACK,
 };
 
+/*
+ * Action records are command-centric.
+ *
+ * One persisted record equals one executable command. The generic metadata
+ * stays stable across future action families while the type and command enums
+ * leave room for expansion beyond the current relay binding contract.
+ */
+enum persisted_action_type {
+	PERSISTED_ACTION_TYPE_NONE = 0,
+	PERSISTED_ACTION_TYPE_RELAY_COMMAND,
+};
+
+enum persisted_action_command {
+	PERSISTED_ACTION_COMMAND_NONE = 0,
+	PERSISTED_ACTION_COMMAND_RELAY_OFF,
+	PERSISTED_ACTION_COMMAND_RELAY_ON,
+};
+
 struct persisted_auth {
 	uint32_t schema_version;
 	char username[PERSISTED_AUTH_USERNAME_MAX_LEN];
@@ -71,8 +91,11 @@ struct persisted_auth {
 
 struct persisted_action {
 	char action_id[PERSISTED_ACTION_ID_MAX_LEN];
+	char display_name[PERSISTED_ACTION_DISPLAY_NAME_MAX_LEN];
+	char output_key[PERSISTED_ACTION_OUTPUT_KEY_MAX_LEN];
 	bool enabled;
-	bool relay_on;
+	enum persisted_action_type type;
+	enum persisted_action_command command;
 };
 
 struct persisted_action_catalog {

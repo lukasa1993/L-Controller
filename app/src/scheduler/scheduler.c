@@ -11,6 +11,7 @@
 
 #include "app/app_context.h"
 #include "network/network_supervisor.h"
+#include "relay/relay.h"
 #include "scheduler/scheduler.h"
 
 LOG_MODULE_REGISTER(scheduler, CONFIG_LOG_DEFAULT_LEVEL);
@@ -927,6 +928,7 @@ static int scheduler_compile_runtime_entry(
 	struct scheduler_runtime_entry *entry)
 {
 	const struct persisted_action *action;
+	bool desired_state;
 	int ret;
 
 	if (schedule == NULL || actions == NULL || entry == NULL) {
@@ -947,10 +949,15 @@ static int scheduler_compile_runtime_entry(
 		return -EINVAL;
 	}
 
+	ret = relay_command_desired_state(action->command, &desired_state);
+	if (ret != 0) {
+		return ret;
+	}
+
 	memset(entry, 0, sizeof(*entry));
 	entry->in_use = true;
 	entry->enabled = schedule->enabled;
-	entry->relay_on = action->relay_on;
+	entry->relay_on = desired_state;
 	memcpy(entry->schedule_id, schedule->schedule_id, sizeof(entry->schedule_id));
 	memcpy(entry->action_id, schedule->action_id, sizeof(entry->action_id));
 	memcpy(entry->cron_expression, schedule->cron_expression,

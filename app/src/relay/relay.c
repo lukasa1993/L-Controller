@@ -1,8 +1,10 @@
 #include <errno.h>
+#include <string.h>
 
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
 
 #include "app/app_context.h"
 #include "persistence/persistence.h"
@@ -22,6 +24,12 @@ LOG_MODULE_DECLARE(app, CONFIG_LOG_DEFAULT_LEVEL);
 #endif
 
 static const struct gpio_dt_spec relay0_gpio = GPIO_DT_SPEC_GET(APP_RELAY0_NODE, gpios);
+static const struct relay_output_binding relay_output_bindings[] = {
+	{
+		.output_key = RELAY_OUTPUT_KEY_RELAY0,
+		.display_name = DT_PROP(APP_RELAY0_NODE, label),
+	},
+};
 
 static int relay_service_apply_state(struct relay_service *service,
 				 bool actual_state,
@@ -37,6 +45,79 @@ static const char *relay_state_text(bool state)
 static const char *relay_safety_note_text(const char *safety_note)
 {
 	return safety_note != NULL ? safety_note : "none";
+}
+
+size_t relay_output_binding_count(void)
+{
+	return ARRAY_SIZE(relay_output_bindings);
+}
+
+const struct relay_output_binding *relay_output_binding_get(size_t index)
+{
+	if (index >= relay_output_binding_count()) {
+		return NULL;
+	}
+
+	return &relay_output_bindings[index];
+}
+
+const struct relay_output_binding *relay_output_binding_find(const char *output_key)
+{
+	size_t index;
+
+	if (output_key == NULL || output_key[0] == '\0') {
+		return NULL;
+	}
+
+	for (index = 0U; index < relay_output_binding_count(); ++index) {
+		const struct relay_output_binding *binding = relay_output_binding_get(index);
+
+		if (binding != NULL && strcmp(binding->output_key, output_key) == 0) {
+			return binding;
+		}
+	}
+
+	return NULL;
+}
+
+bool relay_output_binding_is_valid(const char *output_key)
+{
+	return relay_output_binding_find(output_key) != NULL;
+}
+
+bool relay_command_is_valid(enum persisted_action_command command)
+{
+	switch (command) {
+	case PERSISTED_ACTION_COMMAND_RELAY_OFF:
+	case PERSISTED_ACTION_COMMAND_RELAY_ON:
+		return true;
+	case PERSISTED_ACTION_COMMAND_NONE:
+	default:
+		return false;
+	}
+}
+
+const char *relay_command_text(enum persisted_action_command command)
+{
+	switch (command) {
+	case PERSISTED_ACTION_COMMAND_RELAY_OFF:
+		return "off";
+	case PERSISTED_ACTION_COMMAND_RELAY_ON:
+		return "on";
+	case PERSISTED_ACTION_COMMAND_NONE:
+	default:
+		return "unknown";
+	}
+}
+
+int relay_command_desired_state(enum persisted_action_command command, bool *desired_state)
+{
+	if (desired_state == NULL || !relay_command_is_valid(command)) {
+		return -EINVAL;
+	}
+
+	*desired_state = command == PERSISTED_ACTION_COMMAND_RELAY_ON;
+	return 0;
 }
 
 const char *relay_status_source_text(enum relay_status_source source)
@@ -75,6 +156,26 @@ int relay_service_apply_command(struct relay_service *service,
 	}
 
 	return relay_service_apply_state(service, desired_state, desired_state, source, NULL);
+}
+
+int relay_service_apply_bound_command(struct relay_service *service,
+				      const char *output_key,
+				      enum persisted_action_command command,
+				      enum relay_status_source source)
+{
+	bool desired_state;
+	int ret;
+
+	if (service == NULL || !relay_output_binding_is_valid(output_key)) {
+		return -EINVAL;
+	}
+
+	ret = relay_command_desired_state(command, &desired_state);
+	if (ret != 0) {
+		return ret;
+	}
+
+	return relay_service_apply_command(service, desired_state, source);
 }
 
 int relay_service_restore_status(struct relay_service *service,
@@ -217,6 +318,10 @@ int relay_service_init(struct relay_service *service, struct app_context *app_co
 		relay_status_source_text(service->status.source),
 		persisted_relay_reboot_policy_text(app_context->persisted_config.relay.reboot_policy),
 		relay_safety_note_text(service->status.safety_note));
+	LOG_INF("Relay approved outputs=%u primary=%s (%s)",
+		(unsigned int)relay_output_binding_count(),
+		RELAY_OUTPUT_KEY_RELAY0,
+		DT_PROP(APP_RELAY0_NODE, label));
 
 	return 0;
 }
