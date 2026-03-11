@@ -87,6 +87,11 @@ static bool action_dispatcher_copy_c_string(char *dst, size_t dst_len, const cha
 	return true;
 }
 
+static bool action_dispatcher_c_string_is_non_empty(const char *value, size_t value_len)
+{
+	return value != NULL && value[0] != '\0' && memchr(value, '\0', value_len) != NULL;
+}
+
 static const struct persisted_action *action_dispatcher_find_catalog_action(
 	const struct persisted_action_catalog *catalog,
 	const char *action_id)
@@ -248,9 +253,12 @@ bool action_dispatcher_action_record_valid(const struct persisted_action *action
 					   bool allow_legacy_action_id)
 {
 	if (action == NULL ||
-	    action->display_name[0] == '\0' ||
-	    action->output_key[0] == '\0' ||
-	    action->action_id[0] == '\0') {
+	    !action_dispatcher_c_string_is_non_empty(action->action_id,
+						     sizeof(action->action_id)) ||
+	    !action_dispatcher_c_string_is_non_empty(action->display_name,
+						     sizeof(action->display_name)) ||
+	    !action_dispatcher_c_string_is_non_empty(action->output_key,
+						     sizeof(action->output_key))) {
 		return false;
 	}
 

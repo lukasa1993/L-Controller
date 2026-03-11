@@ -55,10 +55,11 @@ struct scheduler_cron_matcher {
 struct scheduler_runtime_entry {
 	bool in_use;
 	bool enabled;
-	bool relay_on;
 	char schedule_id[PERSISTED_SCHEDULE_ID_MAX_LEN];
 	char action_id[PERSISTED_ACTION_ID_MAX_LEN];
+	char output_key[PERSISTED_ACTION_OUTPUT_KEY_MAX_LEN];
 	char cron_expression[PERSISTED_SCHEDULE_CRON_EXPRESSION_MAX_LEN];
+	enum persisted_action_command command;
 	struct scheduler_cron_matcher cron;
 };
 

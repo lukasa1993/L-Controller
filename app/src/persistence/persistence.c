@@ -507,7 +507,7 @@ static bool persisted_action_catalog_valid(const struct persisted_action_catalog
 	for (index = 0U; index < actions->count; ++index) {
 		const struct persisted_action *action = &actions->entries[index];
 
-		if (!c_string_is_non_empty(action->action_id, sizeof(action->action_id))) {
+		if (!action_dispatcher_action_record_valid(action, false)) {
 			return false;
 		}
 

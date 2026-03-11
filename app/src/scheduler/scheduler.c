@@ -9,6 +9,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
 
+#include "actions/actions.h"
 #include "app/app_context.h"
 #include "network/network_supervisor.h"
 #include "relay/relay.h"
@@ -18,9 +19,6 @@ LOG_MODULE_REGISTER(scheduler, CONFIG_LOG_DEFAULT_LEVEL);
 
 #define SCHEDULER_CONFLICT_SCAN_START_YEAR 2000
 #define SCHEDULER_CONFLICT_SCAN_DAYS 146097U
-
-static const char scheduler_public_relay_on_action_key[] = "relay-on";
-static const char scheduler_public_relay_off_action_key[] = "relay-off";
 
 struct scheduler_due_entry {
 	char schedule_id[PERSISTED_SCHEDULE_ID_MAX_LEN];
@@ -86,27 +84,6 @@ static int scheduler_copy_c_string(char *dst, size_t dst_len, const char *src)
 
 	memcpy(dst, src, src_len + 1U);
 	return 0;
-}
-
-static const struct persisted_action *scheduler_find_action(
-	const struct persisted_action_catalog *actions,
-	const char *action_id)
-{
-	uint32_t max_count;
-	uint32_t index;
-
-	if (actions == NULL || action_id == NULL) {
-		return NULL;
-	}
-
-	max_count = MIN(actions->count, PERSISTED_ACTION_MAX_COUNT);
-	for (index = 0U; index < max_count; ++index) {
-		if (strcmp(actions->entries[index].action_id, action_id) == 0) {
-			return &actions->entries[index];
-		}
-	}
-
-	return NULL;
 }
 
 static bool scheduler_reason_is_degraded(enum scheduler_degraded_reason reason)
@@ -465,12 +442,6 @@ static void scheduler_service_runtime_work_handler(struct k_work *work)
 	}
 
 	scheduler_service_schedule_runtime_work(service);
-}
-
-static const char *scheduler_public_action_key(bool relay_on)
-{
-	return relay_on ? scheduler_public_relay_on_action_key :
-		       scheduler_public_relay_off_action_key;
 }
 
 static void scheduler_clear_next_run(struct scheduler_runtime_status *status)
@@ -893,7 +864,8 @@ static bool scheduler_runtime_entries_conflict(
 	uint32_t scan_day;
 
 	if (first == NULL || second == NULL || !first->enabled || !second->enabled ||
-	    first->relay_on == second->relay_on) {
+	    strcmp(first->output_key, second->output_key) != 0 ||
+	    first->command == second->command) {
 		return false;
 	}
 
@@ -910,9 +882,9 @@ static bool scheduler_runtime_entries_conflict(
 		    scheduler_cron_date_matches(&second->cron, day, day_of_week)) {
 			LOG_WRN("Rejecting cron conflict for %s/%s and %s/%s",
 				first->schedule_id,
-				scheduler_public_action_key(first->relay_on),
+				first->action_id,
 				second->schedule_id,
-				scheduler_public_action_key(second->relay_on));
+				second->action_id);
 			return true;
 		}
 
@@ -927,8 +899,7 @@ static int scheduler_compile_runtime_entry(
 	const struct persisted_action_catalog *actions,
 	struct scheduler_runtime_entry *entry)
 {
-	const struct persisted_action *action;
-	bool desired_state;
+	struct persisted_action action;
 	int ret;
 
 	if (schedule == NULL || actions == NULL || entry == NULL) {
@@ -944,24 +915,24 @@ static int scheduler_compile_runtime_entry(
 		return -EINVAL;
 	}
 
-	action = scheduler_find_action(actions, schedule->action_id);
-	if (action == NULL) {
-		return -EINVAL;
-	}
-
-	ret = relay_command_desired_state(action->command, &desired_state);
+	ret = action_dispatcher_resolve_action(actions, schedule->action_id, true, &action);
 	if (ret != 0) {
 		return ret;
+	}
+
+	if (!action_dispatcher_action_record_valid(&action, true)) {
+		return -EINVAL;
 	}
 
 	memset(entry, 0, sizeof(*entry));
 	entry->in_use = true;
 	entry->enabled = schedule->enabled;
-	entry->relay_on = desired_state;
 	memcpy(entry->schedule_id, schedule->schedule_id, sizeof(entry->schedule_id));
 	memcpy(entry->action_id, schedule->action_id, sizeof(entry->action_id));
+	memcpy(entry->output_key, action.output_key, sizeof(entry->output_key));
 	memcpy(entry->cron_expression, schedule->cron_expression,
 	       sizeof(entry->cron_expression));
+	entry->command = action.command;
 
 	ret = scheduler_compile_expression(schedule->cron_expression, &entry->cron);
 	if (ret != 0) {
@@ -1552,6 +1523,6 @@ int scheduler_service_init(struct scheduler_service *service,
 		return ret;
 	}
 
-	LOG_INF("Scheduler service ready with UTC cron validation, relay-on/relay-off conflict checks, and trusted clock gating");
+	LOG_INF("Scheduler service ready with UTC cron validation, output command conflict checks, legacy action compatibility, and trusted clock gating");
 	return 0;
 }
