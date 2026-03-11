@@ -37,7 +37,6 @@ const state = {
 	refreshTimer: null,
 	refreshPromise: null,
 	refreshNeedsAnnouncement: false,
-	activeView: 'actions',
 	actionsBusy: false,
 	actionFeedback: null,
 	relayCommandPending: false,
@@ -49,6 +48,8 @@ const state = {
 	updateFeedback: null,
 	actionForm: createActionFormState(),
 	schedulerForm: createSchedulerFormState(),
+	actionEditorSeed: '',
+	scheduleEditorSeed: '',
 };
 
 const routes = {
@@ -73,46 +74,20 @@ const routes = {
 };
 
 const pages = {
-	dashboard: 'dashboard',
 	login: 'login',
+	overview: 'overview',
+	actions: 'actions',
+	actionEditor: 'action-editor',
+	schedules: 'schedules',
+	scheduleEditor: 'schedule-editor',
+	updates: 'updates',
 };
 
-const views = {
+const navSections = {
 	overview: 'overview',
 	actions: 'actions',
 	schedules: 'schedules',
 	updates: 'updates',
-};
-
-const viewConfig = {
-	[views.overview]: {
-		path: '/overview',
-		aliases: ['/overview'],
-		eyebrow: 'System Overview',
-		title: 'Device posture without the clutter',
-		description: 'Use Overview for board, network, and recovery context. The direct controls stay on the dedicated Actions page so the operator path is not buried.',
-	},
-	[views.actions]: {
-		path: '/',
-		aliases: ['/', '/actions'],
-		eyebrow: 'Configured Action Catalog',
-		title: 'Configured actions stay within reach',
-		description: 'Create and edit configured relay actions from server-owned truth. Manual execution and schedule sharing remain explicitly deferred until the next phase.',
-	},
-	[views.schedules]: {
-		path: '/schedules',
-		aliases: ['/schedules'],
-		eyebrow: 'Scheduler Surface',
-		title: 'Automation lives on its own page',
-		description: 'Create, review, and edit UTC schedules without the action surface jumping around beneath your hands.',
-	},
-	[views.updates]: {
-		path: '/updates',
-		aliases: ['/updates'],
-		eyebrow: 'OTA Control',
-		title: 'Updates stay explicit and reversible',
-		description: 'Local and remote firmware staging remain isolated from the action path so reboots and uploads never obscure manual control.',
-	},
 };
 
 const connectivityLabels = {
@@ -125,8 +100,6 @@ const connectivityLabels = {
 
 const elements = {
 	alert: document.getElementById('panel-alert'),
-	loginView: document.getElementById('login-view'),
-	dashboardView: document.getElementById('dashboard-view'),
 	loginForm: document.getElementById('login-form'),
 	loginUsername: document.getElementById('login-username'),
 	loginPassword: document.getElementById('login-password'),
@@ -134,19 +107,10 @@ const elements = {
 	sessionChip: document.getElementById('session-chip'),
 	networkPill: document.getElementById('network-pill'),
 	panelSummary: document.getElementById('panel-summary'),
-	panelNav: document.getElementById('panel-nav'),
-	viewEyebrow: document.getElementById('view-eyebrow'),
-	viewTitle: document.getElementById('view-title'),
-	viewDescription: document.getElementById('view-description'),
 	refreshButton: document.getElementById('refresh-button'),
 	logoutButton: document.getElementById('logout-button'),
-	views: {
-		overview: document.getElementById('overview-view'),
-		actions: document.getElementById('actions-view'),
-		schedules: document.getElementById('schedules-view'),
-		updates: document.getElementById('updates-view'),
-	},
 	navLinks: Array.from(document.querySelectorAll('[data-panel-nav]')),
+	pageCtas: Array.from(document.querySelectorAll('[data-page-cta]')),
 	cards: {
 		device: document.getElementById('device-card'),
 		network: document.getElementById('network-card'),
@@ -158,53 +122,51 @@ const elements = {
 	},
 };
 
-const currentPage = document.body?.dataset.panelPage === pages.login ? pages.login : pages.dashboard;
+const currentPage = document.body?.dataset.panelPage || pages.actions;
 const flashStorageKey = 'lnh-panel-flash';
 const SESSION_EXPIRED_MESSAGE = 'Session expired. Sign in again.';
 
-state.activeView = currentPage === pages.dashboard ? views.actions : state.activeView;
-
 const ui = {
-	badgeBase: 'inline-flex items-center gap-2 rounded-full border border-sky-100/20 bg-slate-950/70 px-3 py-[7px] text-[0.78rem] uppercase tracking-[0.16em] text-slate-100',
-	badgeOk: 'border-emerald-400/35 text-emerald-100',
-	badgeWarn: 'border-amber-300/35 text-amber-100',
-	badgeDanger: 'border-rose-400/35 text-rose-100',
-	buttonBase: 'inline-flex w-full items-center justify-center rounded-2xl border border-sky-100/20 bg-[linear-gradient(135deg,rgba(34,211,238,0.28),rgba(13,22,33,0.96))] px-4 py-[14px] text-[0.95rem] font-semibold uppercase tracking-[0.14em] text-slate-50 transition duration-150 ease-out hover:-translate-y-px hover:border-sky-300/35 disabled:cursor-wait disabled:opacity-60 disabled:translate-y-0',
-	buttonGhost: 'w-auto bg-slate-950/70',
-	buttonSecondary: 'border-slate-300/15 bg-slate-950/50 text-slate-300 hover:border-sky-300/35 hover:text-slate-50',
-	buttonActive: 'border-sky-300/35 bg-sky-300/10 text-sky-50',
-	inputBase: 'w-full rounded-2xl border border-sky-100/20 bg-slate-950/70 px-4 py-[14px] text-[0.95rem] leading-relaxed text-slate-50 outline-none placeholder:text-slate-500 focus:border-cyan-300/45 focus:ring-2 focus:ring-cyan-300/35',
-	alertBase: 'rounded-[18px] border border-sky-300/25 bg-[linear-gradient(180deg,rgba(125,211,252,0.08),rgba(7,16,25,0))] px-[14px] py-3 text-[0.95rem] leading-relaxed text-sky-50',
-	alertWarn: 'border-amber-300/30 text-amber-100',
-	alertError: 'border-rose-400/35 text-rose-100',
-	alertSuccess: 'border-emerald-400/35 text-emerald-50',
-	eyebrow: 'mb-3 text-[0.74rem] uppercase tracking-[0.18em] text-sky-300',
-	title: 'm-0 font-serif text-base font-semibold tracking-[-0.02em] text-slate-50',
-	muted: 'text-[0.95rem] leading-relaxed text-slate-300',
-	metricList: 'mt-[14px] grid gap-2.5',
-	metricRow: 'grid grid-cols-[minmax(0,1fr)_auto] gap-4 border-t border-slate-300/15 pt-2.5 first:border-t-0 first:pt-0',
-	metricLabel: 'text-[0.72rem] uppercase tracking-[0.12em] text-slate-400',
-	metricValue: 'text-right font-semibold text-slate-50',
-	placeholder: 'mt-4 rounded-[18px] border border-dashed border-sky-300/25 bg-[linear-gradient(180deg,rgba(125,211,252,0.08),rgba(7,16,25,0))] px-[14px] py-3 text-[0.95rem] leading-relaxed text-sky-100',
-	noticeBase: 'rounded-[18px] border border-sky-300/25 bg-[linear-gradient(180deg,rgba(125,211,252,0.08),rgba(7,16,25,0))] px-[14px] py-3 text-[0.95rem] leading-relaxed text-sky-50',
-	insetPanel: 'rounded-[18px] border border-sky-200/20 bg-slate-950/55 p-4',
+	badgeBase: 'inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-slate-600',
+	badgeOk: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+	badgeWarn: 'border-amber-200 bg-amber-50 text-amber-700',
+	badgeDanger: 'border-rose-200 bg-rose-50 text-rose-700',
+	buttonBase: 'inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-wait disabled:opacity-60',
+	buttonGhost: 'w-auto border border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+	buttonSecondary: 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+	buttonActive: 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200',
+	inputBase: 'block w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200',
+	alertBase: 'rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-relaxed text-slate-700 shadow-sm',
+	alertWarn: 'border-amber-200 bg-amber-50 text-amber-800',
+	alertError: 'border-rose-200 bg-rose-50 text-rose-800',
+	alertSuccess: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+	eyebrow: 'mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600',
+	title: 'm-0 text-lg font-semibold tracking-tight text-slate-900',
+	muted: 'text-sm leading-6 text-slate-600',
+	metricList: 'mt-4 grid gap-3',
+	metricRow: 'grid grid-cols-[minmax(0,1fr)_auto] gap-4 border-t border-slate-200 pt-3 first:border-t-0 first:pt-0',
+	metricLabel: 'text-xs font-medium uppercase tracking-[0.12em] text-slate-500',
+	metricValue: 'text-right text-sm font-semibold text-slate-900',
+	placeholder: 'mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm leading-relaxed text-slate-600',
+	noticeBase: 'rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-relaxed text-slate-700',
+	insetPanel: 'rounded-2xl border border-slate-200 bg-slate-50 p-5',
 	rowFlex: 'flex flex-wrap items-center gap-2.5',
-	gridGap3: 'grid gap-3',
-	gridGap4: 'grid gap-4',
+	gridGap3: 'grid gap-4',
+	gridGap4: 'grid gap-6',
 	summaryGrid: 'mt-4 grid gap-3 md:grid-cols-4',
-	schedulerHeader: 'mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]',
-	schedulerLayout: 'mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]',
-	updateLayout: 'mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]',
+	schedulerHeader: 'mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]',
+	schedulerLayout: 'mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]',
+	updateLayout: 'mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]',
 	uploadLayout: 'grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end',
 	schedulerFields: 'grid gap-3 md:grid-cols-2 xl:grid-cols-5',
-	schedulerRow: 'grid gap-3 rounded-[18px] border border-slate-300/15 bg-slate-950/60 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center',
-	navLinkBase: 'inline-flex items-center justify-between rounded-[18px] border px-4 py-3 text-[0.9rem] font-semibold tracking-[0.08em] transition duration-150 ease-out',
-	navLinkActive: 'border-sky-300/35 bg-sky-300/10 text-sky-50 shadow-[0_18px_40px_rgba(15,23,42,0.22)]',
-	navLinkInactive: 'border-slate-300/15 bg-slate-950/40 text-slate-300 hover:-translate-y-px hover:border-sky-300/35 hover:text-slate-50',
-	summaryTile: 'rounded-[24px] border border-sky-100/15 bg-slate-950/55 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-[18px]',
+	schedulerRow: 'grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center',
+	navLinkBase: 'inline-flex items-center justify-between rounded-xl px-3 py-2 text-sm font-medium transition',
+	navLinkActive: 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200',
+	navLinkInactive: 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+	summaryTile: 'rounded-3xl border border-slate-200 bg-white p-5 shadow-sm',
 	actionButtons: 'grid gap-3 sm:grid-cols-2',
-	code: 'rounded-lg bg-sky-300/10 px-1.5 py-0.5 text-[0.95rem] leading-relaxed text-slate-200',
-	list: 'm-0 list-disc pl-[18px] text-[0.95rem] leading-relaxed text-slate-300',
+	code: 'rounded-md bg-slate-100 px-1.5 py-0.5 text-sm text-slate-700',
+	list: 'm-0 list-disc pl-[18px] text-sm leading-6 text-slate-600',
 };
 
 function classNames(...values) {
@@ -445,30 +407,54 @@ function panelPathname(path = currentPath()) {
 	}
 }
 
-function viewForPath(path = currentPath()) {
+function sectionForPath(path = currentPath()) {
 	const pathname = panelPathname(path);
-	const entry = Object.entries(viewConfig).find(([, config]) => config.aliases.includes(pathname));
-	return entry?.[0] || views.actions;
+	if (pathname === '/overview') {
+		return navSections.overview;
+	}
+	if (pathname.startsWith('/schedules')) {
+		return navSections.schedules;
+	}
+	if (pathname.startsWith('/updates')) {
+		return navSections.updates;
+	}
+	return navSections.actions;
 }
 
-function pathForView(view) {
-	return viewConfig[view]?.path || viewConfig[views.actions].path;
+function isActionEditorPage() {
+	return currentPage === pages.actionEditor;
 }
 
-function setActiveView(view, { pushHistory = false } = {}) {
-	state.activeView = viewConfig[view] ? view : views.actions;
-	if (pushHistory && !isLoginPage()) {
-		const targetPath = pathForView(state.activeView);
-		if (panelPathname() !== targetPath) {
-			window.history.pushState({ view: state.activeView }, '', targetPath);
+function isScheduleEditorPage() {
+	return currentPage === pages.scheduleEditor;
+}
+
+function updateNavigationState() {
+	const currentSection = sectionForPath();
+	elements.navLinks.forEach((link) => {
+		const section = link.dataset.panelNav || '';
+		const active = section === currentSection;
+		link.className = navLinkClass(active);
+		if (active) {
+			link.setAttribute('aria-current', 'page');
+		} else {
+			link.removeAttribute('aria-current');
 		}
-	}
+	});
 
-	updateViewChrome();
-	toggleViewContainers();
-	if (state.authenticated) {
-		renderActiveView();
-	}
+	elements.pageCtas.forEach((link) => {
+		const active = link.getAttribute('href') === panelPathname();
+		link.className = classNames(
+			ui.buttonBase,
+			'w-auto',
+			active ? '' : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-900',
+		);
+		if (active) {
+			link.setAttribute('aria-current', 'page');
+		} else {
+			link.removeAttribute('aria-current');
+		}
+	});
 }
 
 function navigateTo(path) {
@@ -493,20 +479,20 @@ function showLoginView(message, tone = 'info') {
 	setUpdateFeedback(null);
 	resetActionForm();
 	resetSchedulerForm();
+	state.actionEditorSeed = '';
+	state.scheduleEditorSeed = '';
 	if (!isLoginPage()) {
 		stashFlashMessage(message, tone);
 		navigateTo(loginPath(currentPath()));
 		return;
 	}
 
-	elements.loginView?.classList.remove('hidden');
-	elements.dashboardView?.classList.add('hidden');
-	elements.logoutButton?.setAttribute('disabled', 'disabled');
-	elements.refreshButton?.setAttribute('disabled', 'disabled');
 	if (elements.sessionChip) {
 		elements.sessionChip.textContent = 'Session';
 		elements.sessionChip.className = badgeClass('warn');
 	}
+	elements.logoutButton?.setAttribute('disabled', 'disabled');
+	elements.refreshButton?.setAttribute('disabled', 'disabled');
 	if (message) {
 		setAlert(message, tone);
 	}
@@ -514,16 +500,13 @@ function showLoginView(message, tone = 'info') {
 
 function showDashboardView() {
 	state.authenticated = true;
-	elements.loginView?.classList.add('hidden');
-	elements.dashboardView?.classList.remove('hidden');
 	elements.logoutButton?.removeAttribute('disabled');
 	elements.refreshButton?.removeAttribute('disabled');
 	if (elements.sessionChip) {
 		elements.sessionChip.textContent = `Authenticated as ${state.sessionUsername || 'operator'}`;
 		elements.sessionChip.className = badgeClass('ok');
 	}
-
-	setActiveView(viewForPath(currentPath()));
+	updateNavigationState();
 }
 
 async function requestJson(url, options = {}) {
@@ -595,41 +578,11 @@ function summaryTile(title, value, detail, tone = '') {
 				<span class="${badgeClass(tone)}">${escapeHtml(title)}</span>
 			</div>
 			<div class="mt-4">
-				<strong class="block text-[1.15rem] font-semibold text-slate-50">${escapeHtml(value)}</strong>
+				<strong class="block text-[1.15rem] font-semibold text-slate-900">${escapeHtml(value)}</strong>
 				<p class="mt-2 ${ui.muted}">${escapeHtml(detail)}</p>
 			</div>
 		</article>
 	`;
-}
-
-function updateViewChrome() {
-	const meta = viewConfig[state.activeView] || viewConfig[views.actions];
-	if (elements.viewEyebrow) {
-		elements.viewEyebrow.textContent = meta.eyebrow;
-	}
-	if (elements.viewTitle) {
-		elements.viewTitle.textContent = meta.title;
-	}
-	if (elements.viewDescription) {
-		elements.viewDescription.textContent = meta.description;
-	}
-
-	elements.navLinks.forEach((link) => {
-		const view = link.dataset.panelNav || '';
-		const active = view === state.activeView;
-		link.className = navLinkClass(active);
-		if (active) {
-			link.setAttribute('aria-current', 'page');
-		} else {
-			link.removeAttribute('aria-current');
-		}
-	});
-}
-
-function toggleViewContainers() {
-	Object.entries(elements.views).forEach(([view, element]) => {
-		element?.classList.toggle('hidden', view !== state.activeView);
-	});
 }
 
 function effectiveRelaySnapshot(relay) {
@@ -744,71 +697,77 @@ function renderOverviewSurface(statusPayload) {
 	]);
 }
 
-function renderActionsInfoCard(relay) {
+function renderActionsRail(snapshot) {
 	if (!elements.cards.actionsInfo) {
 		return;
 	}
 
-	if (!relay) {
+	if (!snapshot) {
 		elements.cards.actionsInfo.innerHTML = `
-			<p class="${ui.eyebrow}">Output topology</p>
-			<h3 class="${ui.title}">Waiting for relay truth</h3>
-			<div class="${ui.placeholder}">This rail is reserved for the current output and future GPIO-backed outputs once the firmware model expands beyond a single relay.</div>
+			<p class="${ui.eyebrow}">Catalog posture</p>
+			<h3 class="${ui.title}">Waiting for action truth</h3>
+			<div class="${ui.placeholder}">Approved outputs, command choices, and operator guidance appear here after the action snapshot loads.</div>
 		`;
 		return;
 	}
 
-	if (relay.configured === false) {
+	const outputChoices = snapshot.outputChoices || [];
+	const commandChoices = snapshot.commandChoices || [];
+	const actionCount = Number(snapshot.actionCount || 0);
+	const readyCount = (snapshot.actions || []).filter((action) => action.usabilityCode === 'ready').length;
+	const needsAttentionCount = (snapshot.actions || []).filter((action) => action.usabilityCode === 'needs-attention').length;
+
+	if (!outputChoices.length) {
 		elements.cards.actionsInfo.innerHTML = `
-			<p class="${ui.eyebrow}">Output topology</p>
-			<div class="grid gap-[18px]">
+			<p class="${ui.eyebrow}">Catalog posture</p>
+			<div class="grid gap-4">
 				<div>
-					<h3 class="${ui.title}">No GPIO-backed outputs configured</h3>
-					<p class="${ui.muted}">The panel no longer exposes the hard-wired relay path as if it were a configured feature. Output configuration still needs to be implemented before manual controls and schedule actions should appear here.</p>
+					<h3 class="${ui.title}">No approved outputs yet</h3>
+					<p class="${ui.muted}">The action catalog is live, but the firmware has not published any approved output bindings yet. Actions stay visible without pretending they are runnable hardware controls.</p>
 				</div>
 				<div class="${ui.rowFlex}">
 					<span class="${badgeClass('warn')}">Outputs missing</span>
-					<span class="${badgeClass()}">GPIO config required</span>
+					<span class="${badgeClass()}">Catalog only</span>
 				</div>
-				<div class="${noticeClass('warn')}">You asked for GPIO-configured relays and multiple outputs. Until that model exists, the panel now shows an honest placeholder instead of fake-ready controls.</div>
+				<div class="${noticeClass('warn')}">Create and edit still work, but downstream schedule and execution flows remain constrained by the server-owned output contract.</div>
 			</div>
 		`;
 		return;
 	}
 
 	elements.cards.actionsInfo.innerHTML = `
-		<p class="${ui.eyebrow}">Output topology</p>
-		<div class="grid gap-[18px]">
+		<p class="${ui.eyebrow}">Catalog posture</p>
+		<div class="grid gap-4">
 			<div>
-				<h3 class="${ui.title}">Ready for more outputs later</h3>
-				<p class="${ui.muted}">This shell now treats manual control as its own page and keeps a dedicated rail for output context, so future GPIO-backed relays can slot in as separate action cards without reworking the navigation again.</p>
+				<h3 class="${ui.title}">Action catalog at a glance</h3>
+				<p class="${ui.muted}">This page now focuses on operator-readable catalog state. Dedicated editor routes keep form work separate from the review surface.</p>
 			</div>
 			<div class="${ui.rowFlex}">
-				<span class="${badgeClass('ok')}">Current output Relay 0</span>
-				<span class="${badgeClass()}">Future GPIO cards</span>
-				<span class="${badgeClass(relay.available ? 'ok' : 'warn')}">Runtime ${relay.available ? 'Ready' : 'Unavailable'}</span>
+				<span class="${badgeClass(actionCount ? 'ok' : 'warn')}">${actionCount}/${snapshot.maxActions} stored</span>
+				<span class="${badgeClass(readyCount ? 'ok' : 'warn')}">${readyCount} ready</span>
+				${needsAttentionCount ? `<span class="${badgeClass('warn')}">${needsAttentionCount} need attention</span>` : ''}
 			</div>
 			<div class="${ui.insetPanel}">
 				<div class="${ui.metricRow}">
 					<div>
-						<div class="${ui.metricLabel}">Current model</div>
+						<div class="${ui.metricLabel}">Approved outputs</div>
 					</div>
-					<div class="${ui.metricValue}">Single relay output</div>
+					<div class="${ui.metricValue}">${outputChoices.length}</div>
 				</div>
 				<div class="${ui.metricRow}">
 					<div>
-						<div class="${ui.metricLabel}">Prepared next step</div>
+						<div class="${ui.metricLabel}">Command choices</div>
 					</div>
-					<div class="${ui.metricValue}">Multi-GPIO layout rail</div>
+					<div class="${ui.metricValue}">${commandChoices.length}</div>
 				</div>
 				<div class="${ui.metricRow}">
 					<div>
-						<div class="${ui.metricLabel}">Manual source</div>
+						<div class="${ui.metricLabel}">Next workflow</div>
 					</div>
-					<div class="${ui.metricValue}">${escapeHtml(humanizeHyphenated(relay.source))}</div>
+					<div class="${ui.metricValue}">Dedicated editor pages</div>
 				</div>
 			</div>
-			<div class="${noticeClass('info')}">Firmware data-model work for configurable multiple relays is intentionally deferred, but this page no longer assumes control must live in one long dashboard column.</div>
+			<div class="${noticeClass('info')}">Open a dedicated action editor to create or revise catalog entries without losing context on the action list.</div>
 		</div>
 	`;
 }
@@ -860,9 +819,9 @@ function renderActionCatalogRows(snapshot) {
 	if (!snapshot?.actions?.length) {
 		return `
 			<div class="${ui.placeholder}">
-				<strong class="block text-slate-50">No configured actions</strong>
+				<strong class="block text-slate-900">No configured actions</strong>
 				<p class="mt-2 ${ui.muted}">Create your first action to bind an approved output and relay command. Manual execution and schedule selection stay deferred until Phase 10.</p>
-				<button class="${buttonClass({ full: false })} mt-4" type="button" data-action-create-first>Create action</button>
+				<a class="${buttonClass({ full: false })} mt-4" href="/actions/new">Create action</a>
 			</div>
 		`;
 	}
@@ -882,7 +841,7 @@ function renderActionCatalogRows(snapshot) {
 				<div class="${ui.muted}">${escapeHtml(action.usabilityDetail || 'Server-owned action truth')}</div>
 			</div>
 			<div class="${ui.rowFlex}">
-				<button class="${buttonClass({ ghost: true, full: false })}" type="button" data-action-edit="${escapeHtml(action.actionId)}" ${state.actionsBusy ? 'disabled' : ''}>Edit action</button>
+				<a class="${buttonClass({ ghost: true, full: false })}" href="/actions/edit?actionId=${encodeURIComponent(action.actionId)}">Edit action</a>
 			</div>
 		</div>
 	`).join('');
@@ -916,52 +875,54 @@ function renderActionForm(snapshot) {
 			<form class="${ui.gridGap3} mt-4" data-action-form>
 				${formState.mode === 'edit' ? `
 					<div class="grid gap-2">
-						<label for="action-id" class="text-[0.95rem] leading-relaxed text-slate-100">Action ID</label>
+						<label for="action-id" class="text-sm font-medium text-slate-900">Action ID</label>
 						<input id="action-id" class="${ui.inputBase}" name="actionId" value="${escapeHtml(formState.actionId)}" readonly>
 					</div>
 				` : `<input type="hidden" name="actionId" value="">`}
 				<div class="grid gap-2">
-					<label for="action-display-name" class="text-[0.95rem] leading-relaxed text-slate-100">Display name</label>
+					<label for="action-display-name" class="text-sm font-medium text-slate-900">Display name</label>
 					<input id="action-display-name" class="${ui.inputBase}" name="displayName" value="${escapeHtml(formState.displayName)}" placeholder="Relay 0 On" required>
 				</div>
 				<div class="grid gap-2">
-					<label for="action-output-key" class="text-[0.95rem] leading-relaxed text-slate-100">Approved output</label>
+					<label for="action-output-key" class="text-sm font-medium text-slate-900">Approved output</label>
 					<select id="action-output-key" class="${ui.inputBase}" name="outputKey">
 						${outputChoices.map((choice) => `<option value="${escapeHtml(choice.outputKey)}" ${choice.outputKey === formState.outputKey ? 'selected' : ''}>${escapeHtml(choice.label)}</option>`).join('')}
 					</select>
 				</div>
 				<div class="grid gap-2">
-					<label for="action-command-key" class="text-[0.95rem] leading-relaxed text-slate-100">Command</label>
+					<label for="action-command-key" class="text-sm font-medium text-slate-900">Command</label>
 					<select id="action-command-key" class="${ui.inputBase}" name="commandKey">
 						${commandChoices.map((choice) => `<option value="${escapeHtml(choice.commandKey)}" ${choice.commandKey === formState.commandKey ? 'selected' : ''}>${escapeHtml(choice.label)}</option>`).join('')}
 					</select>
 				</div>
-				<label class="inline-flex items-center gap-2.5 text-[0.95rem] leading-relaxed text-slate-100">
+				<label class="inline-flex items-center gap-2.5 text-sm text-slate-700">
 					<input type="checkbox" name="enabled" ${formState.enabled ? 'checked' : ''}>
 					<span>Enabled immediately after save</span>
 				</label>
 				<div class="${noticeClass('info')}">The server generates the stable action ID on create and preserves it on later edits so future schedule links do not churn when the display name changes.</div>
 				<div class="${ui.rowFlex}">
 					<button class="${buttonClass({ full: false })}" type="submit" ${state.actionsBusy ? 'disabled' : ''}>${escapeHtml(primaryLabel)}</button>
-					${formState.mode === 'edit' ? `<button class="${buttonClass({ ghost: true, full: false })}" type="button" data-action-cancel ${state.actionsBusy ? 'disabled' : ''}>Cancel edit</button>` : ''}
+					<a class="${buttonClass({ ghost: true, full: false })}" href="/actions">Cancel</a>
 				</div>
 			</form>
 		</div>
 	`;
 }
 
-function renderActionsSurface(snapshot) {
+function renderActionsPage(snapshot) {
 	if (!elements.cards.relay || !elements.cards.actionsInfo) {
 		return;
 	}
 
-	ensureActionFormChoices(snapshot);
 	elements.cards.relay.innerHTML = `
 		<p class="${ui.eyebrow}">Configured action catalog</p>
-		<div class="grid gap-[18px]">
-			<div>
+		<div class="grid gap-4">
+			<div class="flex flex-wrap items-start justify-between gap-4">
+				<div>
 				<h3 class="${ui.title}">Configured actions</h3>
-				<p class="${ui.muted}">Friendly names, approved outputs, enabled state, and usability all come from the device. This page no longer pretends the old hard-wired relay toggles are the final operator workflow.</p>
+				<p class="${ui.muted}">Friendly names, approved outputs, enabled state, and usability all come from the device. Create and edit now live on dedicated routes so this page stays review-first.</p>
+				</div>
+				<a class="${buttonClass({ full: false })}" href="/actions/new">New action</a>
 			</div>
 			<div class="${ui.rowFlex}">
 				<span class="${badgeClass(snapshot?.actionCount ? 'ok' : 'warn')}">${snapshot ? `${snapshot.actionCount}/${snapshot.maxActions} stored` : 'Loading catalog'}</span>
@@ -971,24 +932,107 @@ function renderActionsSurface(snapshot) {
 			<div class="grid gap-3">${renderActionCatalogRows(snapshot)}</div>
 		</div>
 	`;
-	elements.cards.actionsInfo.innerHTML = renderActionForm(snapshot);
+	renderActionsRail(snapshot);
 }
 
-function renderActiveView() {
+function ensureActionEditorSeed(snapshot) {
+	if (!isActionEditorPage()) {
+		return;
+	}
+
+	const actionId = new URL(window.location.href).searchParams.get('actionId') || '';
+	const seedKey = actionId || '__create__';
+	if (state.actionEditorSeed === seedKey) {
+		return;
+	}
+
+	ensureActionFormChoices(snapshot);
+	if (!actionId) {
+		resetActionForm({
+			outputKey: snapshot?.outputChoices?.[0]?.outputKey || '',
+			commandKey: snapshot?.commandChoices?.[0]?.commandKey || 'relay-on',
+		});
+		state.actionEditorSeed = seedKey;
+		return;
+	}
+
+	const action = snapshot?.actions?.find((entry) => entry.actionId === actionId);
+	if (!action) {
+		resetActionForm({
+			outputKey: snapshot?.outputChoices?.[0]?.outputKey || '',
+			commandKey: snapshot?.commandChoices?.[0]?.commandKey || 'relay-on',
+		});
+		setActionFeedback('That configured action is no longer available. You can create a new one instead.', 'warn');
+		state.actionEditorSeed = seedKey;
+		return;
+	}
+
+	resetActionForm({
+		mode: 'edit',
+		actionId: action.actionId,
+		displayName: action.displayName,
+		outputKey: action.outputKey,
+		commandKey: action.commandKey,
+		enabled: action.enabled,
+	});
+	state.actionEditorSeed = seedKey;
+}
+
+function renderActionEditorPage(snapshot) {
+	if (!elements.cards.relay || !elements.cards.actionsInfo) {
+		return;
+	}
+
+	ensureActionEditorSeed(snapshot);
+	ensureActionFormChoices(snapshot);
+	elements.cards.relay.innerHTML = renderActionForm(snapshot);
+	elements.cards.actionsInfo.innerHTML = `
+		<p class="${ui.eyebrow}">Editor guide</p>
+		<div class="grid gap-4">
+			<div>
+				<h3 class="${ui.title}">${state.actionForm.mode === 'edit' ? 'Editing catalog entry' : 'Create a catalog entry'}</h3>
+				<p class="${ui.muted}">Dedicated editor routes keep list review separate from mutations. Save returns you to the catalog with refreshed device truth.</p>
+			</div>
+			<div class="${ui.insetPanel}">
+				<div class="${ui.metricRow}">
+					<div><div class="${ui.metricLabel}">Approved outputs</div></div>
+					<div class="${ui.metricValue}">${snapshot?.outputChoices?.length || 0}</div>
+				</div>
+				<div class="${ui.metricRow}">
+					<div><div class="${ui.metricLabel}">Command choices</div></div>
+					<div class="${ui.metricValue}">${snapshot?.commandChoices?.length || 0}</div>
+				</div>
+				<div class="${ui.metricRow}">
+					<div><div class="${ui.metricLabel}">Mode</div></div>
+					<div class="${ui.metricValue}">${state.actionForm.mode === 'edit' ? 'Edit' : 'Create'}</div>
+				</div>
+			</div>
+			<div class="${noticeClass('info')}">Action IDs stay stable after creation so schedules can continue referring to the same catalog record.</div>
+		</div>
+	`;
+}
+
+function renderCurrentPage() {
 	renderPanelSummary();
-	switch (state.activeView) {
-	case views.overview:
+	switch (currentPage) {
+	case pages.overview:
 		renderOverviewSurface(state.status);
 		break;
-	case views.schedules:
-		renderSchedulerSurface(state.scheduleSnapshot);
+	case pages.schedules:
+		renderSchedulesPage(state.scheduleSnapshot);
 		break;
-	case views.updates:
+	case pages.scheduleEditor:
+		renderScheduleEditorPage(state.scheduleSnapshot);
+		break;
+	case pages.updates:
 		renderUpdateSurface(state.updateSnapshot || state.status?.update || null);
 		break;
-	case views.actions:
+	case pages.actionEditor:
+		renderActionEditorPage(state.actionsSnapshot);
+		break;
+	case pages.actions:
 	default:
-		renderActionsSurface(state.actionsSnapshot);
+		renderActionsPage(state.actionsSnapshot);
 		break;
 	}
 }
@@ -1105,22 +1149,22 @@ function renderUpdateSurface(snapshot) {
 			<div class="${ui.summaryGrid}">
 				<div class="${ui.insetPanel}">
 					<span class="${ui.eyebrow}">Current version</span>
-					<strong class="mb-1.5 block text-base text-slate-50">${escapeHtml(currentVersion)}</strong>
+					<strong class="mb-1.5 block text-base text-slate-900">${escapeHtml(currentVersion)}</strong>
 					<small class="${ui.muted}">${snapshot.currentVersion?.available ? 'Running image from device truth' : 'Running image metadata unavailable'}</small>
 				</div>
 				<div class="${ui.insetPanel}">
 					<span class="${ui.eyebrow}">Staged version</span>
-					<strong class="mb-1.5 block text-base text-slate-50">${escapeHtml(stagedVersion)}</strong>
+					<strong class="mb-1.5 block text-base text-slate-900">${escapeHtml(stagedVersion)}</strong>
 					<small class="${ui.muted}">${snapshot.stagedVersion?.available ? 'Ready to apply after confirmation' : 'No staged image eligible for apply'}</small>
 				</div>
 				<div class="${ui.insetPanel}">
 					<span class="${ui.eyebrow}">Last result</span>
-					<strong class="mb-1.5 block text-base text-slate-50">${escapeHtml(lastResultCode)}</strong>
+					<strong class="mb-1.5 block text-base text-slate-900">${escapeHtml(lastResultCode)}</strong>
 					<small class="${ui.muted}">${escapeHtml(lastResultDetail)}</small>
 				</div>
 				<div class="${ui.insetPanel}">
 					<span class="${ui.eyebrow}">Staging bytes</span>
-					<strong class="mb-1.5 block text-base text-slate-50">${escapeHtml(String(snapshot.lastResult?.bytesWritten || 0))}</strong>
+					<strong class="mb-1.5 block text-base text-slate-900">${escapeHtml(String(snapshot.lastResult?.bytesWritten || 0))}</strong>
 					<small class="${ui.muted}">${rollbackDetected ? `Rollback reason ${snapshot.lastResult?.rollbackReason || 0}` : 'Latest OTA attempt byte count'}</small>
 				</div>
 			</div>
@@ -1132,7 +1176,7 @@ function renderUpdateSurface(snapshot) {
 					<p class="${ui.muted}">The device rejects same-version reinstall and downgrade attempts before the staged image becomes apply-ready.</p>
 					<div class="${ui.uploadLayout}">
 						<div class="grid gap-2">
-							<label for="update-file" class="text-[0.95rem] leading-relaxed text-slate-100">Firmware image</label>
+							<label for="update-file" class="text-sm font-medium text-slate-900">Firmware image</label>
 							<input id="update-file" class="${ui.inputBase}" data-update-file type="file" accept=".bin,.hex,.img,application/octet-stream" ${state.updateBusy || snapshot.state === 'apply-requested' ? 'disabled' : ''}>
 						</div>
 						<button class="${buttonClass({ full: false })}" type="button" data-update-upload ${state.updateBusy || snapshot.state === 'apply-requested' ? 'disabled' : ''}>Stage local firmware</button>
@@ -1280,9 +1324,9 @@ function renderRelayCard(relay) {
 		{ label: 'Control path', value: available ? 'Available' : 'Unavailable' },
 		{ label: 'Reboot policy', value: humanizeHyphenated(relay.rebootPolicy) },
 	], `${badgeMarkup}
-		<div class="mt-4 rounded-[18px] border border-sky-200/20 bg-slate-950/55 p-4">
+		<div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
 			<div class="${ui.metricLabel}">Immediate action</div>
-			<div class="mt-2 text-[1.35rem] font-semibold text-slate-50">${escapeHtml(actualState)}</div>
+			<div class="mt-2 text-[1.35rem] font-semibold text-slate-900">${escapeHtml(actualState)}</div>
 			<p class="mt-2 ${ui.muted}">${escapeHtml(actionCopy)}</p>
 		</div>
 		<div class="mt-4 grid gap-3">
@@ -1364,7 +1408,7 @@ function schedulerSummaryCard(title, value, detail) {
 	return `
 		<div class="${ui.insetPanel}">
 			<span class="${ui.eyebrow}">${escapeHtml(title)}</span>
-			<strong class="mb-1.5 block text-base text-slate-50">${escapeHtml(value)}</strong>
+			<strong class="mb-1.5 block text-base text-slate-900">${escapeHtml(value)}</strong>
 			<small class="${ui.muted}">${escapeHtml(detail)}</small>
 		</div>
 	`;
@@ -1405,7 +1449,7 @@ function renderSchedulerRows(snapshot) {
 				</div>
 			</div>
 			<div class="${ui.rowFlex}">
-				<button class="${buttonClass({ ghost: true, full: false })}" type="button" data-scheduler-edit="${escapeHtml(schedule.scheduleId)}" ${state.schedulerBusy ? 'disabled' : ''}>Edit</button>
+				<a class="${buttonClass({ ghost: true, full: false })}" href="/schedules/edit?scheduleId=${encodeURIComponent(schedule.scheduleId)}">Edit</a>
 				<button class="${buttonClass({ ghost: true, full: false })}" type="button" data-scheduler-toggle="${escapeHtml(schedule.scheduleId)}" data-enabled="${schedule.enabled ? 'false' : 'true'}" ${state.schedulerBusy ? 'disabled' : ''}>${schedule.enabled ? 'Disable' : 'Enable'}</button>
 				<button class="${buttonClass({ ghost: true, full: false })}" type="button" data-scheduler-delete="${escapeHtml(schedule.scheduleId)}" ${state.schedulerBusy ? 'disabled' : ''}>Delete</button>
 			</div>
@@ -1457,40 +1501,42 @@ function renderSchedulerForm(snapshot) {
 		<div class="${ui.insetPanel}">
 			<p class="${ui.eyebrow}">${escapeHtml(formState.mode === 'edit' ? 'Edit schedule' : 'Create schedule')}</p>
 			<h3 class="${ui.title}">${escapeHtml(heading)}</h3>
+			<p class="${ui.muted}">Dedicated schedule editor routes keep the list view focused on live automation status and recent problems.</p>
+			${schedulerFeedbackMarkup()}
 			<form class="${ui.gridGap3}" data-scheduler-form>
 				<div class="grid gap-2">
-					<label for="schedule-id" class="text-[0.95rem] leading-relaxed text-slate-100">Schedule ID</label>
+					<label for="schedule-id" class="text-sm font-medium text-slate-900">Schedule ID</label>
 					<input id="schedule-id" class="${ui.inputBase}" name="scheduleId" value="${escapeHtml(formState.scheduleId)}" ${formState.mode === 'edit' ? 'readonly' : ''} required>
 				</div>
 				<div class="grid gap-2">
-					<label for="schedule-action" class="text-[0.95rem] leading-relaxed text-slate-100">Action</label>
+					<label for="schedule-action" class="text-sm font-medium text-slate-900">Action</label>
 					<select id="schedule-action" class="${ui.inputBase}" name="actionKey">
 						${actionChoices.map((choice) => `<option value="${escapeHtml(choice.key)}" ${choice.key === formState.actionKey ? 'selected' : ''}>${escapeHtml(choice.label)}</option>`).join('')}
 					</select>
 				</div>
 				<div class="${ui.schedulerFields}">
 					<div class="grid gap-2">
-						<label for="cron-minute" class="text-[0.95rem] leading-relaxed text-slate-100">Minute</label>
+						<label for="cron-minute" class="text-sm font-medium text-slate-900">Minute</label>
 						<input id="cron-minute" class="${ui.inputBase}" name="minute" value="${escapeHtml(formState.minute)}" placeholder="0" required>
 					</div>
 					<div class="grid gap-2">
-						<label for="cron-hour" class="text-[0.95rem] leading-relaxed text-slate-100">Hour</label>
+						<label for="cron-hour" class="text-sm font-medium text-slate-900">Hour</label>
 						<input id="cron-hour" class="${ui.inputBase}" name="hour" value="${escapeHtml(formState.hour)}" placeholder="*" required>
 					</div>
 					<div class="grid gap-2">
-						<label for="cron-dom" class="text-[0.95rem] leading-relaxed text-slate-100">Day of month</label>
+						<label for="cron-dom" class="text-sm font-medium text-slate-900">Day of month</label>
 						<input id="cron-dom" class="${ui.inputBase}" name="dayOfMonth" value="${escapeHtml(formState.dayOfMonth)}" placeholder="*" required>
 					</div>
 					<div class="grid gap-2">
-						<label for="cron-month" class="text-[0.95rem] leading-relaxed text-slate-100">Month</label>
+						<label for="cron-month" class="text-sm font-medium text-slate-900">Month</label>
 						<input id="cron-month" class="${ui.inputBase}" name="month" value="${escapeHtml(formState.month)}" placeholder="*" required>
 					</div>
 					<div class="grid gap-2">
-						<label for="cron-dow" class="text-[0.95rem] leading-relaxed text-slate-100">Day of week</label>
+						<label for="cron-dow" class="text-sm font-medium text-slate-900">Day of week</label>
 						<input id="cron-dow" class="${ui.inputBase}" name="dayOfWeek" value="${escapeHtml(formState.dayOfWeek)}" placeholder="*" required>
 					</div>
 				</div>
-				<label class="inline-flex items-center gap-2.5 text-[0.95rem] leading-relaxed text-slate-100">
+				<label class="inline-flex items-center gap-2.5 text-sm text-slate-700">
 					<input type="checkbox" name="enabled" ${formState.enabled ? 'checked' : ''}>
 					<span>Enabled immediately after save</span>
 				</label>
@@ -1499,14 +1545,14 @@ function renderSchedulerForm(snapshot) {
 				</div>
 				<div class="${ui.rowFlex}">
 					<button class="${buttonClass({ full: false })}" type="submit" ${state.schedulerBusy ? 'disabled' : ''}>${escapeHtml(primaryLabel)}</button>
-					${formState.mode === 'edit' ? `<button class="${buttonClass({ ghost: true, full: false })}" type="button" data-scheduler-cancel ${state.schedulerBusy ? 'disabled' : ''}>Cancel edit</button>` : ''}
+					<a class="${buttonClass({ ghost: true, full: false })}" href="/schedules">Cancel</a>
 				</div>
 			</form>
 		</div>
 	`;
 }
 
-function renderSchedulerSurface(snapshot) {
+function renderSchedulesPage(snapshot) {
 	if (!elements.cards.scheduler) {
 		return;
 	}
@@ -1535,15 +1581,18 @@ function renderSchedulerSurface(snapshot) {
 		? `${snapshot.problemCount} recent scheduler problems recorded`
 		: 'No recent scheduler problems';
 	const schedulerIntro = schedulerOutputsConfigured(snapshot)
-		? 'Create, edit, enable, disable, and delete UTC cron schedules without exposing internal action wiring. Manual relay control semantics stay unchanged.'
+		? 'Create, review, enable, disable, and delete UTC cron schedules without hiding the live automation state behind the editor form.'
 		: 'No GPIO-backed outputs are configured yet, so schedule creation stays unavailable until that configuration model exists.';
 
 	elements.cards.scheduler.innerHTML = `
 		<p class="${ui.eyebrow}">Phase 7 live surface</p>
-		<div class="grid gap-[18px]">
-			<div>
+		<div class="grid gap-4">
+			<div class="flex flex-wrap items-start justify-between gap-4">
+				<div>
 				<h3 class="${ui.title}">Schedule management</h3>
 				<p class="${ui.muted}">${escapeHtml(schedulerIntro)}</p>
+				</div>
+				<a class="${buttonClass({ full: false })}" href="/schedules/new">New schedule</a>
 			</div>
 			<div class="${ui.schedulerHeader}">
 				<div class="${ui.insetPanel}">
@@ -1570,13 +1619,10 @@ function renderSchedulerSurface(snapshot) {
 				${schedulerSummaryCard('Schedule counts', `${snapshot.enabledCount}/${snapshot.scheduleCount} enabled`, `Up to ${snapshot.maxSchedules} schedules in this phase`) }
 			</div>
 			${schedulerFeedbackMarkup()}
-			<div class="${ui.schedulerLayout}">
-				<div class="${ui.insetPanel}">
-					<p class="${ui.eyebrow}">Saved schedules</p>
-					<div class="${ui.muted}">Next run, create, edit, disable, and delete flows all refresh from live device truth after each mutation.</div>
-					<div class="grid gap-3">${renderSchedulerRows(snapshot)}</div>
-				</div>
-				${renderSchedulerForm(snapshot)}
+			<div class="${ui.insetPanel}">
+				<p class="${ui.eyebrow}">Saved schedules</p>
+				<div class="${ui.muted}">Dedicated editor routes handle create and edit. This list stays focused on live truth, toggles, deletes, and recent run context.</div>
+				<div class="mt-4 grid gap-3">${renderSchedulerRows(snapshot)}</div>
 			</div>
 			<div class="${ui.insetPanel}">
 				<p class="${ui.eyebrow}">Recent problems and history</p>
@@ -1586,11 +1632,94 @@ function renderSchedulerSurface(snapshot) {
 	`;
 }
 
+function ensureScheduleEditorSeed(snapshot) {
+	if (!isScheduleEditorPage()) {
+		return;
+	}
+
+	const scheduleId = new URL(window.location.href).searchParams.get('scheduleId') || '';
+	const seedKey = scheduleId || '__create__';
+	if (state.scheduleEditorSeed === seedKey) {
+		return;
+	}
+
+	ensureSchedulerFormChoice(snapshot);
+	if (!scheduleId) {
+		resetSchedulerForm({ actionKey: snapshot?.actionChoices?.[0]?.key || 'relay-on' });
+		state.scheduleEditorSeed = seedKey;
+		return;
+	}
+
+	const schedule = snapshot?.schedules?.find((entry) => entry.scheduleId === scheduleId);
+	if (!schedule) {
+		resetSchedulerForm({ actionKey: snapshot?.actionChoices?.[0]?.key || 'relay-on' });
+		setSchedulerFeedback('That schedule is no longer available. You can create a new one instead.', 'warn');
+		state.scheduleEditorSeed = seedKey;
+		return;
+	}
+
+	resetSchedulerForm({
+		mode: 'edit',
+		scheduleId: schedule.scheduleId,
+		actionKey: schedule.actionKey,
+		enabled: schedule.enabled,
+		...splitCronExpression(schedule.cronExpression),
+	});
+	state.scheduleEditorSeed = seedKey;
+}
+
+function renderScheduleEditorPage(snapshot) {
+	if (!elements.cards.scheduler) {
+		return;
+	}
+
+	if (!snapshot) {
+		elements.cards.scheduler.innerHTML = renderCard('Schedule editor', 'Scheduler', [
+			{ label: 'State', value: 'Loading' },
+		], `<div class="${ui.placeholder}">Authenticated scheduler data is still loading.</div>`);
+		return;
+	}
+
+	ensureScheduleEditorSeed(snapshot);
+	ensureSchedulerFormChoice(snapshot);
+	const nextRunCopy = snapshot.nextRun?.available
+		? `${formatUtcMinute(snapshot.nextRun.normalizedUtcMinute)} · ${snapshot.nextRun.actionLabel}`
+		: 'No future enabled run is currently queued';
+
+	elements.cards.scheduler.innerHTML = `
+		<p class="${ui.eyebrow}">Schedule editor</p>
+		<div class="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_320px]">
+			<div>${renderSchedulerForm(snapshot)}</div>
+			<div class="grid gap-4">
+				<div class="${ui.insetPanel}">
+					<p class="${ui.eyebrow}">Automation context</p>
+					<div class="${ui.metricRow}">
+						<div><div class="${ui.metricLabel}">Clock state</div></div>
+						<div class="${ui.metricValue}">${escapeHtml(humanizeHyphenated(snapshot.clockState))}</div>
+					</div>
+					<div class="${ui.metricRow}">
+						<div><div class="${ui.metricLabel}">Automation</div></div>
+						<div class="${ui.metricValue}">${snapshot.automationActive ? 'Active' : 'Inactive'}</div>
+					</div>
+					<div class="${ui.metricRow}">
+						<div><div class="${ui.metricLabel}">Next run</div></div>
+						<div class="${ui.metricValue}">${escapeHtml(nextRunCopy)}</div>
+					</div>
+				</div>
+				<div class="${ui.insetPanel}">
+					<p class="${ui.eyebrow}">Recent problems</p>
+					${renderSchedulerProblems(snapshot)}
+				</div>
+			</div>
+		</div>
+	`;
+}
+
 function renderStatus(statusPayload, updatePayload = null) {
 	state.status = statusPayload;
 	state.updateSnapshot = updatePayload;
 	updateNetworkChrome(statusPayload.network);
-	renderActiveView();
+	renderCurrentPage();
 }
 
 async function refreshDashboard({ silent = false } = {}) {
@@ -1645,7 +1774,7 @@ async function refreshDashboard({ silent = false } = {}) {
 			if (!state.authenticated) {
 				showDashboardView();
 			} else {
-				renderActiveView();
+				renderCurrentPage();
 			}
 			updateNetworkChrome(statusResult.data.network);
 			if (state.refreshNeedsAnnouncement) {
@@ -1678,7 +1807,7 @@ async function handleRelaySet(desiredState) {
 	if (relay.configured === false) {
 		setRelayFeedback('Relay GPIO is not configured yet.', 'warn');
 		setAlert('Relay GPIO is not configured yet.', 'warn');
-		renderActiveView();
+		renderCurrentPage();
 		return;
 	}
 
@@ -1691,7 +1820,7 @@ async function handleRelaySet(desiredState) {
 	state.relayCommandPending = true;
 	state.relayCommandDesiredState = normalizedDesiredState;
 	setRelayFeedback(`Pending: requesting relay ${normalizedDesiredState ? 'on' : 'off'} from the device…`, 'warn');
-	renderActiveView();
+	renderCurrentPage();
 
 	try {
 		const { response, data } = await requestJson(routes.relayDesiredState, {
@@ -1724,7 +1853,7 @@ async function handleRelaySet(desiredState) {
 	} finally {
 		state.relayCommandPending = false;
 		state.relayCommandDesiredState = false;
-		renderActiveView();
+		renderCurrentPage();
 	}
 }
 
@@ -1754,7 +1883,7 @@ function actionApiErrorMessage(data, fallbackPrefix) {
 async function runActionMutation(route, payload) {
 	state.actionsBusy = true;
 	setActionFeedback('Refreshing configured action truth after this change…', 'warn');
-	renderActionsSurface(state.actionsSnapshot);
+	renderCurrentPage();
 
 	try {
 		const { response, data } = await requestJson(route, {
@@ -1787,7 +1916,7 @@ async function runActionMutation(route, payload) {
 		return false;
 	} finally {
 		state.actionsBusy = false;
-		renderActionsSurface(state.actionsSnapshot);
+		renderCurrentPage();
 	}
 }
 
@@ -1795,7 +1924,7 @@ async function handleActionFormSubmit() {
 	const formState = state.actionForm;
 	if (!state.actionsSnapshot) {
 		setActionFeedback('Configured action truth is still loading.', 'warn');
-		renderActionsSurface(state.actionsSnapshot);
+		renderCurrentPage();
 		return;
 	}
 
@@ -1813,38 +1942,16 @@ async function handleActionFormSubmit() {
 	if (!payload.displayName || !payload.outputKey || !payload.commandKey) {
 		setActionFeedback('Enter a display name and choose both an approved output and command before saving.', 'warn');
 		setAlert('Enter a display name and choose both an approved output and command before saving.', 'warn');
-		renderActionsSurface(state.actionsSnapshot);
+		renderCurrentPage();
 		return;
 	}
 
 	const route = formState.mode === 'edit' ? routes.actionUpdate : routes.actionCreate;
 	const ok = await runActionMutation(route, payload);
 	if (ok) {
-		resetActionForm({
-			outputKey: state.actionsSnapshot?.outputChoices?.[0]?.outputKey || '',
-			commandKey: state.actionsSnapshot?.commandChoices?.[0]?.commandKey || 'relay-on',
-		});
-		renderActionsSurface(state.actionsSnapshot);
+		stashFlashMessage(formState.mode === 'edit' ? 'Configured action updated.' : 'Configured action created.', 'success');
+		navigateTo('/actions');
 	}
-}
-
-function loadActionEdit(actionId) {
-	const action = state.actionsSnapshot?.actions?.find((entry) => entry.actionId === actionId);
-	if (!action) {
-		setAlert('That configured action is no longer available to edit.', 'warn');
-		return;
-	}
-
-	resetActionForm({
-		mode: 'edit',
-		actionId: action.actionId,
-		displayName: action.displayName,
-		outputKey: action.outputKey,
-		commandKey: action.commandKey,
-		enabled: action.enabled,
-	});
-	setActionFeedback(`Editing ${action.displayName}. Save to keep the new configured action values.`, 'info');
-	renderActionsSurface(state.actionsSnapshot);
 }
 
 function schedulerApiErrorMessage(data, fallbackPrefix) {
@@ -1855,7 +1962,7 @@ function schedulerApiErrorMessage(data, fallbackPrefix) {
 async function runSchedulerMutation(route, payload) {
 	state.schedulerBusy = true;
 	setSchedulerFeedback('Refreshing scheduler truth after this change…', 'warn');
-	renderSchedulerSurface(state.scheduleSnapshot);
+	renderCurrentPage();
 
 	try {
 		const { response, data } = await requestJson(route, {
@@ -1888,7 +1995,7 @@ async function runSchedulerMutation(route, payload) {
 		return false;
 	} finally {
 		state.schedulerBusy = false;
-		renderSchedulerSurface(state.scheduleSnapshot);
+		renderCurrentPage();
 	}
 }
 
@@ -1897,7 +2004,7 @@ async function handleSchedulerFormSubmit() {
 	if (!schedulerOutputsConfigured(state.scheduleSnapshot)) {
 		setSchedulerFeedback('Configure GPIO-backed outputs before creating relay schedules.', 'warn');
 		setAlert('Configure GPIO-backed outputs before creating relay schedules.', 'warn');
-		renderSchedulerSurface(state.scheduleSnapshot);
+		renderCurrentPage();
 		return;
 	}
 
@@ -1911,34 +2018,16 @@ async function handleSchedulerFormSubmit() {
 	if (!payload.scheduleId || !payload.actionKey) {
 		setSchedulerFeedback('Enter a schedule ID and choose an action before saving.', 'warn');
 		setAlert('Enter a schedule ID and choose an action before saving.', 'warn');
-		renderSchedulerSurface(state.scheduleSnapshot);
+		renderCurrentPage();
 		return;
 	}
 
 	const route = formState.mode === 'edit' ? routes.scheduleUpdate : routes.scheduleCreate;
 	const ok = await runSchedulerMutation(route, payload);
 	if (ok) {
-		resetSchedulerForm({ actionKey: state.scheduleSnapshot?.actionChoices?.[0]?.key || 'relay-on' });
-		renderSchedulerSurface(state.scheduleSnapshot);
+		stashFlashMessage(formState.mode === 'edit' ? 'Schedule updated.' : 'Schedule created.', 'success');
+		navigateTo('/schedules');
 	}
-}
-
-function loadSchedulerEdit(scheduleId) {
-	const schedule = state.scheduleSnapshot?.schedules?.find((entry) => entry.scheduleId === scheduleId);
-	if (!schedule) {
-		setAlert('That schedule is no longer available to edit.', 'warn');
-		return;
-	}
-
-	resetSchedulerForm({
-		mode: 'edit',
-		scheduleId: schedule.scheduleId,
-		actionKey: schedule.actionKey,
-		enabled: schedule.enabled,
-		...splitCronExpression(schedule.cronExpression),
-	});
-	setSchedulerFeedback(`Editing ${schedule.scheduleId}. Save to keep the new cron or action values.`, 'info');
-	renderSchedulerSurface(state.scheduleSnapshot);
 }
 
 async function handleSchedulerToggle(scheduleId, enabled) {
@@ -1953,7 +2042,7 @@ async function handleSchedulerDelete(scheduleId) {
 	const ok = await runSchedulerMutation(routes.scheduleDelete, { scheduleId });
 	if (ok && state.schedulerForm.mode === 'edit' && state.schedulerForm.scheduleId === scheduleId) {
 		resetSchedulerForm({ actionKey: state.scheduleSnapshot?.actionChoices?.[0]?.key || 'relay-on' });
-		renderSchedulerSurface(state.scheduleSnapshot);
+		renderCurrentPage();
 	}
 }
 
@@ -2219,7 +2308,7 @@ async function handleLogin(event) {
 	} catch (error) {
 		setAlert(error instanceof Error ? error.message : 'Sign-in failed.', 'error');
 	} finally {
-		setBusy(elements.loginSubmit, false, 'Authenticate locally');
+		setBusy(elements.loginSubmit, false, 'Sign in');
 	}
 }
 
@@ -2257,23 +2346,6 @@ function handleActionCardInput(event) {
 	}
 }
 
-async function handleActionCardClick(event) {
-	const editButton = event.target.closest('[data-action-edit]');
-	if (editButton) {
-		loadActionEdit(editButton.dataset.actionEdit || '');
-		return;
-	}
-
-	if (event.target.closest('[data-action-cancel]') || event.target.closest('[data-action-create-first]')) {
-		resetActionForm({
-			outputKey: state.actionsSnapshot?.outputChoices?.[0]?.outputKey || '',
-			commandKey: state.actionsSnapshot?.commandChoices?.[0]?.commandKey || 'relay-on',
-		});
-		setActionFeedback(null);
-		renderActionsSurface(state.actionsSnapshot);
-	}
-}
-
 async function handleActionCardSubmit(event) {
 	const form = event.target.closest('[data-action-form]');
 	if (!form) {
@@ -2298,12 +2370,6 @@ function handleSchedulerCardInput(event) {
 }
 
 async function handleSchedulerCardClick(event) {
-	const editButton = event.target.closest('[data-scheduler-edit]');
-	if (editButton) {
-		loadSchedulerEdit(editButton.dataset.schedulerEdit || '');
-		return;
-	}
-
 	const toggleButton = event.target.closest('[data-scheduler-toggle]');
 	if (toggleButton) {
 		await handleSchedulerToggle(toggleButton.dataset.schedulerToggle || '', toggleButton.dataset.enabled === 'true');
@@ -2314,12 +2380,6 @@ async function handleSchedulerCardClick(event) {
 	if (deleteButton) {
 		await handleSchedulerDelete(deleteButton.dataset.schedulerDelete || '');
 		return;
-	}
-
-	if (event.target.closest('[data-scheduler-cancel]')) {
-		resetSchedulerForm({ actionKey: state.scheduleSnapshot?.actionChoices?.[0]?.key || 'relay-on' });
-		setSchedulerFeedback(null);
-		renderSchedulerSurface(state.scheduleSnapshot);
 	}
 }
 
@@ -2364,33 +2424,14 @@ async function handleRelayCardClick(event) {
 	await handleRelaySet(relayButton.dataset.relaySet === 'true');
 }
 
-function handlePanelNavClick(event) {
-	const navLink = event.target.closest('[data-panel-nav]');
-	if (!navLink) {
-		return;
-	}
-
-	event.preventDefault();
-	setActiveView(navLink.dataset.panelNav || views.actions, { pushHistory: true });
-}
-
-function handlePanelPopState() {
-	if (isLoginPage()) {
-		return;
-	}
-
-	setActiveView(viewForPath(currentPath()));
-}
-
 function attachEvents() {
 	elements.loginForm?.addEventListener('submit', handleLogin);
 	elements.refreshButton?.addEventListener('click', () => { void refreshDashboard({ silent: false }); });
 	elements.logoutButton?.addEventListener('click', handleLogout);
-	elements.panelNav?.addEventListener('click', handlePanelNavClick);
-	elements.views.actions?.addEventListener('input', handleActionCardInput);
-	elements.views.actions?.addEventListener('change', handleActionCardInput);
-	elements.views.actions?.addEventListener('click', (event) => { void handleActionCardClick(event); });
-	elements.views.actions?.addEventListener('submit', (event) => { void handleActionCardSubmit(event); });
+	elements.cards.relay?.addEventListener('input', handleActionCardInput);
+	elements.cards.relay?.addEventListener('change', handleActionCardInput);
+	elements.cards.relay?.addEventListener('submit', (event) => { void handleActionCardSubmit(event); });
+	elements.cards.relay?.addEventListener('click', (event) => { void handleRelayCardClick(event); });
 	elements.cards.scheduler?.addEventListener('input', handleSchedulerCardInput);
 	elements.cards.scheduler?.addEventListener('change', handleSchedulerCardInput);
 	elements.cards.scheduler?.addEventListener('click', (event) => { void handleSchedulerCardClick(event); });
@@ -2401,7 +2442,6 @@ function attachEvents() {
 		}
 	});
 	elements.cards.update?.addEventListener('click', (event) => { void handleUpdateCardClick(event); });
-	window.addEventListener('popstate', handlePanelPopState);
 }
 
 function startPolling() {
@@ -2421,12 +2461,7 @@ function startPolling() {
 	}, 15000);
 }
 
-if (!isLoginPage()) {
-	state.activeView = viewForPath(currentPath());
-}
-
-updateViewChrome();
-toggleViewContainers();
+updateNavigationState();
 attachEvents();
 startPolling();
 bootstrapSession();

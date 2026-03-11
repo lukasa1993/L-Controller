@@ -3,14 +3,14 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>LNH Nordic Actions</title>
+	<title>LNH Nordic Overview</title>
 	<meta
 		name="description"
-		content="Configured action catalog for the LNH Nordic local operator panel.">
+		content="System overview for the LNH Nordic local operator panel.">
 	<link rel="stylesheet" href="/panel.css">
 	<script defer src="/main.js"></script>
 </head>
-<body data-panel-page="actions" class="min-h-screen bg-slate-100 text-slate-900 antialiased">
+<body data-panel-page="overview" class="min-h-screen bg-slate-100 text-slate-900 antialiased">
 	<div class="min-h-screen lg:grid lg:grid-cols-[18rem_minmax(0,1fr)]">
 		<aside class="hidden border-r border-slate-200 bg-white lg:flex lg:flex-col">
 			<div class="flex items-center gap-3 border-b border-slate-200 px-6 py-5">
@@ -27,8 +27,8 @@
 				<a href="/updates" data-panel-nav="updates" class="mb-1 block rounded-xl px-3 py-2 text-sm font-medium">Updates</a>
 			</nav>
 			<div class="border-t border-slate-200 p-5">
-				<p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Current workflow</p>
-				<p class="mt-2 text-sm leading-6 text-slate-600">Review the configured-action catalog here, then move into the dedicated editor route only when you need to create or revise an entry.</p>
+				<p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Overview first</p>
+				<p class="mt-2 text-sm leading-6 text-slate-600">Board, network, and recovery truth stay on a dedicated page so operators can inspect system posture without wading through configuration flows.</p>
 			</div>
 		</aside>
 		<div class="flex min-h-screen flex-col">
@@ -36,12 +36,11 @@
 				<div class="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
 					<div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
 						<div class="max-w-3xl">
-							<p class="text-xs font-semibold uppercase tracking-[0.22em] text-indigo-600">Configured Action Catalog</p>
-							<h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Review actions without burying them under forms</h1>
-							<p class="mt-2 text-sm leading-6 text-slate-600">The action list is now a clean review surface. Create and edit work moves into dedicated routes so the catalog keeps its own context.</p>
+							<p class="text-xs font-semibold uppercase tracking-[0.22em] text-indigo-600">System Overview</p>
+							<h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Device overview with the operational noise stripped out</h1>
+							<p class="mt-2 text-sm leading-6 text-slate-600">Use this page to inspect board identity, network reachability, and recovery posture. Mutating workflows stay elsewhere.</p>
 						</div>
 						<div class="flex flex-wrap items-center gap-3">
-							<a href="/actions/new" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500">New action</a>
 							<span id="session-chip" class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-slate-600">Session pending</span>
 							<span id="network-pill" class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-slate-600">Status pending</span>
 							<button id="refresh-button" class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50" type="button" disabled>Refresh</button>
@@ -62,9 +61,10 @@
 						Checking whether this browser already has a valid local session.
 					</section>
 					<section id="panel-summary" class="grid gap-4 md:grid-cols-2 xl:grid-cols-4"></section>
-					<section class="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_22rem]">
-						<article id="relay-card" class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"></article>
-						<aside id="actions-info-card" class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"></aside>
+					<section class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_22rem]">
+						<article id="device-card" class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"></article>
+						<article id="network-card" class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"></article>
+						<article id="recovery-card" class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"></article>
 					</section>
 				</div>
 			</main>

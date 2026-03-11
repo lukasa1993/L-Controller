@@ -174,6 +174,26 @@ static const uint8_t login_html_gz[] = {
 #include "panel/login.html.gz.inc"
 };
 
+static const uint8_t overview_html_gz[] = {
+#include "panel/overview.html.gz.inc"
+};
+
+static const uint8_t action_editor_html_gz[] = {
+#include "panel/action-editor.html.gz.inc"
+};
+
+static const uint8_t schedules_html_gz[] = {
+#include "panel/schedules.html.gz.inc"
+};
+
+static const uint8_t schedule_editor_html_gz[] = {
+#include "panel/schedule-editor.html.gz.inc"
+};
+
+static const uint8_t updates_html_gz[] = {
+#include "panel/updates.html.gz.inc"
+};
+
 static const uint8_t panel_css_gz[] = {
 #include "panel/panel.css.gz.inc"
 };
@@ -223,6 +243,61 @@ static struct http_resource_detail_static panel_shell_login_resource_detail = {
 	},
 	.static_data = login_html_gz,
 	.static_data_len = sizeof(login_html_gz),
+};
+
+static struct http_resource_detail_static panel_shell_overview_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_STATIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
+		.content_encoding = "gzip",
+		.content_type = "text/html",
+	},
+	.static_data = overview_html_gz,
+	.static_data_len = sizeof(overview_html_gz),
+};
+
+static struct http_resource_detail_static panel_shell_action_editor_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_STATIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
+		.content_encoding = "gzip",
+		.content_type = "text/html",
+	},
+	.static_data = action_editor_html_gz,
+	.static_data_len = sizeof(action_editor_html_gz),
+};
+
+static struct http_resource_detail_static panel_shell_schedules_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_STATIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
+		.content_encoding = "gzip",
+		.content_type = "text/html",
+	},
+	.static_data = schedules_html_gz,
+	.static_data_len = sizeof(schedules_html_gz),
+};
+
+static struct http_resource_detail_static panel_shell_schedule_editor_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_STATIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
+		.content_encoding = "gzip",
+		.content_type = "text/html",
+	},
+	.static_data = schedule_editor_html_gz,
+	.static_data_len = sizeof(schedule_editor_html_gz),
+};
+
+static struct http_resource_detail_static panel_shell_updates_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_STATIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
+		.content_encoding = "gzip",
+		.content_type = "text/html",
+	},
+	.static_data = updates_html_gz,
+	.static_data_len = sizeof(updates_html_gz),
 };
 
 static struct http_resource_detail_static panel_shell_panel_css_resource_detail = {
@@ -528,11 +603,19 @@ HTTP_RESOURCE_DEFINE(panel_shell_index_resource, panel_http_service, "/",
 HTTP_RESOURCE_DEFINE(panel_shell_actions_resource, panel_http_service, "/actions",
 		     &panel_shell_index_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_overview_resource, panel_http_service, "/overview",
-		     &panel_shell_index_resource_detail);
+		     &panel_shell_overview_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_shell_action_new_resource, panel_http_service, "/actions/new",
+		     &panel_shell_action_editor_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_shell_action_edit_resource, panel_http_service, "/actions/edit",
+		     &panel_shell_action_editor_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_schedules_resource, panel_http_service, "/schedules",
-		     &panel_shell_index_resource_detail);
+		     &panel_shell_schedules_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_shell_schedule_new_resource, panel_http_service, "/schedules/new",
+		     &panel_shell_schedule_editor_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_shell_schedule_edit_resource, panel_http_service, "/schedules/edit",
+		     &panel_shell_schedule_editor_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_updates_resource, panel_http_service, "/updates",
-		     &panel_shell_index_resource_detail);
+		     &panel_shell_updates_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_login_resource, panel_http_service, "/login",
 		     &panel_shell_login_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_panel_css_resource, panel_http_service, "/panel.css",

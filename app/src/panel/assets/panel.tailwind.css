@@ -2,4 +2,9 @@
 
 @source "./index.html";
 @source "./login.html";
+@source "./overview.html";
+@source "./action-editor.html";
+@source "./schedules.html";
+@source "./schedule-editor.html";
+@source "./updates.html";
 @source "./main.js";

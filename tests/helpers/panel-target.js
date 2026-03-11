@@ -5,10 +5,10 @@ const DEFAULT_PANEL_PORT = 80;
 const DEFAULT_DISCOVERY_TIMEOUT_MS = 1_200;
 const DEFAULT_DISCOVERY_CONCURRENCY = 32;
 const PANEL_MARKERS = [
-	'LNH Nordic Mission Console',
-	'data-panel-page="dashboard"',
-	'id="dashboard-view"',
-	'data-panel-nav="actions"',
+	'data-panel-page="actions"',
+	'Configured Action Catalog',
+	'id="relay-card"',
+	'data-panel-nav="schedules"',
 	'src="/main.js"',
 ];
 
