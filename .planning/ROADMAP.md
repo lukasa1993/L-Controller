@@ -23,7 +23,7 @@ Milestone `v1.0` completed phases `1` through `8` and established the current pr
 **Goal:** Establish the configured relay-action data model, safe output binding rules, migration policy, and operator management surface that replace built-in relay action assumptions.
 **Depends on:** Phase 4, Phase 5, Phase 6, Phase 7
 **Requirements:** [ACT-03, ACT-04, ACT-05, BIND-01, BIND-02, MIGR-01, MIGR-03]
-**Plan Progress:** 2/3 complete
+**Plan Progress:** 3/3 complete
 **Success Criteria** (what must be TRUE):
 1. Device loads configured relay actions from persisted records or a safe migration path and no longer depends on unconditional built-in relay seeding as the primary model.
 2. Authenticated operator can create, view, and edit configured relay actions with operator-safe IDs, names, enabled state, usability status, and output summary in the panel.
@@ -32,7 +32,7 @@ Milestone `v1.0` completed phases `1` through `8` and established the current pr
 **Plans:**
 - [x] `09-01` — Configured action schema, approved outputs, legacy normalization, and schedule-compatibility guardrails
 - [x] `09-02` — Authenticated configured-action snapshot, create, and edit APIs
-- [ ] `09-03` — Actions-page management catalog and verification updates
+- [x] `09-03` — Actions-page management catalog and verification updates
 
 ### Phase 10: Shared Execution and Schedule Integration
 **Goal:** Make configured relay actions executable from the Actions page, selectable from Schedules, and enforced consistently across manual and scheduled runtime paths.
@@ -72,5 +72,4 @@ Phases execute in numeric order: `1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 1
 
 ## Next Step
 
-**Phase 9: Configured Action Model and Panel Management** is executing.
-Next up: `09-03` Actions-page management catalog and verification updates.
+**Phase 9: Configured Action Model and Panel Management** completed plan execution and is ready for goal verification.
