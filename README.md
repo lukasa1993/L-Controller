@@ -39,7 +39,7 @@ The same credentials are used for browser login and the `curl` verification flow
 
 ### Playwright login smoke
 
-The repo now includes a Playwright smoke for the dedicated `/login` flow. It is intended for the flashed device only: it starts at `/`, confirms the unauthenticated redirect to `/login`, submits the real panel login form, and only passes once the authenticated dashboard renders protected cards such as `Device shell` and `Connectivity`.
+The repo now includes a Playwright smoke for the dedicated `/login` flow. It is intended for the flashed device only: it starts at `/`, confirms the unauthenticated redirect to `/login`, submits the real panel login form, and only passes once the authenticated shell renders the configured-action management surface plus the protected overview, schedules, and OTA views.
 
 Install the browser-test dependencies once:
 

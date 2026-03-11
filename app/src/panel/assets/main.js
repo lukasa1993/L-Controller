@@ -15,16 +15,31 @@ function createSchedulerFormState(overrides = {}) {
 	};
 }
 
+function createActionFormState(overrides = {}) {
+	return {
+		mode: 'create',
+		actionId: '',
+		displayName: '',
+		outputKey: '',
+		commandKey: 'relay-on',
+		enabled: true,
+		...overrides,
+	};
+}
+
 const state = {
 	authenticated: false,
 	sessionUsername: '',
 	status: null,
+	actionsSnapshot: null,
 	scheduleSnapshot: null,
 	updateSnapshot: null,
 	refreshTimer: null,
 	refreshPromise: null,
 	refreshNeedsAnnouncement: false,
 	activeView: 'actions',
+	actionsBusy: false,
+	actionFeedback: null,
 	relayCommandPending: false,
 	relayCommandDesiredState: false,
 	relayFeedback: null,
@@ -32,6 +47,7 @@ const state = {
 	schedulerFeedback: null,
 	updateBusy: false,
 	updateFeedback: null,
+	actionForm: createActionFormState(),
 	schedulerForm: createSchedulerFormState(),
 };
 
@@ -40,6 +56,9 @@ const routes = {
 	login: '/api/auth/login',
 	logout: '/api/auth/logout',
 	status: '/api/status',
+	actions: '/api/actions',
+	actionCreate: '/api/actions/create',
+	actionUpdate: '/api/actions/update',
 	updateStatus: '/api/update',
 	updateUpload: '/api/update/upload',
 	updateNow: '/api/update/remote-check',
@@ -76,9 +95,9 @@ const viewConfig = {
 	[views.actions]: {
 		path: '/',
 		aliases: ['/', '/actions'],
-		eyebrow: 'Actions First Local Control',
-		title: 'Primary actions stay within reach',
-		description: 'Direct controls respond immediately, then settle from live device truth. This page is the default authenticated landing experience.',
+		eyebrow: 'Configured Action Catalog',
+		title: 'Configured actions stay within reach',
+		description: 'Create and edit configured relay actions from server-owned truth. Manual execution and schedule sharing remain explicitly deferred until the next phase.',
 	},
 	[views.schedules]: {
 		path: '/schedules',
@@ -301,6 +320,10 @@ function setRelayFeedback(message, tone = 'info') {
 	state.relayFeedback = message ? { message, tone } : null;
 }
 
+function setActionFeedback(message, tone = 'info') {
+	state.actionFeedback = message ? { message, tone } : null;
+}
+
 function setSchedulerFeedback(message, tone = 'info') {
 	state.schedulerFeedback = message ? { message, tone } : null;
 }
@@ -332,6 +355,10 @@ function setBusy(button, busy, label) {
 
 function resetSchedulerForm(overrides = {}) {
 	state.schedulerForm = createSchedulerFormState(overrides);
+}
+
+function resetActionForm(overrides = {}) {
+	state.actionForm = createActionFormState(overrides);
 }
 
 function isLoginPage() {
@@ -452,15 +479,19 @@ function showLoginView(message, tone = 'info') {
 	state.authenticated = false;
 	state.sessionUsername = '';
 	state.status = null;
+	state.actionsSnapshot = null;
 	state.scheduleSnapshot = null;
 	state.updateSnapshot = null;
+	state.actionsBusy = false;
 	state.relayCommandPending = false;
 	state.relayCommandDesiredState = false;
 	state.schedulerBusy = false;
 	state.updateBusy = false;
+	setActionFeedback(null);
 	setRelayFeedback(null);
 	setSchedulerFeedback(null);
 	setUpdateFeedback(null);
+	resetActionForm();
 	resetSchedulerForm();
 	if (!isLoginPage()) {
 		stashFlashMessage(message, tone);
@@ -634,26 +665,27 @@ function renderPanelSummary() {
 		return;
 	}
 
-	const relay = effectiveRelaySnapshot(state.status.relay);
+	const actionsSnapshot = state.actionsSnapshot;
 	const networkLabel = connectivityLabels[state.status.network.connectivity] || humanizeHyphenated(state.status.network.connectivity);
-	const nextRun = state.scheduleSnapshot?.nextRun?.available
-		? `${state.scheduleSnapshot.nextRun.scheduleId} · ${formatUtcMinute(state.scheduleSnapshot.nextRun.normalizedUtcMinute)}`
-		: 'No enabled schedule queued';
 	const updateState = state.updateSnapshot?.state
 		? humanizeHyphenated(state.updateSnapshot.state)
 		: 'Unavailable';
 	const updateDetail = state.updateSnapshot
 		? (state.updateSnapshot.applyReady ? 'A staged image is ready for explicit apply.' : (state.updateSnapshot.pendingWarning || 'No staged image is pending.'))
 		: 'Update snapshot not loaded yet.';
-	const actionsValue = relay
-		? (relay.configured === false ? 'Not configured' : `Relay ${relayStateLabel(relay.actualState)}`)
-		: 'Unavailable';
-	const actionsDetail = relay
-		? (relay.configured === false
-			? 'GPIO-backed outputs must be configured before relay actions are exposed.'
-			: `Source ${humanizeHyphenated(relay.source)} · Next schedule ${nextRun}`)
-		: 'Relay truth is unavailable.';
-	const actionsTone = relay?.configured === false ? 'warn' : (relay?.actualState ? 'ok' : '');
+	const actionCount = Number(actionsSnapshot?.actionCount || 0);
+	const readyCount = (actionsSnapshot?.actions || []).filter((action) => action.usabilityCode === 'ready').length;
+	const disabledCount = (actionsSnapshot?.actions || []).filter((action) => action.usabilityCode === 'disabled').length;
+	const needsAttentionCount = (actionsSnapshot?.actions || []).filter((action) => action.usabilityCode === 'needs-attention').length;
+	const actionsValue = !actionsSnapshot
+		? 'Loading'
+		: (actionCount === 0 ? 'No actions' : `${actionCount} configured`);
+	const actionsDetail = !actionsSnapshot
+		? 'Configured action truth is still loading.'
+		: (actionCount === 0
+			? 'Create your first action to bind an approved output and relay command.'
+			: `Ready ${readyCount} · Disabled ${disabledCount} · Needs attention ${needsAttentionCount}`);
+	const actionsTone = !actionsSnapshot ? '' : (needsAttentionCount > 0 ? 'warn' : (actionCount > 0 ? 'ok' : ''));
 
 	elements.panelSummary.innerHTML = [
 		summaryTile('Device', state.status.device.board || 'Unavailable', `Panel port ${state.status.device.panelPort} · APP_READY ${boolLabel(state.status.device.ready)}`, state.status.device.ready ? 'ok' : 'warn'),
@@ -781,10 +813,165 @@ function renderActionsInfoCard(relay) {
 	`;
 }
 
-function renderActionsSurface(statusPayload) {
-	const relay = effectiveRelaySnapshot(statusPayload?.relay || null);
-	renderRelayCard(relay);
-	renderActionsInfoCard(relay);
+function actionUsabilityTone(action) {
+	switch (action?.usabilityCode) {
+	case 'ready':
+		return 'ok';
+	case 'disabled':
+		return 'warn';
+	case 'needs-attention':
+	default:
+		return 'danger';
+	}
+}
+
+function actionFeedbackMarkup() {
+	if (!state.actionFeedback) {
+		return '';
+	}
+
+	return `<div class="${noticeClass(state.actionFeedback.tone)}">${escapeHtml(state.actionFeedback.message)}</div>`;
+}
+
+function ensureActionFormChoices(snapshot) {
+	const outputChoices = snapshot?.outputChoices || [];
+	const commandChoices = snapshot?.commandChoices || [];
+
+	if (outputChoices.length && !outputChoices.some((choice) => choice.outputKey === state.actionForm.outputKey)) {
+		state.actionForm.outputKey = outputChoices[0].outputKey;
+	}
+
+	if (commandChoices.length && !commandChoices.some((choice) => choice.commandKey === state.actionForm.commandKey)) {
+		state.actionForm.commandKey = commandChoices[0].commandKey;
+	}
+
+	if (state.actionForm.mode === 'edit') {
+		const stillExists = (snapshot?.actions || []).some((action) => action.actionId === state.actionForm.actionId);
+		if (!stillExists) {
+			resetActionForm({
+				outputKey: outputChoices[0]?.outputKey || '',
+				commandKey: commandChoices[0]?.commandKey || 'relay-on',
+			});
+		}
+	}
+}
+
+function renderActionCatalogRows(snapshot) {
+	if (!snapshot?.actions?.length) {
+		return `
+			<div class="${ui.placeholder}">
+				<strong class="block text-slate-50">No configured actions</strong>
+				<p class="mt-2 ${ui.muted}">Create your first action to bind an approved output and relay command. Manual execution and schedule selection stay deferred until Phase 10.</p>
+				<button class="${buttonClass({ full: false })} mt-4" type="button" data-action-create-first>Create action</button>
+			</div>
+		`;
+	}
+
+	return snapshot.actions.map((action) => `
+		<div class="${ui.schedulerRow}">
+			<div class="grid gap-3">
+				<div class="${ui.rowFlex}">
+					<strong>${escapeHtml(action.displayName)}</strong>
+					<span class="${badgeClass(actionUsabilityTone(action))}">${escapeHtml(action.usability)}</span>
+					<span class="${badgeClass(action.enabled ? 'ok' : 'warn')}">${action.enabled ? 'Enabled' : 'Disabled'}</span>
+				</div>
+				<div class="${classNames(ui.rowFlex, ui.muted)}">
+					<code class="${ui.code}">${escapeHtml(action.actionId)}</code>
+					<span>${escapeHtml(action.outputSummary)}</span>
+				</div>
+				<div class="${ui.muted}">${escapeHtml(action.usabilityDetail || 'Server-owned action truth')}</div>
+			</div>
+			<div class="${ui.rowFlex}">
+				<button class="${buttonClass({ ghost: true, full: false })}" type="button" data-action-edit="${escapeHtml(action.actionId)}" ${state.actionsBusy ? 'disabled' : ''}>Edit action</button>
+			</div>
+		</div>
+	`).join('');
+}
+
+function renderActionForm(snapshot) {
+	const formState = state.actionForm;
+	const outputChoices = snapshot?.outputChoices || [];
+	const commandChoices = snapshot?.commandChoices || [];
+	const heading = formState.mode === 'edit' ? `Edit ${formState.displayName || formState.actionId}` : 'Create action';
+	const primaryLabel = state.actionsBusy
+		? (formState.mode === 'edit' ? 'Saving action…' : 'Creating action…')
+		: (formState.mode === 'edit' ? 'Save action changes' : 'Create action');
+
+	if (!snapshot) {
+		return `
+			<div class="${ui.insetPanel}">
+				<p class="${ui.eyebrow}">Action form</p>
+				<h3 class="${ui.title}">Loading action contract</h3>
+				<div class="${ui.placeholder}">Waiting for the configured-action snapshot before the management form can render.</div>
+			</div>
+		`;
+	}
+
+	return `
+		<div class="${ui.insetPanel}">
+			<p class="${ui.eyebrow}">${escapeHtml(formState.mode === 'edit' ? 'Edit action' : 'Create action')}</p>
+			<h3 class="${ui.title}">${escapeHtml(heading)}</h3>
+			<p class="${ui.muted}">One configured action equals one executable relay command. This phase only manages the catalog; execute controls and schedule selection stay deferred until Phase 10.</p>
+			${actionFeedbackMarkup()}
+			<form class="${ui.gridGap3} mt-4" data-action-form>
+				${formState.mode === 'edit' ? `
+					<div class="grid gap-2">
+						<label for="action-id" class="text-[0.95rem] leading-relaxed text-slate-100">Action ID</label>
+						<input id="action-id" class="${ui.inputBase}" name="actionId" value="${escapeHtml(formState.actionId)}" readonly>
+					</div>
+				` : `<input type="hidden" name="actionId" value="">`}
+				<div class="grid gap-2">
+					<label for="action-display-name" class="text-[0.95rem] leading-relaxed text-slate-100">Display name</label>
+					<input id="action-display-name" class="${ui.inputBase}" name="displayName" value="${escapeHtml(formState.displayName)}" placeholder="Relay 0 On" required>
+				</div>
+				<div class="grid gap-2">
+					<label for="action-output-key" class="text-[0.95rem] leading-relaxed text-slate-100">Approved output</label>
+					<select id="action-output-key" class="${ui.inputBase}" name="outputKey">
+						${outputChoices.map((choice) => `<option value="${escapeHtml(choice.outputKey)}" ${choice.outputKey === formState.outputKey ? 'selected' : ''}>${escapeHtml(choice.label)}</option>`).join('')}
+					</select>
+				</div>
+				<div class="grid gap-2">
+					<label for="action-command-key" class="text-[0.95rem] leading-relaxed text-slate-100">Command</label>
+					<select id="action-command-key" class="${ui.inputBase}" name="commandKey">
+						${commandChoices.map((choice) => `<option value="${escapeHtml(choice.commandKey)}" ${choice.commandKey === formState.commandKey ? 'selected' : ''}>${escapeHtml(choice.label)}</option>`).join('')}
+					</select>
+				</div>
+				<label class="inline-flex items-center gap-2.5 text-[0.95rem] leading-relaxed text-slate-100">
+					<input type="checkbox" name="enabled" ${formState.enabled ? 'checked' : ''}>
+					<span>Enabled immediately after save</span>
+				</label>
+				<div class="${noticeClass('info')}">The server generates the stable action ID on create and preserves it on later edits so future schedule links do not churn when the display name changes.</div>
+				<div class="${ui.rowFlex}">
+					<button class="${buttonClass({ full: false })}" type="submit" ${state.actionsBusy ? 'disabled' : ''}>${escapeHtml(primaryLabel)}</button>
+					${formState.mode === 'edit' ? `<button class="${buttonClass({ ghost: true, full: false })}" type="button" data-action-cancel ${state.actionsBusy ? 'disabled' : ''}>Cancel edit</button>` : ''}
+				</div>
+			</form>
+		</div>
+	`;
+}
+
+function renderActionsSurface(snapshot) {
+	if (!elements.cards.relay || !elements.cards.actionsInfo) {
+		return;
+	}
+
+	ensureActionFormChoices(snapshot);
+	elements.cards.relay.innerHTML = `
+		<p class="${ui.eyebrow}">Configured action catalog</p>
+		<div class="grid gap-[18px]">
+			<div>
+				<h3 class="${ui.title}">Configured actions</h3>
+				<p class="${ui.muted}">Friendly names, approved outputs, enabled state, and usability all come from the device. This page no longer pretends the old hard-wired relay toggles are the final operator workflow.</p>
+			</div>
+			<div class="${ui.rowFlex}">
+				<span class="${badgeClass(snapshot?.actionCount ? 'ok' : 'warn')}">${snapshot ? `${snapshot.actionCount}/${snapshot.maxActions} stored` : 'Loading catalog'}</span>
+				<span class="${badgeClass()}">Server-truth first</span>
+				<span class="${badgeClass('warn')}">Execution deferred</span>
+			</div>
+			<div class="grid gap-3">${renderActionCatalogRows(snapshot)}</div>
+		</div>
+	`;
+	elements.cards.actionsInfo.innerHTML = renderActionForm(snapshot);
 }
 
 function renderActiveView() {
@@ -801,7 +988,7 @@ function renderActiveView() {
 		break;
 	case views.actions:
 	default:
-		renderActionsSurface(state.status);
+		renderActionsSurface(state.actionsSnapshot);
 		break;
 	}
 }
@@ -1424,6 +1611,15 @@ async function refreshDashboard({ silent = false } = {}) {
 				throw new Error(`Status refresh failed (${statusResult.response.status})`);
 			}
 
+			const actionsResult = await requestJson(routes.actions, { method: 'GET' });
+			if (actionsResult.response.status === 401) {
+				showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
+				return false;
+			}
+			if (!actionsResult.response.ok || !actionsResult.data) {
+				throw new Error(`Action refresh failed (${actionsResult.response.status})`);
+			}
+
 			const updateResult = await requestJson(routes.updateStatus, { method: 'GET' });
 			if (updateResult.response.status === 401) {
 				showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
@@ -1443,6 +1639,7 @@ async function refreshDashboard({ silent = false } = {}) {
 			}
 
 			state.status = statusResult.data;
+			state.actionsSnapshot = actionsResult.data;
 			state.scheduleSnapshot = schedulesResult.data;
 			state.updateSnapshot = updateResult.data;
 			if (!state.authenticated) {
@@ -1452,7 +1649,7 @@ async function refreshDashboard({ silent = false } = {}) {
 			}
 			updateNetworkChrome(statusResult.data.network);
 			if (state.refreshNeedsAnnouncement) {
-				setAlert('Protected status, schedules, and OTA truth refreshed from the device.', 'success');
+				setAlert('Protected status, actions, schedules, and OTA truth refreshed from the device.', 'success');
 			}
 			return true;
 		} catch (error) {
@@ -1529,6 +1726,125 @@ async function handleRelaySet(desiredState) {
 		state.relayCommandDesiredState = false;
 		renderActiveView();
 	}
+}
+
+function syncActionFormFromDom(formElement) {
+	if (!formElement) {
+		return;
+	}
+
+	const formData = new FormData(formElement);
+	state.actionForm = createActionFormState({
+		mode: state.actionForm.mode,
+		actionId: String(formData.get('actionId') || '').trim(),
+		displayName: String(formData.get('displayName') || '').trim(),
+		outputKey: String(formData.get('outputKey') || '').trim(),
+		commandKey: String(formData.get('commandKey') || '').trim(),
+		enabled: Boolean(formElement.querySelector('[name="enabled"]')?.checked),
+	});
+}
+
+function actionApiErrorMessage(data, fallbackPrefix) {
+	const fieldPrefix = data?.field
+		? `${humanizeHyphenated(String(data.field).replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`))}: `
+		: '';
+	return `${fallbackPrefix}${fieldPrefix}${data?.detail || data?.error || 'Unknown error.'}`;
+}
+
+async function runActionMutation(route, payload) {
+	state.actionsBusy = true;
+	setActionFeedback('Refreshing configured action truth after this change…', 'warn');
+	renderActionsSurface(state.actionsSnapshot);
+
+	try {
+		const { response, data } = await requestJson(route, {
+			method: 'POST',
+			body: JSON.stringify(payload),
+		});
+
+		if (response.status === 401) {
+			showLoginView(SESSION_EXPIRED_MESSAGE, 'warn');
+			return false;
+		}
+
+		if (!response.ok || !data?.accepted) {
+			throw new Error(actionApiErrorMessage(data, 'Configured action update failed: '));
+		}
+
+		const refreshed = await refreshDashboard({ silent: true });
+		if (!refreshed) {
+			setActionFeedback('The configured action change was accepted, but the live action refresh did not complete yet.', 'warn');
+			return false;
+		}
+
+		setActionFeedback(null);
+		setAlert(data.detail || 'Configured action updated.', 'success');
+		return true;
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Configured action update failed.';
+		setActionFeedback(message, 'error');
+		setAlert(message, 'error');
+		return false;
+	} finally {
+		state.actionsBusy = false;
+		renderActionsSurface(state.actionsSnapshot);
+	}
+}
+
+async function handleActionFormSubmit() {
+	const formState = state.actionForm;
+	if (!state.actionsSnapshot) {
+		setActionFeedback('Configured action truth is still loading.', 'warn');
+		renderActionsSurface(state.actionsSnapshot);
+		return;
+	}
+
+	const payload = {
+		displayName: formState.displayName.trim(),
+		outputKey: formState.outputKey,
+		commandKey: formState.commandKey,
+		enabled: formState.enabled,
+	};
+
+	if (formState.mode === 'edit') {
+		payload.actionId = formState.actionId;
+	}
+
+	if (!payload.displayName || !payload.outputKey || !payload.commandKey) {
+		setActionFeedback('Enter a display name and choose both an approved output and command before saving.', 'warn');
+		setAlert('Enter a display name and choose both an approved output and command before saving.', 'warn');
+		renderActionsSurface(state.actionsSnapshot);
+		return;
+	}
+
+	const route = formState.mode === 'edit' ? routes.actionUpdate : routes.actionCreate;
+	const ok = await runActionMutation(route, payload);
+	if (ok) {
+		resetActionForm({
+			outputKey: state.actionsSnapshot?.outputChoices?.[0]?.outputKey || '',
+			commandKey: state.actionsSnapshot?.commandChoices?.[0]?.commandKey || 'relay-on',
+		});
+		renderActionsSurface(state.actionsSnapshot);
+	}
+}
+
+function loadActionEdit(actionId) {
+	const action = state.actionsSnapshot?.actions?.find((entry) => entry.actionId === actionId);
+	if (!action) {
+		setAlert('That configured action is no longer available to edit.', 'warn');
+		return;
+	}
+
+	resetActionForm({
+		mode: 'edit',
+		actionId: action.actionId,
+		displayName: action.displayName,
+		outputKey: action.outputKey,
+		commandKey: action.commandKey,
+		enabled: action.enabled,
+	});
+	setActionFeedback(`Editing ${action.displayName}. Save to keep the new configured action values.`, 'info');
+	renderActionsSurface(state.actionsSnapshot);
 }
 
 function schedulerApiErrorMessage(data, fallbackPrefix) {
@@ -1929,6 +2245,46 @@ async function handleLogout() {
 	}
 }
 
+function handleActionCardInput(event) {
+	const form = event.target.closest('[data-action-form]');
+	if (!form) {
+		return;
+	}
+
+	syncActionFormFromDom(form);
+	if (state.actionFeedback?.tone === 'error') {
+		setActionFeedback(null);
+	}
+}
+
+async function handleActionCardClick(event) {
+	const editButton = event.target.closest('[data-action-edit]');
+	if (editButton) {
+		loadActionEdit(editButton.dataset.actionEdit || '');
+		return;
+	}
+
+	if (event.target.closest('[data-action-cancel]') || event.target.closest('[data-action-create-first]')) {
+		resetActionForm({
+			outputKey: state.actionsSnapshot?.outputChoices?.[0]?.outputKey || '',
+			commandKey: state.actionsSnapshot?.commandChoices?.[0]?.commandKey || 'relay-on',
+		});
+		setActionFeedback(null);
+		renderActionsSurface(state.actionsSnapshot);
+	}
+}
+
+async function handleActionCardSubmit(event) {
+	const form = event.target.closest('[data-action-form]');
+	if (!form) {
+		return;
+	}
+
+	event.preventDefault();
+	syncActionFormFromDom(form);
+	await handleActionFormSubmit();
+}
+
 function handleSchedulerCardInput(event) {
 	const form = event.target.closest('[data-scheduler-form]');
 	if (!form) {
@@ -2031,7 +2387,10 @@ function attachEvents() {
 	elements.refreshButton?.addEventListener('click', () => { void refreshDashboard({ silent: false }); });
 	elements.logoutButton?.addEventListener('click', handleLogout);
 	elements.panelNav?.addEventListener('click', handlePanelNavClick);
-	elements.cards.relay?.addEventListener('click', (event) => { void handleRelayCardClick(event); });
+	elements.views.actions?.addEventListener('input', handleActionCardInput);
+	elements.views.actions?.addEventListener('change', handleActionCardInput);
+	elements.views.actions?.addEventListener('click', (event) => { void handleActionCardClick(event); });
+	elements.views.actions?.addEventListener('submit', (event) => { void handleActionCardSubmit(event); });
 	elements.cards.scheduler?.addEventListener('input', handleSchedulerCardInput);
 	elements.cards.scheduler?.addEventListener('change', handleSchedulerCardInput);
 	elements.cards.scheduler?.addEventListener('click', (event) => { void handleSchedulerCardClick(event); });
@@ -2055,7 +2414,7 @@ function startPolling() {
 			return;
 		}
 
-		if (state.authenticated && !state.schedulerBusy && !state.relayCommandPending &&
+		if (state.authenticated && !state.actionsBusy && !state.schedulerBusy && !state.relayCommandPending &&
 			!state.updateBusy && !updateInputHasSelectedFile()) {
 			void refreshDashboard({ silent: true });
 		}
