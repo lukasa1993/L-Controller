@@ -7,7 +7,7 @@ current_phase_name: configured action model and panel management
 current_plan: "09-03"
 status: verifying
 stopped_at: Completed 09-03-PLAN.md
-last_updated: "2026-03-11T16:55:28Z"
+last_updated: "2026-03-11T17:56:03Z"
 last_activity: 2026-03-11
 progress:
   total_phases: 2
@@ -34,12 +34,12 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 **Total Plans in Phase:** 3
 **Status:** Phase complete — ready for verification
 **Last Activity:** 2026-03-11
-**Last Activity Description:** Completed quick task 7: Fix panel HTTP navigation stalls by isolating requests and adding a configurable 10s timeout
+**Last Activity Description:** Completed quick task 8: Add firmware-side diagnostics for terminated panel HTTP requests and request-capacity failures
 
 Phase: 1 of 2 (configured action model and panel management) - ready for verification
 Plan: 09-03 of 3
 Status: Phase complete — ready for verification
-Last activity: 2026-03-11 - Completed quick task 7: Fix panel HTTP navigation stalls by isolating requests and adding a configurable 10s timeout
+Last activity: 2026-03-11 - Completed quick task 8: Add firmware-side diagnostics for terminated panel HTTP requests and request-capacity failures
 
 Progress: [██████████] 100%
 
@@ -196,6 +196,7 @@ None yet.
 | 4 | test ota update build next version with minimal changes and update with ota | 2026-03-10 | f780aa0 | Gaps | [4-test-ota-update-build-next-version-with-](./quick/4-test-ota-update-build-next-version-with-/) |
 | 5 | simplify dashboard into page navigation with actions first, fix panel flicker/reload experience, and prepare UI path for future multi-relay GPIO configuration | 2026-03-10 | 66de52f | Partial verification | [5-simplify-dashboard-into-page-navigation-](./quick/5-simplify-dashboard-into-page-navigation-/) |
 | 7 | Fix panel HTTP navigation stalls by isolating requests and adding a configurable 10s timeout | 2026-03-11 | 2782e85 | Needs Review | [7-fix-panel-http-navigation-stalls-by-isol](./quick/7-fix-panel-http-navigation-stalls-by-isol/) |
+| 8 | Add firmware-side diagnostics for terminated panel HTTP requests and request-capacity failures | 2026-03-11 | 160455e | Needs Review | [8-http-request-doesn-t-seem-to-resolve-pro](./quick/8-http-request-doesn-t-seem-to-resolve-pro/) |
 
 ## Session Continuity
 
