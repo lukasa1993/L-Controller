@@ -311,9 +311,20 @@ function setAlert(message, tone = 'info') {
 		return;
 	}
 
+	elements.alert.hidden = false;
 	elements.alert.textContent = message;
 	elements.alert.dataset.tone = tone;
 	elements.alert.className = alertClass(tone);
+}
+
+function clearAlert() {
+	if (!elements.alert) {
+		return;
+	}
+
+	elements.alert.hidden = true;
+	elements.alert.textContent = '';
+	delete elements.alert.dataset.tone;
 }
 
 function setBusy(button, busy, label) {
@@ -2361,7 +2372,14 @@ async function bootstrapSession() {
 	const defaultLoginMessage = 'Sign in to continue.';
 	const unavailableMessage = 'Panel unavailable.';
 
-	setAlert(flash?.message || 'Checking session...', flash?.tone || 'info');
+	if (flash?.message) {
+		setAlert(flash.message, flash.tone || 'info');
+	} else if (isLoginPage()) {
+		setAlert('Checking session...', 'info');
+	} else {
+		clearAlert();
+	}
+
 	try {
 		const { response, data } = await requestJson(routes.session, { method: 'GET' });
 		if (response.ok && data?.authenticated) {
@@ -2370,7 +2388,10 @@ async function bootstrapSession() {
 				navigateTo(requestedNextPath());
 				return;
 			}
-			await refreshDashboard({ silent: true });
+
+			showDashboardView();
+			renderCurrentPage();
+			void refreshDashboard({ silent: true });
 			return;
 		}
 		showLoginView(flash?.message || defaultLoginMessage, flash?.tone || 'info');
