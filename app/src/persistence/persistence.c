@@ -8,8 +8,10 @@
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/sys/util.h>
 
+#include "actions/actions.h"
 #include "app/app_config.h"
 #include "persistence/persistence.h"
+#include "relay/relay.h"
 #include "scheduler/scheduler.h"
 
 LOG_MODULE_REGISTER(persistence, CONFIG_LOG_DEFAULT_LEVEL);
@@ -125,6 +127,8 @@ const char *persistence_migration_action_text(
 		return "reset-to-defaults";
 	case PERSISTENCE_MIGRATION_ACTION_RESEED_FROM_CONFIG:
 		return "reseed-from-config";
+	case PERSISTENCE_MIGRATION_ACTION_LEGACY_ACTIONS_NORMALIZED:
+		return "legacy-actions-normalized";
 	default:
 		return "unknown";
 	}
@@ -293,6 +297,105 @@ static void persisted_action_defaults(
 {
 	memset(actions, 0, sizeof(*actions));
 	actions->schema_version = persistence_expected_layout_version(store);
+}
+
+struct persisted_action_v1 {
+	char action_id[PERSISTED_ACTION_ID_MAX_LEN];
+	bool enabled;
+	bool relay_on;
+};
+
+struct persisted_action_catalog_v1 {
+	uint32_t schema_version;
+	uint32_t count;
+	struct persisted_action_v1 entries[PERSISTED_ACTION_MAX_COUNT];
+};
+
+static bool persisted_action_catalog_v1_valid(
+	const struct persisted_action_catalog_v1 *actions)
+{
+	uint32_t index;
+	uint32_t match_index;
+
+	if (actions == NULL || actions->count > PERSISTED_ACTION_MAX_COUNT) {
+		return false;
+	}
+
+	for (index = 0U; index < actions->count; ++index) {
+		const struct persisted_action_v1 *action = &actions->entries[index];
+
+		if (!c_string_is_non_empty(action->action_id, sizeof(action->action_id))) {
+			return false;
+		}
+
+		for (match_index = index + 1U; match_index < actions->count; ++match_index) {
+			if (strcmp(action->action_id,
+				   actions->entries[match_index].action_id) == 0) {
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+static void persisted_action_from_legacy(
+	const struct persisted_action_v1 *legacy_action,
+	struct persisted_action *action)
+{
+	memset(action, 0, sizeof(*action));
+	memcpy(action->action_id, legacy_action->action_id, sizeof(action->action_id));
+	(void)copy_c_string(action->display_name,
+			    sizeof(action->display_name),
+			    legacy_action->action_id);
+	(void)copy_c_string(action->output_key,
+			    sizeof(action->output_key),
+			    RELAY_OUTPUT_KEY_RELAY0);
+	action->enabled = legacy_action->enabled;
+	action->type = PERSISTED_ACTION_TYPE_RELAY_COMMAND;
+	action->command = legacy_action->relay_on ?
+		PERSISTED_ACTION_COMMAND_RELAY_ON :
+		PERSISTED_ACTION_COMMAND_RELAY_OFF;
+}
+
+static int persisted_action_catalog_from_legacy(
+	const struct persistence_store *store,
+	const struct persisted_action_catalog_v1 *legacy_actions,
+	struct persisted_action_catalog *actions,
+	uint32_t *converted_count_out,
+	uint32_t *dropped_legacy_count_out)
+{
+	uint32_t converted_count = 0U;
+	uint32_t dropped_legacy_count = 0U;
+	uint32_t index;
+
+	persisted_action_defaults(store, actions);
+
+	for (index = 0U; index < legacy_actions->count; ++index) {
+		const struct persisted_action_v1 *legacy_action = &legacy_actions->entries[index];
+
+		if (action_dispatcher_action_id_is_legacy_builtin(legacy_action->action_id)) {
+			dropped_legacy_count++;
+			continue;
+		}
+
+		if (actions->count >= PERSISTED_ACTION_MAX_COUNT) {
+			return -ENOSPC;
+		}
+
+		persisted_action_from_legacy(legacy_action, &actions->entries[actions->count++]);
+		converted_count++;
+	}
+
+	if (converted_count_out != NULL) {
+		*converted_count_out = converted_count;
+	}
+
+	if (dropped_legacy_count_out != NULL) {
+		*dropped_legacy_count_out = dropped_legacy_count;
+	}
+
+	return 0;
 }
 
 static void persisted_relay_defaults(
@@ -1041,8 +1144,12 @@ int persistence_store_load_actions(
 	struct persistence_section_status *status)
 {
 	struct persisted_action_catalog candidate;
+	struct persisted_action_catalog_v1 legacy_candidate;
 	struct persistence_migration_plan migration_plan;
 	enum persistence_load_state state;
+	uint32_t converted_count = 0U;
+	uint32_t dropped_legacy_count = 0U;
+	ssize_t read_ret;
 	int ret;
 
 	if (!persistence_store_is_ready(store) || actions == NULL || status == NULL) {
@@ -1050,12 +1157,18 @@ int persistence_store_load_actions(
 	}
 
 	memset(&candidate, 0, sizeof(candidate));
+	memset(&legacy_candidate, 0, sizeof(legacy_candidate));
 	migration_plan = persistence_plan_section_migration(store,
 						  PERSISTENCE_SECTION_ACTIONS,
 						  0U);
-	state = persistence_read_blob(store, PERSISTENCE_NVS_ID_ACTIONS, &candidate,
-				      sizeof(candidate));
-	if (state == PERSISTENCE_LOAD_STATE_LOADED) {
+	read_ret = nvs_read(&store->nvs, PERSISTENCE_NVS_ID_ACTIONS, &candidate,
+			    sizeof(candidate));
+	if (read_ret == -ENOENT || read_ret == 0) {
+		state = PERSISTENCE_LOAD_STATE_EMPTY_DEFAULT;
+	} else if (read_ret < 0) {
+		state = PERSISTENCE_LOAD_STATE_INVALID_RESET;
+	} else if ((size_t)read_ret == sizeof(candidate)) {
+		state = PERSISTENCE_LOAD_STATE_LOADED;
 		migration_plan = persistence_plan_section_migration(store,
 							  PERSISTENCE_SECTION_ACTIONS,
 							  candidate.schema_version);
@@ -1073,6 +1186,34 @@ int persistence_store_load_actions(
 		} else {
 			state = PERSISTENCE_LOAD_STATE_INVALID_RESET;
 		}
+	} else if ((size_t)read_ret == sizeof(legacy_candidate)) {
+		read_ret = nvs_read(&store->nvs, PERSISTENCE_NVS_ID_ACTIONS, &legacy_candidate,
+				    sizeof(legacy_candidate));
+		if ((size_t)read_ret == sizeof(legacy_candidate) &&
+		    persisted_action_catalog_v1_valid(&legacy_candidate)) {
+			ret = persisted_action_catalog_from_legacy(store,
+							       &legacy_candidate,
+							       actions,
+							       &converted_count,
+							       &dropped_legacy_count);
+			if (ret == 0) {
+				*status = persistence_make_status(
+					PERSISTENCE_SECTION_ACTIONS,
+					PERSISTENCE_LOAD_STATE_LOADED,
+					false,
+					PERSISTENCE_MIGRATION_ACTION_LEGACY_ACTIONS_NORMALIZED,
+					legacy_candidate.schema_version,
+					migration_plan.expected_schema_version);
+				LOG_WRN("Normalized legacy built-in action records converted=%u dropped=%u",
+					(unsigned int)converted_count,
+					(unsigned int)dropped_legacy_count);
+				return persistence_write_actions_section(store, actions);
+			}
+		}
+
+		state = PERSISTENCE_LOAD_STATE_INVALID_RESET;
+	} else {
+		state = PERSISTENCE_LOAD_STATE_INVALID_RESET;
 	}
 
 	persisted_action_defaults(store, actions);

@@ -108,44 +108,6 @@ static const struct persisted_action *action_dispatcher_find_catalog_action(
 	return NULL;
 }
 
-static void action_dispatch_catalog_copy(
-	const struct persisted_action_catalog *catalog,
-	struct persisted_action_catalog_save_request *request)
-{
-	uint32_t copy_count;
-
-	memset(request, 0, sizeof(*request));
-	if (catalog == NULL) {
-		return;
-	}
-
-	copy_count = MIN(catalog->count, PERSISTED_ACTION_MAX_COUNT);
-	request->count = catalog->count;
-	memcpy(request->entries, catalog->entries,
-	       sizeof(request->entries[0]) * copy_count);
-}
-
-static struct persisted_action *action_dispatch_catalog_find_mutable(
-	struct persisted_action_catalog_save_request *request,
-	const char *action_id)
-{
-	uint32_t max_count;
-	uint32_t index;
-
-	if (request == NULL || action_id == NULL) {
-		return NULL;
-	}
-
-	max_count = MIN(request->count, PERSISTED_ACTION_MAX_COUNT);
-	for (index = 0U; index < max_count; ++index) {
-		if (strcmp(request->entries[index].action_id, action_id) == 0) {
-			return &request->entries[index];
-		}
-	}
-
-	return NULL;
-}
-
 static void action_dispatcher_fill_action_record(
 	struct persisted_action *action,
 	const char *action_id,
@@ -202,95 +164,6 @@ static int action_dispatcher_build_legacy_action(
 	}
 
 	return -ENOENT;
-}
-
-static int action_dispatch_catalog_ensure_builtin(
-	struct persisted_action_catalog_save_request *request,
-	const char *action_id,
-	const char *display_name,
-	enum persisted_action_command command,
-	bool *changed)
-{
-	struct persisted_action *entry;
-
-	entry = action_dispatch_catalog_find_mutable(request, action_id);
-	if (entry == NULL) {
-		if (request->count >= PERSISTED_ACTION_MAX_COUNT) {
-			return -ENOSPC;
-		}
-
-		entry = &request->entries[request->count++];
-		action_dispatcher_fill_action_record(entry,
-						    action_id,
-						    display_name,
-						    RELAY_OUTPUT_KEY_RELAY0,
-						    true,
-						    command);
-		*changed = true;
-		return 0;
-	}
-
-	if (!entry->enabled ||
-	    entry->command != command ||
-	    entry->type != PERSISTED_ACTION_TYPE_RELAY_COMMAND ||
-	    strcmp(entry->display_name, display_name) != 0 ||
-	    strcmp(entry->output_key, RELAY_OUTPUT_KEY_RELAY0) != 0) {
-		action_dispatcher_fill_action_record(entry,
-						    action_id,
-						    display_name,
-						    RELAY_OUTPUT_KEY_RELAY0,
-						    true,
-						    command);
-		*changed = true;
-	}
-
-	return 0;
-}
-
-static int action_dispatcher_ensure_builtin_actions(
-	struct action_dispatcher *dispatcher)
-{
-	struct persisted_action_catalog_save_request save_request;
-	struct app_context *app_context = dispatcher->app_context;
-	bool changed = false;
-	int ret;
-
-	action_dispatch_catalog_copy(&app_context->persisted_config.actions,
-				     &save_request);
-
-	ret = action_dispatch_catalog_ensure_builtin(&save_request,
-				     relay_builtin_off_action_id,
-				     relay_public_off_action_label,
-				     PERSISTED_ACTION_COMMAND_RELAY_OFF,
-				     &changed);
-	if (ret != 0) {
-		return ret;
-	}
-
-	ret = action_dispatch_catalog_ensure_builtin(&save_request,
-				     relay_builtin_on_action_id,
-				     relay_public_on_action_label,
-				     PERSISTED_ACTION_COMMAND_RELAY_ON,
-				     &changed);
-	if (ret != 0) {
-		return ret;
-	}
-
-	if (!changed) {
-		return 0;
-	}
-
-	ret = persistence_store_save_actions(&app_context->persistence,
-					     &app_context->persisted_config,
-					     &save_request);
-	if (ret != 0) {
-		LOG_ERR("Failed to persist built-in relay actions: %d", ret);
-		return ret;
-	}
-
-	LOG_INF("Seeded built-in relay actions count=%u",
-		(unsigned int)app_context->persisted_config.actions.count);
-	return 0;
 }
 
 static enum relay_status_source action_dispatcher_relay_source(
@@ -664,8 +537,6 @@ const char *action_dispatcher_action_id_from_public_key(const char *public_key)
 int action_dispatcher_init(struct action_dispatcher *dispatcher,
 			   struct app_context *app_context)
 {
-	int ret;
-
 	if (dispatcher == NULL || app_context == NULL) {
 		return -EINVAL;
 	}
@@ -675,12 +546,7 @@ int action_dispatcher_init(struct action_dispatcher *dispatcher,
 	};
 	k_mutex_init(&dispatcher->lock);
 
-	ret = action_dispatcher_ensure_builtin_actions(dispatcher);
-	if (ret != 0) {
-		return ret;
-	}
-
-	LOG_INF("Action dispatcher ready actions=%u",
+	LOG_INF("Action dispatcher ready configured_actions=%u legacy_compat=enabled",
 		(unsigned int)app_context->persisted_config.actions.count);
 	return 0;
 }

@@ -39,6 +39,7 @@ static bool persistence_status_requires_warning(
 	const struct persistence_section_status *status)
 {
 	return status->reseeded ||
+	       status->migration_action != PERSISTENCE_MIGRATION_ACTION_NONE ||
 	       status->state == PERSISTENCE_LOAD_STATE_INVALID_RESET ||
 	       status->state == PERSISTENCE_LOAD_STATE_INCOMPATIBLE_RESET;
 }
@@ -79,6 +80,17 @@ static void log_persistence_section_status(
 			section_text,
 			state_text,
 			suffix);
+		return;
+	}
+
+	if (status->migration_action != PERSISTENCE_MIGRATION_ACTION_NONE) {
+		LOG_WRN("Persistence %s: %s%s (stored schema v%u -> layout v%u, migration=%s)",
+			section_text,
+			state_text,
+			suffix,
+			status->stored_schema_version,
+			status->expected_schema_version,
+			migration_text);
 		return;
 	}
 
