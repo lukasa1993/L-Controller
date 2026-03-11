@@ -154,6 +154,7 @@ struct panel_update_upload_route_context {
 	bool stage_started;
 	bool clear_cookie;
 	bool rejected;
+	bool failure_logged;
 	enum http_status rejected_status;
 	size_t bytes_received;
 	size_t content_length;
@@ -291,6 +292,104 @@ static int panel_http_write_const_json_response(struct http_response_ctx *respon
 	response_ctx->body_len = strlen(body);
 	response_ctx->final_chunk = true;
 	return 0;
+}
+
+static const char *panel_http_data_status_name(enum http_data_status status)
+{
+	switch (status) {
+	case HTTP_SERVER_DATA_ABORTED:
+		return "aborted";
+	case HTTP_SERVER_DATA_FINAL:
+		return "final";
+	default:
+		return "in-progress";
+	}
+}
+
+static void panel_http_log_route_capacity(const char *route,
+					  struct http_client_ctx *client)
+{
+	LOG_WRN("Panel request dropped route=%s reason=request-capacity client=%p route_pool=%u",
+		route != NULL ? route : "unknown",
+		(void *)client,
+		PANEL_ROUTE_POOL_SIZE);
+}
+
+static void *panel_http_acquire_route_context_logged(const char *route,
+						     void *pool,
+						     size_t slot_count,
+						     size_t slot_size,
+						     struct http_client_ctx *client)
+{
+	void *route_ctx = panel_http_acquire_route_context(pool, slot_count, slot_size, client);
+
+	if (route_ctx == NULL) {
+		panel_http_log_route_capacity(route, client);
+	}
+
+	return route_ctx;
+}
+
+static void panel_http_log_request_termination(const char *route,
+					       struct http_client_ctx *client,
+					       enum http_data_status status,
+					       size_t chunk_len,
+					       size_t buffered_len,
+					       size_t expected_len)
+{
+	if (expected_len > 0U) {
+		LOG_WRN("Panel request terminated route=%s client=%p status=%s chunk=%zu buffered=%zu expected=%zu",
+			route != NULL ? route : "unknown",
+			(void *)client,
+			panel_http_data_status_name(status),
+			chunk_len,
+			buffered_len,
+			expected_len);
+		return;
+	}
+
+	LOG_WRN("Panel request terminated route=%s client=%p status=%s chunk=%zu buffered=%zu",
+		route != NULL ? route : "unknown",
+		(void *)client,
+		panel_http_data_status_name(status),
+		chunk_len,
+		buffered_len);
+}
+
+static void panel_http_log_upload_termination(
+	const char *route,
+	struct http_client_ctx *client,
+	const struct panel_update_upload_route_context *route_ctx,
+	const char *reason,
+	int error_code)
+{
+	const char *rejected_error = "none";
+
+	if (route_ctx != NULL && route_ctx->rejected_error[0] != '\0') {
+		rejected_error = route_ctx->rejected_error;
+	}
+
+	if (error_code != 0) {
+		LOG_ERR("Panel upload terminated route=%s client=%p reason=%s error=%d stage_started=%s rejected=%s bytes=%zu/%zu",
+			route != NULL ? route : "unknown",
+			(void *)client,
+			reason != NULL ? reason : "unknown",
+			error_code,
+			route_ctx != NULL && route_ctx->stage_started ? "true" : "false",
+			rejected_error,
+			route_ctx != NULL ? route_ctx->bytes_received : 0U,
+			route_ctx != NULL ? route_ctx->content_length : 0U);
+		return;
+	}
+
+	LOG_WRN("Panel upload terminated route=%s client=%p reason=%s stage_started=%s rejected=%s bytes=%zu/%zu",
+		route != NULL ? route : "unknown",
+		(void *)client,
+		reason != NULL ? reason : "unknown",
+		route_ctx != NULL && route_ctx->stage_started ? "true" : "false",
+		rejected_error,
+		route_ctx != NULL ? route_ctx->bytes_received : 0U,
+		route_ctx != NULL ? route_ctx->content_length : 0U);
 }
 
 static struct http_resource_detail_static panel_shell_index_resource_detail = {
@@ -810,6 +909,7 @@ static void panel_update_upload_route_reset(
 	route_ctx->stage_started = false;
 	route_ctx->clear_cookie = false;
 	route_ctx->rejected = false;
+	route_ctx->failure_logged = false;
 	route_ctx->rejected_status = HTTP_400_BAD_REQUEST;
 	route_ctx->bytes_received = 0U;
 	route_ctx->content_length = 0U;
@@ -1976,10 +2076,11 @@ static int panel_runtime_config_handler(struct http_client_ctx *client,
 	struct panel_runtime_config_route_context *route_ctx;
 	int written;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/panel-config.js",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(
 			response_ctx,
@@ -1991,7 +2092,17 @@ static int panel_runtime_config_handler(struct http_client_ctx *client,
 		return -EINVAL;
 	}
 
-	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/panel-config.js",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 0U,
+						 0U);
+		return 0;
+	}
+
+	if (status != HTTP_SERVER_DATA_FINAL) {
 		return 0;
 	}
 
@@ -2022,10 +2133,11 @@ static int panel_auth_login_handler(struct http_client_ctx *client,
 	const int expected_fields = BIT_MASK(ARRAY_SIZE(panel_auth_payload_descr));
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/auth/login",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(
 			response_ctx,
@@ -2039,6 +2151,12 @@ static int panel_auth_login_handler(struct http_client_ctx *client,
 	}
 
 	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/auth/login",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 route_ctx->request_body_len,
+						 0U);
 		panel_login_route_reset(route_ctx);
 		return 0;
 	}
@@ -2146,10 +2264,11 @@ static int panel_auth_logout_handler(struct http_client_ctx *client,
 	struct panel_auth_route_context *route_ctx;
 	char session_token[PANEL_AUTH_SESSION_TOKEN_LEN + 1];
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/auth/logout",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -2161,7 +2280,17 @@ static int panel_auth_logout_handler(struct http_client_ctx *client,
 		return -EINVAL;
 	}
 
-	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/auth/logout",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 0U,
+						 0U);
+		return 0;
+	}
+
+	if (status != HTTP_SERVER_DATA_FINAL) {
 		return 0;
 	}
 
@@ -2191,10 +2320,11 @@ static int panel_auth_session_handler(struct http_client_ctx *client,
 	bool authenticated;
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/auth/session",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -2206,7 +2336,17 @@ static int panel_auth_session_handler(struct http_client_ctx *client,
 		return -EINVAL;
 	}
 
-	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/auth/session",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 0U,
+						 0U);
+		return 0;
+	}
+
+	if (status != HTTP_SERVER_DATA_FINAL) {
 		return 0;
 	}
 
@@ -2247,10 +2387,11 @@ static int panel_action_snapshot_handler(struct http_client_ctx *client,
 	bool authenticated = false;
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/actions",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -2262,7 +2403,17 @@ static int panel_action_snapshot_handler(struct http_client_ctx *client,
 		return -EINVAL;
 	}
 
-	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/actions",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 0U,
+						 0U);
+		return 0;
+	}
+
+	if (status != HTTP_SERVER_DATA_FINAL) {
 		return 0;
 	}
 
@@ -2312,10 +2463,11 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 	char action_id[PERSISTED_ACTION_ID_MAX_LEN];
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/actions/create",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -2328,6 +2480,12 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 	}
 
 	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/actions/create",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 route_ctx->request_body_len,
+						 0U);
 		panel_action_route_reset(route_ctx);
 		return 0;
 	}
@@ -2513,10 +2671,11 @@ static int panel_action_update_handler(struct http_client_ctx *client,
 	int index;
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/actions/update",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -2529,6 +2688,12 @@ static int panel_action_update_handler(struct http_client_ctx *client,
 	}
 
 	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/actions/update",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 route_ctx->request_body_len,
+						 0U);
 		panel_action_route_reset(route_ctx);
 		return 0;
 	}
@@ -2708,10 +2873,11 @@ static int panel_relay_command_handler(struct http_client_ctx *client,
 	enum http_status status_code;
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/relay/desired-state",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -2724,6 +2890,12 @@ static int panel_relay_command_handler(struct http_client_ctx *client,
 	}
 
 	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/relay/desired-state",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 route_ctx->request_body_len,
+						 0U);
 		panel_relay_route_reset(route_ctx);
 		return 0;
 	}
@@ -2831,10 +3003,11 @@ static int panel_schedule_snapshot_handler(struct http_client_ctx *client,
 	bool authenticated = false;
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/schedules",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -2846,7 +3019,17 @@ static int panel_schedule_snapshot_handler(struct http_client_ctx *client,
 		return -EINVAL;
 	}
 
-	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/schedules",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 0U,
+						 0U);
+		return 0;
+	}
+
+	if (status != HTTP_SERVER_DATA_FINAL) {
 		return 0;
 	}
 
@@ -2896,10 +3079,11 @@ static int panel_schedule_create_handler(struct http_client_ctx *client,
 	int index;
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/schedules/create",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -2912,6 +3096,12 @@ static int panel_schedule_create_handler(struct http_client_ctx *client,
 	}
 
 	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/schedules/create",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 route_ctx->request_body_len,
+						 0U);
 		panel_schedule_route_reset(route_ctx);
 		return 0;
 	}
@@ -3069,10 +3259,11 @@ static int panel_schedule_update_handler(struct http_client_ctx *client,
 	int index;
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/schedules/update",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -3085,6 +3276,12 @@ static int panel_schedule_update_handler(struct http_client_ctx *client,
 	}
 
 	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/schedules/update",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 route_ctx->request_body_len,
+						 0U);
 		panel_schedule_route_reset(route_ctx);
 		return 0;
 	}
@@ -3235,10 +3432,11 @@ static int panel_schedule_delete_handler(struct http_client_ctx *client,
 	int index;
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/schedules/delete",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -3251,6 +3449,12 @@ static int panel_schedule_delete_handler(struct http_client_ctx *client,
 	}
 
 	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/schedules/delete",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 route_ctx->request_body_len,
+						 0U);
 		panel_schedule_route_reset(route_ctx);
 		return 0;
 	}
@@ -3373,10 +3577,11 @@ static int panel_schedule_enabled_handler(struct http_client_ctx *client,
 	int index;
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/schedules/set-enabled",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -3389,6 +3594,12 @@ static int panel_schedule_enabled_handler(struct http_client_ctx *client,
 	}
 
 	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/schedules/set-enabled",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 route_ctx->request_body_len,
+						 0U);
 		panel_schedule_route_reset(route_ctx);
 		return 0;
 	}
@@ -3501,10 +3712,11 @@ static int panel_update_snapshot_handler(struct http_client_ctx *client,
 	bool authenticated = false;
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/update",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -3516,7 +3728,17 @@ static int panel_update_snapshot_handler(struct http_client_ctx *client,
 		return -EINVAL;
 	}
 
-	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/update",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 0U,
+						 0U);
+		return 0;
+	}
+
+	if (status != HTTP_SERVER_DATA_FINAL) {
 		return 0;
 	}
 
@@ -3568,10 +3790,11 @@ static int panel_update_upload_handler(struct http_client_ctx *client,
 	int response_ret;
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/update/upload",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -3584,6 +3807,12 @@ static int panel_update_upload_handler(struct http_client_ctx *client,
 	}
 
 	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_upload_termination("/api/update/upload",
+						 client,
+						 route_ctx,
+						 "request-aborted",
+						 0);
+		route_ctx->failure_logged = true;
 		if (route_ctx->stage_started) {
 			(void)ota_service_abort_staging(&route_ctx->app_context->ota, -ECANCELED);
 		}
@@ -3642,6 +3871,15 @@ static int panel_update_upload_handler(struct http_client_ctx *client,
 					"stage-open-failed",
 					"The device could not open the shared OTA staging pipeline.");
 			}
+
+			if (ret != 0) {
+				panel_http_log_upload_termination("/api/update/upload",
+							 client,
+							 route_ctx,
+							 route_ctx->rejected_error,
+							 ret);
+				route_ctx->failure_logged = true;
+			}
 		}
 	}
 
@@ -3657,6 +3895,12 @@ static int panel_update_upload_handler(struct http_client_ctx *client,
 				HTTP_500_INTERNAL_SERVER_ERROR,
 				"stage-write-failed",
 				"The device could not stream the firmware image into the OTA staging slot.");
+			panel_http_log_upload_termination("/api/update/upload",
+							 client,
+							 route_ctx,
+							 route_ctx->rejected_error,
+							 ret);
+			route_ctx->failure_logged = true;
 		} else {
 			route_ctx->bytes_received += request_ctx->data_len;
 		}
@@ -3701,6 +3945,14 @@ static int panel_update_upload_handler(struct http_client_ctx *client,
 	}
 
 	if (route_ctx->rejected) {
+		if (!route_ctx->failure_logged) {
+			panel_http_log_upload_termination("/api/update/upload",
+							 client,
+							 route_ctx,
+							 route_ctx->rejected_error,
+							 0);
+			route_ctx->failure_logged = true;
+		}
 		response_ret = panel_http_write_update_error_response(response_ctx,
 							       route_ctx->rejected_status,
 							       route_ctx->response_body,
@@ -3718,6 +3970,12 @@ static int panel_update_upload_handler(struct http_client_ctx *client,
 			memset(&snapshot, 0, sizeof(snapshot));
 		}
 		panel_http_update_upload_map_finish_error(route_ctx, &snapshot, ret);
+		panel_http_log_upload_termination("/api/update/upload",
+						 client,
+						 route_ctx,
+						 route_ctx->rejected_error,
+						 ret);
+		route_ctx->failure_logged = true;
 		response_ret = panel_http_write_update_error_response(response_ctx,
 							       route_ctx->rejected_status,
 							       route_ctx->response_body,
@@ -3767,10 +4025,11 @@ static int panel_update_remote_handler(struct http_client_ctx *client,
 	bool authenticated = false;
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/update/remote-check",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -3782,7 +4041,17 @@ static int panel_update_remote_handler(struct http_client_ctx *client,
 		return -EINVAL;
 	}
 
-	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/update/remote-check",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 0U,
+						 0U);
+		return 0;
+	}
+
+	if (status != HTTP_SERVER_DATA_FINAL) {
 		return 0;
 	}
 
@@ -3848,10 +4117,11 @@ static int panel_update_apply_handler(struct http_client_ctx *client,
 	bool authenticated = false;
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/update/apply",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -3863,7 +4133,17 @@ static int panel_update_apply_handler(struct http_client_ctx *client,
 		return -EINVAL;
 	}
 
-	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/update/apply",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 0U,
+						 0U);
+		return 0;
+	}
+
+	if (status != HTTP_SERVER_DATA_FINAL) {
 		return 0;
 	}
 
@@ -3940,10 +4220,11 @@ static int panel_update_clear_handler(struct http_client_ctx *client,
 	bool authenticated = false;
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/update/clear",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -3955,7 +4236,17 @@ static int panel_update_clear_handler(struct http_client_ctx *client,
 		return -EINVAL;
 	}
 
-	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/update/clear",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 0U,
+						 0U);
+		return 0;
+	}
+
+	if (status != HTTP_SERVER_DATA_FINAL) {
 		return 0;
 	}
 
@@ -4023,10 +4314,11 @@ static int panel_status_handler(struct http_client_ctx *client,
 	bool authenticated;
 	int ret;
 
-	route_ctx = panel_http_acquire_route_context(user_data,
-						       PANEL_ROUTE_POOL_SIZE,
-						       sizeof(*route_ctx),
-						       client);
+	route_ctx = panel_http_acquire_route_context_logged("/api/status",
+							 user_data,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
 	if (route_ctx == NULL) {
 		return panel_http_write_const_json_response(response_ctx,
 							       HTTP_503_SERVICE_UNAVAILABLE,
@@ -4038,7 +4330,17 @@ static int panel_status_handler(struct http_client_ctx *client,
 		return -EINVAL;
 	}
 
-	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination("/api/status",
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 0U,
+						 0U);
+		return 0;
+	}
+
+	if (status != HTTP_SERVER_DATA_FINAL) {
 		return 0;
 	}
 
