@@ -509,23 +509,81 @@ function showDashboardView() {
 	updateNavigationState();
 }
 
-async function requestJson(url, options = {}) {
-	const response = await fetch(url, {
-		credentials: 'same-origin',
-		headers: {
-			'Content-Type': 'application/json',
-			...(options.headers || {}),
-		},
-		...options,
-	});
-
-	let data = null;
-	const contentType = response.headers.get('content-type') || '';
-	if (contentType.includes('application/json')) {
-		data = await response.json();
+function panelRequestTimeoutMs() {
+	const configuredTimeout = Number(window.__PANEL_CONFIG__?.requestTimeoutMs || 0);
+	if (Number.isFinite(configuredTimeout) && configuredTimeout > 0) {
+		return configuredTimeout;
 	}
 
-	return { response, data };
+	return 10_000;
+}
+
+function createTimedRequestContext(externalSignal = null) {
+	const timeoutMs = panelRequestTimeoutMs();
+	const controller = new AbortController();
+	const cleanup = [];
+	const timeoutId = window.setTimeout(() => {
+		controller.abort(new DOMException(`Timed out after ${Math.ceil(timeoutMs / 1000)} seconds.`, 'TimeoutError'));
+	}, timeoutMs);
+
+	cleanup.push(() => window.clearTimeout(timeoutId));
+
+	if (externalSignal) {
+		const forwardAbort = () => {
+			controller.abort(externalSignal.reason || new DOMException('Request aborted.', 'AbortError'));
+		};
+
+		if (externalSignal.aborted) {
+			forwardAbort();
+		} else {
+			externalSignal.addEventListener('abort', forwardAbort, { once: true });
+			cleanup.push(() => externalSignal.removeEventListener('abort', forwardAbort));
+		}
+	}
+
+	return {
+		signal: controller.signal,
+		timeoutMs,
+		cleanup() {
+			cleanup.forEach((entry) => entry());
+		},
+	};
+}
+
+function normalizeTimedRequestError(error, timeoutMs) {
+	if (error instanceof DOMException && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
+		return new Error(`Request timed out after ${Math.ceil(timeoutMs / 1000)} seconds.`);
+	}
+
+	return error;
+}
+
+async function requestJson(url, options = {}) {
+	const requestContext = createTimedRequestContext(options.signal || null);
+
+	try {
+		const response = await fetch(url, {
+			credentials: 'same-origin',
+			headers: {
+				'Content-Type': 'application/json',
+				...(options.headers || {}),
+			},
+			...options,
+			signal: requestContext.signal,
+		});
+
+		let data = null;
+		const contentType = response.headers.get('content-type') || '';
+		if (contentType.includes('application/json')) {
+			data = await response.json();
+		}
+
+		return { response, data };
+	} catch (error) {
+		throw normalizeTimedRequestError(error, requestContext.timeoutMs);
+	} finally {
+		requestContext.cleanup();
+	}
 }
 
 async function requestBinaryUpload(url, file) {

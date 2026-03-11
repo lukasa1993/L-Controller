@@ -10,6 +10,7 @@
 #define APP_PANEL_LOGIN_FAILURE_LIMIT CONFIG_APP_PANEL_LOGIN_FAILURE_LIMIT
 #define APP_PANEL_MAX_SESSIONS CONFIG_APP_PANEL_MAX_SESSIONS
 #define APP_PANEL_PORT CONFIG_APP_PANEL_PORT
+#define APP_PANEL_REQUEST_TIMEOUT_SECONDS CONFIG_APP_PANEL_REQUEST_TIMEOUT_SECONDS
 #define APP_OTA_CONFIRM_STABLE_WINDOW_MS CONFIG_APP_OTA_CONFIRM_STABLE_WINDOW_MS
 #define APP_OTA_REMOTE_DEFAULT_CHECK_INTERVAL_HOURS                               \
 	CONFIG_APP_OTA_REMOTE_DEFAULT_CHECK_INTERVAL_HOURS
@@ -51,6 +52,7 @@ struct app_persistence_config {
 
 struct app_panel_config {
 	uint16_t port;
+	uint32_t request_timeout_seconds;
 	uint32_t max_sessions;
 	uint32_t login_failure_limit;
 	int32_t login_cooldown_ms;

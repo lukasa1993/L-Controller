@@ -121,6 +121,18 @@ config APP_PANEL_PORT
 	  Plain HTTP port exposed by the device on the local LAN for the Phase 5
 	  control panel shell.
 
+config APP_PANEL_REQUEST_TIMEOUT_SECONDS
+	int "Panel HTTP request timeout in seconds"
+	default 10
+	range 1 600
+	help
+	  Maximum inactivity window allowed for a panel HTTP request before the
+	  underlying Zephyr HTTP server closes the client connection. Keep this
+	  aligned with the operator-facing page navigation timeout.
+
+configdefault HTTP_SERVER_CLIENT_INACTIVITY_TIMEOUT
+	default APP_PANEL_REQUEST_TIMEOUT_SECONDS if HTTP_SERVER
+
 config APP_PANEL_MAX_SESSIONS
 	int "Maximum concurrent panel sessions"
 	default 4

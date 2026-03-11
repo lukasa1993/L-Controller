@@ -292,6 +292,7 @@ static int load_app_config(struct app_context *app_context)
 		},
 		.panel = {
 			.port = APP_PANEL_PORT,
+			.request_timeout_seconds = APP_PANEL_REQUEST_TIMEOUT_SECONDS,
 			.max_sessions = APP_PANEL_MAX_SESSIONS,
 			.login_failure_limit = APP_PANEL_LOGIN_FAILURE_LIMIT,
 			.login_cooldown_ms = APP_PANEL_LOGIN_COOLDOWN_MS,

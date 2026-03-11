@@ -33,6 +33,11 @@ HTTP_SERVER_REGISTER_HEADER_CAPTURE(panel_http_content_length_header, "Content-L
 #define PANEL_SCHEDULE_ACTION_KEY_MAX_LEN 16
 #define PANEL_UPDATE_ERROR_MAX_LEN 48
 #define PANEL_UPDATE_DETAIL_MAX_LEN 224
+#define PANEL_ROUTE_POOL_SIZE CONFIG_HTTP_SERVER_MAX_CLIENTS
+
+struct panel_route_slot {
+	struct http_client_ctx *owner;
+};
 
 struct panel_auth_payload {
 	char username[PERSISTED_AUTH_USERNAME_MAX_LEN];
@@ -45,6 +50,7 @@ static const struct json_obj_descr panel_auth_payload_descr[] = {
 };
 
 struct panel_login_route_context {
+	struct panel_route_slot slot;
 	struct panel_auth_service *auth_service;
 	uint8_t request_body[160];
 	size_t request_body_len;
@@ -55,6 +61,7 @@ struct panel_login_route_context {
 };
 
 struct panel_auth_route_context {
+	struct panel_route_slot slot;
 	struct panel_auth_service *auth_service;
 	char set_cookie_header[96];
 	char response_body[192];
@@ -62,6 +69,7 @@ struct panel_auth_route_context {
 };
 
 struct panel_status_route_context {
+	struct panel_route_slot slot;
 	struct app_context *app_context;
 	char set_cookie_header[96];
 	char response_body[PANEL_STATUS_RESPONSE_BODY_LEN];
@@ -69,6 +77,7 @@ struct panel_status_route_context {
 };
 
 struct panel_action_snapshot_route_context {
+	struct panel_route_slot slot;
 	struct app_context *app_context;
 	char set_cookie_header[96];
 	char response_body[PANEL_STATUS_RESPONSE_BODY_LEN];
@@ -76,6 +85,7 @@ struct panel_action_snapshot_route_context {
 };
 
 struct panel_action_mutation_route_context {
+	struct panel_route_slot slot;
 	struct app_context *app_context;
 	uint8_t request_body[256];
 	size_t request_body_len;
@@ -86,6 +96,7 @@ struct panel_action_mutation_route_context {
 };
 
 struct panel_relay_route_context {
+	struct panel_route_slot slot;
 	struct app_context *app_context;
 	uint8_t request_body[64];
 	size_t request_body_len;
@@ -96,6 +107,7 @@ struct panel_relay_route_context {
 };
 
 struct panel_schedule_snapshot_route_context {
+	struct panel_route_slot slot;
 	struct app_context *app_context;
 	char set_cookie_header[96];
 	char response_body[PANEL_STATUS_RESPONSE_BODY_LEN];
@@ -103,6 +115,7 @@ struct panel_schedule_snapshot_route_context {
 };
 
 struct panel_schedule_mutation_route_context {
+	struct panel_route_slot slot;
 	struct app_context *app_context;
 	uint8_t request_body[256];
 	size_t request_body_len;
@@ -113,6 +126,7 @@ struct panel_schedule_mutation_route_context {
 };
 
 struct panel_update_snapshot_route_context {
+	struct panel_route_slot slot;
 	struct app_context *app_context;
 	char set_cookie_header[96];
 	char response_body[2048];
@@ -120,13 +134,21 @@ struct panel_update_snapshot_route_context {
 };
 
 struct panel_update_action_route_context {
+	struct panel_route_slot slot;
 	struct app_context *app_context;
 	char set_cookie_header[96];
 	char response_body[512];
 	struct http_header headers[1];
 };
 
+struct panel_runtime_config_route_context {
+	struct panel_route_slot slot;
+	struct app_context *app_context;
+	char response_body[96];
+};
+
 struct panel_update_upload_route_context {
+	struct panel_route_slot slot;
 	struct app_context *app_context;
 	bool initialized;
 	bool stage_started;
@@ -202,26 +224,74 @@ static const uint8_t main_js_gz[] = {
 #include "panel/main.js.gz.inc"
 };
 
-static struct panel_login_route_context panel_auth_login_route_ctx;
-static struct panel_auth_route_context panel_auth_logout_route_ctx;
-static struct panel_auth_route_context panel_auth_session_route_ctx;
-static struct panel_status_route_context panel_status_route_ctx;
-static struct panel_action_snapshot_route_context panel_action_snapshot_route_ctx;
-static struct panel_action_mutation_route_context panel_action_create_route_ctx;
-static struct panel_action_mutation_route_context panel_action_update_route_ctx;
-static struct panel_relay_route_context panel_relay_route_ctx;
-static struct panel_schedule_snapshot_route_context panel_schedule_snapshot_route_ctx;
-static struct panel_schedule_mutation_route_context panel_schedule_create_route_ctx;
-static struct panel_schedule_mutation_route_context panel_schedule_update_route_ctx;
-static struct panel_schedule_mutation_route_context panel_schedule_delete_route_ctx;
-static struct panel_schedule_mutation_route_context panel_schedule_enabled_route_ctx;
-static struct panel_update_snapshot_route_context panel_update_snapshot_route_ctx;
-static struct panel_update_action_route_context panel_update_remote_route_ctx;
-static struct panel_update_action_route_context panel_update_apply_route_ctx;
-static struct panel_update_action_route_context panel_update_clear_route_ctx;
-static struct panel_update_upload_route_context panel_update_upload_route_ctx;
+static struct panel_login_route_context panel_auth_login_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_auth_route_context panel_auth_logout_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_auth_route_context panel_auth_session_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_status_route_context panel_status_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_action_snapshot_route_context panel_action_snapshot_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_action_mutation_route_context panel_action_create_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_action_mutation_route_context panel_action_update_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_relay_route_context panel_relay_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_schedule_snapshot_route_context panel_schedule_snapshot_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_schedule_mutation_route_context panel_schedule_create_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_schedule_mutation_route_context panel_schedule_update_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_schedule_mutation_route_context panel_schedule_delete_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_schedule_mutation_route_context panel_schedule_enabled_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_update_snapshot_route_context panel_update_snapshot_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_runtime_config_route_context panel_runtime_config_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_update_action_route_context panel_update_remote_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_update_action_route_context panel_update_apply_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_update_action_route_context panel_update_clear_route_ctx[PANEL_ROUTE_POOL_SIZE];
+static struct panel_update_upload_route_context panel_update_upload_route_ctx[PANEL_ROUTE_POOL_SIZE];
 static struct k_work_delayable panel_update_reboot_work;
 static bool panel_update_reboot_work_ready;
+
+static void *panel_http_acquire_route_context(void *pool,
+					      size_t slot_count,
+					      size_t slot_size,
+					      struct http_client_ctx *client)
+{
+	size_t free_index = slot_count;
+
+	if (pool == NULL || client == NULL || slot_size < sizeof(struct panel_route_slot)) {
+		return NULL;
+	}
+
+	for (size_t index = 0; index < slot_count; index++) {
+		struct panel_route_slot *slot =
+			(struct panel_route_slot *)((uint8_t *)pool + (index * slot_size));
+
+		if (slot->owner == client) {
+			return slot;
+		}
+
+		if (slot->owner == NULL && free_index == slot_count) {
+			free_index = index;
+		}
+	}
+
+	if (free_index == slot_count) {
+		return NULL;
+	}
+
+	((struct panel_route_slot *)((uint8_t *)pool + (free_index * slot_size)))->owner = client;
+	return (uint8_t *)pool + (free_index * slot_size);
+}
+
+static int panel_http_write_const_json_response(struct http_response_ctx *response_ctx,
+						enum http_status status_code,
+						const char *body)
+{
+	if (response_ctx == NULL || body == NULL) {
+		return -EINVAL;
+	}
+
+	response_ctx->status = status_code;
+	response_ctx->body = (const uint8_t *)body;
+	response_ctx->body_len = strlen(body);
+	response_ctx->final_chunk = true;
+	return 0;
+}
 
 static struct http_resource_detail_static panel_shell_index_resource_detail = {
 	.common = {
@@ -322,6 +392,11 @@ static struct http_resource_detail_static panel_shell_main_js_resource_detail = 
 	.static_data_len = sizeof(main_js_gz),
 };
 
+static int panel_runtime_config_handler(struct http_client_ctx *client,
+					 enum http_data_status status,
+					 const struct http_request_ctx *request_ctx,
+					 struct http_response_ctx *response_ctx,
+					 void *user_data);
 static int panel_auth_login_handler(struct http_client_ctx *client,
 				      enum http_data_status status,
 				      const struct http_request_ctx *request_ctx,
@@ -421,6 +496,16 @@ static struct http_resource_detail_dynamic panel_auth_login_resource_detail = {
 	},
 	.cb = panel_auth_login_handler,
 	.user_data = &panel_auth_login_route_ctx,
+};
+
+static struct http_resource_detail_dynamic panel_runtime_config_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_DYNAMIC,
+		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
+		.content_type = "text/javascript",
+	},
+	.cb = panel_runtime_config_handler,
+	.user_data = &panel_runtime_config_route_ctx,
 };
 
 static struct http_resource_detail_dynamic panel_auth_logout_resource_detail = {
@@ -620,6 +705,8 @@ HTTP_RESOURCE_DEFINE(panel_shell_login_resource, panel_http_service, "/login",
 		     &panel_shell_login_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_panel_css_resource, panel_http_service, "/panel.css",
 		     &panel_shell_panel_css_resource_detail);
+HTTP_RESOURCE_DEFINE(panel_shell_runtime_config_resource, panel_http_service, "/panel-config.js",
+		     &panel_runtime_config_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_main_js_resource, panel_http_service, "/main.js",
 		     &panel_shell_main_js_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_auth_login_resource, panel_http_service, "/api/auth/login",
@@ -1880,21 +1967,73 @@ static bool panel_http_outputs_configured(const struct app_context *app_context)
 	return false;
 }
 
+static int panel_runtime_config_handler(struct http_client_ctx *client,
+					 enum http_data_status status,
+					 const struct http_request_ctx *request_ctx,
+					 struct http_response_ctx *response_ctx,
+					 void *user_data)
+{
+	struct panel_runtime_config_route_context *route_ctx;
+	int written;
+
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(
+			response_ctx,
+			HTTP_503_SERVICE_UNAVAILABLE,
+			"window.__PANEL_CONFIG__={requestTimeoutMs:10000};");
+	}
+
+	if (route_ctx->app_context == NULL || request_ctx == NULL || response_ctx == NULL) {
+		return -EINVAL;
+	}
+
+	if (status == HTTP_SERVER_DATA_ABORTED || status != HTTP_SERVER_DATA_FINAL) {
+		return 0;
+	}
+
+	written = snprintf(route_ctx->response_body,
+			  sizeof(route_ctx->response_body),
+			  "window.__PANEL_CONFIG__={requestTimeoutMs:%u};",
+			  route_ctx->app_context->config.panel.request_timeout_seconds * 1000U);
+	if (written < 0 || (size_t)written >= sizeof(route_ctx->response_body)) {
+		return -ENOMEM;
+	}
+
+	response_ctx->status = HTTP_200_OK;
+	response_ctx->body = (const uint8_t *)route_ctx->response_body;
+	response_ctx->body_len = (size_t)written;
+	response_ctx->final_chunk = true;
+	return 0;
+}
+
 static int panel_auth_login_handler(struct http_client_ctx *client,
 				      enum http_data_status status,
 				      const struct http_request_ctx *request_ctx,
 				      struct http_response_ctx *response_ctx,
 				      void *user_data)
 {
-	struct panel_login_route_context *route_ctx = user_data;
+	struct panel_login_route_context *route_ctx;
 	struct panel_auth_payload payload = {0};
 	struct panel_auth_login_result login_result;
 	const int expected_fields = BIT_MASK(ARRAY_SIZE(panel_auth_payload_descr));
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(
+			response_ctx,
+			HTTP_503_SERVICE_UNAVAILABLE,
+			"{\"authenticated\":false,\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->auth_service == NULL || request_ctx == NULL ||
+	if (route_ctx->auth_service == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -2004,12 +2143,20 @@ static int panel_auth_logout_handler(struct http_client_ctx *client,
 				       struct http_response_ctx *response_ctx,
 				       void *user_data)
 {
-	struct panel_auth_route_context *route_ctx = user_data;
+	struct panel_auth_route_context *route_ctx;
 	char session_token[PANEL_AUTH_SESSION_TOKEN_LEN + 1];
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->auth_service == NULL || request_ctx == NULL ||
+	if (route_ctx->auth_service == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -2038,15 +2185,23 @@ static int panel_auth_session_handler(struct http_client_ctx *client,
 				        struct http_response_ctx *response_ctx,
 				        void *user_data)
 {
-	struct panel_auth_route_context *route_ctx = user_data;
+	struct panel_auth_route_context *route_ctx;
 	char session_token[PANEL_AUTH_SESSION_TOKEN_LEN + 1];
 	bool has_cookie;
 	bool authenticated;
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"authenticated\":false,\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->auth_service == NULL || request_ctx == NULL ||
+	if (route_ctx->auth_service == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -2088,13 +2243,21 @@ static int panel_action_snapshot_handler(struct http_client_ctx *client,
 					 struct http_response_ctx *response_ctx,
 					 void *user_data)
 {
-	struct panel_action_snapshot_route_context *route_ctx = user_data;
+	struct panel_action_snapshot_route_context *route_ctx;
 	bool authenticated = false;
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -2140,7 +2303,7 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 				       struct http_response_ctx *response_ctx,
 				       void *user_data)
 {
-	struct panel_action_mutation_route_context *route_ctx = user_data;
+	struct panel_action_mutation_route_context *route_ctx;
 	struct persisted_action_catalog_save_request save_request;
 	struct panel_action_payload payload;
 	struct persisted_action *entry;
@@ -2149,9 +2312,17 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 	char action_id[PERSISTED_ACTION_ID_MAX_LEN];
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"accepted\":false,\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -2333,7 +2504,7 @@ static int panel_action_update_handler(struct http_client_ctx *client,
 				       struct http_response_ctx *response_ctx,
 				       void *user_data)
 {
-	struct panel_action_mutation_route_context *route_ctx = user_data;
+	struct panel_action_mutation_route_context *route_ctx;
 	struct persisted_action_catalog_save_request save_request;
 	struct panel_action_payload payload;
 	struct persisted_action updated_action;
@@ -2342,9 +2513,17 @@ static int panel_action_update_handler(struct http_client_ctx *client,
 	int index;
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"accepted\":false,\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -2518,7 +2697,7 @@ static int panel_relay_command_handler(struct http_client_ctx *client,
 				       struct http_response_ctx *response_ctx,
 				       void *user_data)
 {
-	struct panel_relay_route_context *route_ctx = user_data;
+	struct panel_relay_route_context *route_ctx;
 	struct action_dispatch_result dispatch_result;
 	char session_token[PANEL_AUTH_SESSION_TOKEN_LEN + 1];
 	const char *action_id;
@@ -2529,9 +2708,17 @@ static int panel_relay_command_handler(struct http_client_ctx *client,
 	enum http_status status_code;
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"accepted\":false,\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -2640,13 +2827,21 @@ static int panel_schedule_snapshot_handler(struct http_client_ctx *client,
 					 struct http_response_ctx *response_ctx,
 					 void *user_data)
 {
-	struct panel_schedule_snapshot_route_context *route_ctx = user_data;
+	struct panel_schedule_snapshot_route_context *route_ctx;
 	bool authenticated = false;
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -2692,7 +2887,7 @@ static int panel_schedule_create_handler(struct http_client_ctx *client,
 				       struct http_response_ctx *response_ctx,
 				       void *user_data)
 {
-	struct panel_schedule_mutation_route_context *route_ctx = user_data;
+	struct panel_schedule_mutation_route_context *route_ctx;
 	struct persisted_schedule_table_save_request save_request;
 	struct panel_schedule_payload payload;
 	struct persisted_schedule *entry;
@@ -2701,9 +2896,17 @@ static int panel_schedule_create_handler(struct http_client_ctx *client,
 	int index;
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"accepted\":false,\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -2858,7 +3061,7 @@ static int panel_schedule_update_handler(struct http_client_ctx *client,
 				       struct http_response_ctx *response_ctx,
 				       void *user_data)
 {
-	struct panel_schedule_mutation_route_context *route_ctx = user_data;
+	struct panel_schedule_mutation_route_context *route_ctx;
 	struct persisted_schedule_table_save_request save_request;
 	struct panel_schedule_payload payload;
 	const char *action_id;
@@ -2866,9 +3069,17 @@ static int panel_schedule_update_handler(struct http_client_ctx *client,
 	int index;
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"accepted\":false,\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -3017,16 +3228,24 @@ static int panel_schedule_delete_handler(struct http_client_ctx *client,
 				       struct http_response_ctx *response_ctx,
 				       void *user_data)
 {
-	struct panel_schedule_mutation_route_context *route_ctx = user_data;
+	struct panel_schedule_mutation_route_context *route_ctx;
 	struct persisted_schedule_table_save_request save_request;
 	struct panel_schedule_delete_payload payload;
 	bool authenticated = false;
 	int index;
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"accepted\":false,\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -3146,7 +3365,7 @@ static int panel_schedule_enabled_handler(struct http_client_ctx *client,
 					struct http_response_ctx *response_ctx,
 					void *user_data)
 {
-	struct panel_schedule_mutation_route_context *route_ctx = user_data;
+	struct panel_schedule_mutation_route_context *route_ctx;
 	struct persisted_schedule_table_save_request save_request;
 	struct panel_schedule_enabled_payload payload;
 	const char *detail;
@@ -3154,9 +3373,17 @@ static int panel_schedule_enabled_handler(struct http_client_ctx *client,
 	int index;
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"accepted\":false,\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -3270,13 +3497,21 @@ static int panel_update_snapshot_handler(struct http_client_ctx *client,
 					 struct http_response_ctx *response_ctx,
 					 void *user_data)
 {
-	struct panel_update_snapshot_route_context *route_ctx = user_data;
+	struct panel_update_snapshot_route_context *route_ctx;
 	bool authenticated = false;
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -3322,7 +3557,7 @@ static int panel_update_upload_handler(struct http_client_ctx *client,
 				       struct http_response_ctx *response_ctx,
 				       void *user_data)
 {
-	struct panel_update_upload_route_context *route_ctx = user_data;
+	struct panel_update_upload_route_context *route_ctx;
 	struct ota_runtime_status snapshot;
 	char staged_version_label[24];
 	char detail[192];
@@ -3333,9 +3568,17 @@ static int panel_update_upload_handler(struct http_client_ctx *client,
 	int response_ret;
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"accepted\":false,\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -3520,13 +3763,21 @@ static int panel_update_remote_handler(struct http_client_ctx *client,
 				       struct http_response_ctx *response_ctx,
 				       void *user_data)
 {
-	struct panel_update_action_route_context *route_ctx = user_data;
+	struct panel_update_action_route_context *route_ctx;
 	bool authenticated = false;
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"accepted\":false,\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -3593,13 +3844,21 @@ static int panel_update_apply_handler(struct http_client_ctx *client,
 				      struct http_response_ctx *response_ctx,
 				      void *user_data)
 {
-	struct panel_update_action_route_context *route_ctx = user_data;
+	struct panel_update_action_route_context *route_ctx;
 	bool authenticated = false;
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"accepted\":false,\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -3677,13 +3936,21 @@ static int panel_update_clear_handler(struct http_client_ctx *client,
 				      struct http_response_ctx *response_ctx,
 				      void *user_data)
 {
-	struct panel_update_action_route_context *route_ctx = user_data;
+	struct panel_update_action_route_context *route_ctx;
 	bool authenticated = false;
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"accepted\":false,\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -3750,15 +4017,23 @@ static int panel_status_handler(struct http_client_ctx *client,
 				 struct http_response_ctx *response_ctx,
 				 void *user_data)
 {
-	struct panel_status_route_context *route_ctx = user_data;
+	struct panel_status_route_context *route_ctx;
 	char session_token[PANEL_AUTH_SESSION_TOKEN_LEN + 1];
 	bool has_cookie;
 	bool authenticated;
 	int ret;
 
-	ARG_UNUSED(client);
+	route_ctx = panel_http_acquire_route_context(user_data,
+						       PANEL_ROUTE_POOL_SIZE,
+						       sizeof(*route_ctx),
+						       client);
+	if (route_ctx == NULL) {
+		return panel_http_write_const_json_response(response_ctx,
+							       HTTP_503_SERVICE_UNAVAILABLE,
+							       "{\"error\":\"request-capacity\"}");
+	}
 
-	if (route_ctx == NULL || route_ctx->app_context == NULL || request_ctx == NULL ||
+	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
 		return -EINVAL;
 	}
@@ -3821,27 +4096,73 @@ int panel_http_server_init(struct panel_http_server *server,
 		app_context->config.panel.port : APP_PANEL_PORT;
 	server->started = false;
 	panel_http_service_port = server->port;
-	panel_auth_login_route_ctx.auth_service = &app_context->panel_auth;
-	panel_auth_logout_route_ctx.auth_service = &app_context->panel_auth;
-	panel_auth_session_route_ctx.auth_service = &app_context->panel_auth;
-	panel_status_route_ctx.app_context = app_context;
-	panel_action_snapshot_route_ctx.app_context = app_context;
-	panel_action_create_route_ctx.app_context = app_context;
-	panel_action_update_route_ctx.app_context = app_context;
-	panel_relay_route_ctx.app_context = app_context;
-	panel_schedule_snapshot_route_ctx.app_context = app_context;
-	panel_schedule_create_route_ctx.app_context = app_context;
-	panel_schedule_update_route_ctx.app_context = app_context;
-	panel_schedule_delete_route_ctx.app_context = app_context;
-	panel_schedule_enabled_route_ctx.app_context = app_context;
-	panel_update_snapshot_route_ctx.app_context = app_context;
-	panel_update_remote_route_ctx.app_context = app_context;
-	panel_update_apply_route_ctx.app_context = app_context;
-	panel_update_clear_route_ctx.app_context = app_context;
-	panel_update_upload_route_ctx.app_context = app_context;
-	panel_action_route_reset(&panel_action_create_route_ctx);
-	panel_action_route_reset(&panel_action_update_route_ctx);
-	panel_update_upload_route_reset(&panel_update_upload_route_ctx);
+	for (size_t index = 0; index < PANEL_ROUTE_POOL_SIZE; index++) {
+		panel_auth_login_route_ctx[index].slot.owner = NULL;
+		panel_auth_login_route_ctx[index].auth_service = &app_context->panel_auth;
+		panel_login_route_reset(&panel_auth_login_route_ctx[index]);
+
+		panel_auth_logout_route_ctx[index].slot.owner = NULL;
+		panel_auth_logout_route_ctx[index].auth_service = &app_context->panel_auth;
+
+		panel_auth_session_route_ctx[index].slot.owner = NULL;
+		panel_auth_session_route_ctx[index].auth_service = &app_context->panel_auth;
+
+		panel_status_route_ctx[index].slot.owner = NULL;
+		panel_status_route_ctx[index].app_context = app_context;
+
+		panel_action_snapshot_route_ctx[index].slot.owner = NULL;
+		panel_action_snapshot_route_ctx[index].app_context = app_context;
+
+		panel_action_create_route_ctx[index].slot.owner = NULL;
+		panel_action_create_route_ctx[index].app_context = app_context;
+		panel_action_route_reset(&panel_action_create_route_ctx[index]);
+
+		panel_action_update_route_ctx[index].slot.owner = NULL;
+		panel_action_update_route_ctx[index].app_context = app_context;
+		panel_action_route_reset(&panel_action_update_route_ctx[index]);
+
+		panel_relay_route_ctx[index].slot.owner = NULL;
+		panel_relay_route_ctx[index].app_context = app_context;
+		panel_relay_route_reset(&panel_relay_route_ctx[index]);
+
+		panel_schedule_snapshot_route_ctx[index].slot.owner = NULL;
+		panel_schedule_snapshot_route_ctx[index].app_context = app_context;
+
+		panel_schedule_create_route_ctx[index].slot.owner = NULL;
+		panel_schedule_create_route_ctx[index].app_context = app_context;
+		panel_schedule_route_reset(&panel_schedule_create_route_ctx[index]);
+
+		panel_schedule_update_route_ctx[index].slot.owner = NULL;
+		panel_schedule_update_route_ctx[index].app_context = app_context;
+		panel_schedule_route_reset(&panel_schedule_update_route_ctx[index]);
+
+		panel_schedule_delete_route_ctx[index].slot.owner = NULL;
+		panel_schedule_delete_route_ctx[index].app_context = app_context;
+		panel_schedule_route_reset(&panel_schedule_delete_route_ctx[index]);
+
+		panel_schedule_enabled_route_ctx[index].slot.owner = NULL;
+		panel_schedule_enabled_route_ctx[index].app_context = app_context;
+		panel_schedule_route_reset(&panel_schedule_enabled_route_ctx[index]);
+
+		panel_update_snapshot_route_ctx[index].slot.owner = NULL;
+		panel_update_snapshot_route_ctx[index].app_context = app_context;
+
+		panel_runtime_config_route_ctx[index].slot.owner = NULL;
+		panel_runtime_config_route_ctx[index].app_context = app_context;
+
+		panel_update_remote_route_ctx[index].slot.owner = NULL;
+		panel_update_remote_route_ctx[index].app_context = app_context;
+
+		panel_update_apply_route_ctx[index].slot.owner = NULL;
+		panel_update_apply_route_ctx[index].app_context = app_context;
+
+		panel_update_clear_route_ctx[index].slot.owner = NULL;
+		panel_update_clear_route_ctx[index].app_context = app_context;
+
+		panel_update_upload_route_ctx[index].slot.owner = NULL;
+		panel_update_upload_route_ctx[index].app_context = app_context;
+		panel_update_upload_route_reset(&panel_update_upload_route_ctx[index]);
+	}
 	if (!panel_update_reboot_work_ready) {
 		k_work_init_delayable(&panel_update_reboot_work,
 				      panel_http_update_reboot_work_handler);
@@ -3855,7 +4176,10 @@ int panel_http_server_init(struct panel_http_server *server,
 	}
 
 	server->started = true;
-	LOG_INF("Panel HTTP shell listening on port %u", server->port);
+	LOG_INF("Panel HTTP shell listening on port %u timeout=%us route_pool=%u",
+		server->port,
+		app_context->config.panel.request_timeout_seconds,
+		(unsigned int)PANEL_ROUTE_POOL_SIZE);
 
 	return 0;
 }
