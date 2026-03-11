@@ -28,7 +28,10 @@ Milestone `v1.0` completed phases `1` through `8` and established the current pr
 2. Authenticated operator can create, view, and edit configured relay actions with operator-safe IDs, names, enabled state, usability status, and output summary in the panel.
 3. Device accepts only approved output bindings for configured relay actions and rejects unsafe bindings before they become usable.
 4. Configured relay action records survive reboot, legacy built-in action references are handled explicitly, and boot validation never falls back to hidden built-in execution.
-**Plans:** Not planned yet
+**Plans:**
+- `09-01` — Configured action schema, approved outputs, legacy normalization, and schedule-compatibility guardrails
+- `09-02` — Authenticated configured-action snapshot, create, and edit APIs
+- `09-03` — Actions-page management catalog and verification updates
 
 ### Phase 10: Shared Execution and Schedule Integration
 **Goal:** Make configured relay actions executable from the Actions page, selectable from Schedules, and enforced consistently across manual and scheduled runtime paths.
@@ -68,4 +71,4 @@ Phases execute in numeric order: `1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 1
 
 ## Next Step
 
-**Phase 9: Configured Action Model and Panel Management** is the next phase to discuss and plan.
+**Phase 9: Configured Action Model and Panel Management** is planned and ready to execute.

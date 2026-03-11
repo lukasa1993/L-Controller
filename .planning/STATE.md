@@ -4,15 +4,15 @@ milestone: v1.1
 milestone_name: action configuration flow
 current_phase: 09
 current_phase_name: configured action model and panel management
-current_plan: "-"
-status: roadmap ready
-stopped_at: Created roadmap for milestone v1.1
-last_updated: "2026-03-10T22:03:58Z"
+current_plan: "09-01"
+status: phase planned
+stopped_at: Planned phase 09 with research, validation, and 3 execute plans
+last_updated: "2026-03-11T08:23:15Z"
 last_activity: 2026-03-11
 progress:
   total_phases: 2
   completed_phases: 0
-  total_plans: 0
+  total_plans: 3
   completed_plans: 0
   percent: 0
 ---
@@ -24,22 +24,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** The device must reliably and safely execute configured local control actions—even through Wi-Fi disruption or subsystem faults—without unnecessary operator intervention.
-**Current focus:** phase 9 ready for planning
+**Current focus:** phase 9 planned and ready for execution
 
 ## Current Position
 
 **Current Phase:** 09
 **Current Phase Name:** configured action model and panel management
-**Current Plan:** -
-**Total Plans in Phase:** Not planned yet
-**Status:** Roadmap ready
+**Current Plan:** 09-01
+**Total Plans in Phase:** 3
+**Status:** Phase planned
 **Last Activity:** 2026-03-11
-**Last Activity Description:** Created the milestone v1.1 roadmap with two phases: Phase 9 covers the configured action model, output-binding safety, migration, and panel management surface; Phase 10 covers shared execution, schedule integration, and end-to-end verification
+**Last Activity Description:** Planned Phase 9 with research, validation, and three execute plans covering the configured action schema, authenticated CRUD APIs, and the Actions-page management surface while preserving legacy schedule compatibility until Phase 10
 
-Phase: 1 of 2 (configured action model and panel management) - not started
-Plan: -
-Status: Roadmap ready
-Last activity: 2026-03-11 - Created the v1.1 roadmap with two phases that replace built-in relay actions with configured relay actions shared by Actions and Schedules
+Phase: 1 of 2 (configured action model and panel management) - planned
+Plan: 09-01 of 3
+Status: Phase planned
+Last activity: 2026-03-11 - Planned Phase 9 with explicit migration guardrails, authenticated action CRUD, and a create-first management UI
 
 Progress: [----------] 0%
 
