@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: action configuration flow
 current_phase: 09
 current_phase_name: configured action model and panel management
-current_plan: "09-01"
-status: phase planned
-stopped_at: Planned phase 09 with research, validation, and 3 execute plans
-last_updated: "2026-03-11T08:23:15Z"
+current_plan: "09-02"
+status: executing
+stopped_at: Completed 09-01-PLAN.md
+last_updated: "2026-03-11T08:53:42.020Z"
 last_activity: 2026-03-11
 progress:
   total_phases: 2
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 33
 ---
 
 # Project State
@@ -24,24 +24,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** The device must reliably and safely execute configured local control actions—even through Wi-Fi disruption or subsystem faults—without unnecessary operator intervention.
-**Current focus:** phase 9 planned and ready for execution
+**Current focus:** phase 9 is executing, and 09-02 authenticated configured-action CRUD is next
 
 ## Current Position
 
 **Current Phase:** 09
 **Current Phase Name:** configured action model and panel management
-**Current Plan:** 09-01
+**Current Plan:** 09-02
 **Total Plans in Phase:** 3
-**Status:** Phase planned
+**Status:** Ready to execute
 **Last Activity:** 2026-03-11
-**Last Activity Description:** Planned Phase 9 with research, validation, and three execute plans covering the configured action schema, authenticated CRUD APIs, and the Actions-page management surface while preserving legacy schedule compatibility until Phase 10
+**Last Activity Description:** Completed 09-01 configured action schema, approved-output validation, and legacy schedule compatibility; next is 09-02 authenticated configured-action CRUD
 
-Phase: 1 of 2 (configured action model and panel management) - planned
-Plan: 09-01 of 3
-Status: Phase planned
-Last activity: 2026-03-11 - Planned Phase 9 with explicit migration guardrails, authenticated action CRUD, and a create-first management UI
+Phase: 1 of 2 (configured action model and panel management) - executing
+Plan: 09-02 of 3
+Status: Ready to execute
+Last activity: 2026-03-11 - Completed 09-01 configured action schema and prepared 09-02 authenticated action CRUD
 
-Progress: [----------] 0%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -81,6 +81,7 @@ Progress: [----------] 0%
 | Phase 07-scheduling P03 | 6min | 4 tasks | 10 files |
 | Phase 08 P01 | 22 min | 3 tasks | 19 files |
 | Phase 08 P02 | 32 min | 3 tasks | 7 files |
+| Phase 09 P01 | 7 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -163,6 +164,9 @@ Recent decisions affecting current work:
 - [Quick task 01]: The embedded panel now loads Tailwind through the requested `@tailwindcss/browser@4` runtime, uses utility-only markup plus an HTML safelist for JS-rendered utility tokens, and the firmware asset pipeline Bun-minifies `main.js` before generating `main.js.gz.inc`.
 - [Quick task 04]: The repo now derives the default MCUboot signing version from `app/VERSION`, so ad hoc local OTA test builds can stay minimal by bumping only `VERSION_TWEAK`.
 - [Quick task 05]: The protected panel now lands on an actions-first shell at `/`, serves dedicated overview/schedules/updates routes, and keeps a future-output rail ready while multi-relay GPIO support remains deferred.
+- [Phase 09]: Configured actions are command-centric records — One persisted record now maps to one executable relay command instead of a hidden built-in boolean toggle.
+- [Phase 09]: Approved output truth belongs to the relay subsystem — Persistence and dispatcher validation now share one firmware-owned binding contract instead of trusting raw GPIO-like input.
+- [Phase 09]: Legacy relay built-ins are compatibility-only IDs — `relay0.on` and `relay0.off` remain valid only for migration-safe schedule/runtime compatibility and are no longer seeded into the operator-facing catalog.
 
 ### Pending Todos
 
@@ -186,6 +190,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T09:51:40.813Z
-Stopped at: Completed 08-02-PLAN.md
+Last session: 2026-03-11T08:53:42.018Z
+Stopped at: Completed 09-01-PLAN.md
 Resume file: None

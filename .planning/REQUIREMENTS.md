@@ -18,8 +18,8 @@ Requirements for milestone v1.1 Action Configuration Flow.
 
 ### Output Binding and Safety
 
-- [ ] **BIND-01**: Authenticated operator can bind a relay action to an approved GPIO-backed output definition known to firmware
-- [ ] **BIND-02**: Device rejects relay actions with invalid or unsafe output bindings before they become usable
+- [x] **BIND-01**: Authenticated operator can bind a relay action to an approved GPIO-backed output definition known to firmware
+- [x] **BIND-02**: Device rejects relay actions with invalid or unsafe output bindings before they become usable
 - [ ] **BIND-03**: Unconfigured, invalid, or disabled relay actions are not executable from the Actions page
 - [ ] **BIND-04**: Unconfigured, invalid, or disabled relay actions are not selectable for new or edited schedules
 
@@ -31,9 +31,9 @@ Requirements for milestone v1.1 Action Configuration Flow.
 
 ### Migration and Persistence
 
-- [ ] **MIGR-01**: Device safely handles persisted legacy `relay0.on` and `relay0.off` action references during migration to configured actions
+- [x] **MIGR-01**: Device safely handles persisted legacy `relay0.on` and `relay0.off` action references during migration to configured actions
 - [ ] **MIGR-02**: Device safely handles persisted schedule references to legacy built-in relay actions during migration
-- [ ] **MIGR-03**: Action configuration changes persist across reboot and boot-time validation never causes hidden fallback execution of removed built-in actions
+- [x] **MIGR-03**: Action configuration changes persist across reboot and boot-time validation never causes hidden fallback execution of removed built-in actions
 
 ## Future Requirements
 
@@ -73,16 +73,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ACT-06 | Phase 10 | Pending |
 | ACT-07 | Phase 10 | Pending |
 | ACT-08 | Phase 10 | Pending |
-| BIND-01 | Phase 9 | Pending |
-| BIND-02 | Phase 9 | Pending |
+| BIND-01 | Phase 9 | Complete |
+| BIND-02 | Phase 9 | Complete |
 | BIND-03 | Phase 10 | Pending |
 | BIND-04 | Phase 10 | Pending |
 | SCHED-05 | Phase 10 | Pending |
 | SCHED-06 | Phase 10 | Pending |
 | SCHED-07 | Phase 10 | Pending |
-| MIGR-01 | Phase 9 | Pending |
+| MIGR-01 | Phase 9 | Complete |
 | MIGR-02 | Phase 10 | Pending |
-| MIGR-03 | Phase 9 | Pending |
+| MIGR-03 | Phase 9 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 16 total
