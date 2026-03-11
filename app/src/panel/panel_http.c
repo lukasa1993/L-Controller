@@ -169,6 +169,8 @@ struct panel_update_upload_route_context {
 
 struct panel_static_route_context {
 	struct panel_route_slot slot;
+	char content_encoding_value[8];
+	struct http_header headers[1];
 };
 
 struct panel_static_resource {
@@ -640,6 +642,15 @@ static int panel_static_resource_handler(struct http_client_ctx *client,
 	}
 
 	response_ctx->status = HTTP_200_OK;
+	route_ctx->headers[0] = (struct http_header){
+		.name = "Content-Encoding",
+		.value = route_ctx->content_encoding_value,
+	};
+	snprintk(route_ctx->content_encoding_value,
+		 sizeof(route_ctx->content_encoding_value),
+		 "gzip");
+	response_ctx->headers = route_ctx->headers;
+	response_ctx->header_count = ARRAY_SIZE(route_ctx->headers);
 	response_ctx->body = resource->body;
 	response_ctx->body_len = resource->body_len;
 	response_ctx->final_chunk = true;
