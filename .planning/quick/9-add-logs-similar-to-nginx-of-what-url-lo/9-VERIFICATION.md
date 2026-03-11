@@ -16,9 +16,9 @@ The implementation is code-complete and the app image rebuilds with the new pane
 
 ## Evidence
 
-1. `cmake --build build/nrf7002dk_nrf5340_cpuapp/app`
+1. `./scripts/build.sh`
    Result: passed.
-   Notes: the app image rebuilt and linked successfully after the `panel_http.c` changes, including the new static-resource callback path and access-log helper.
+   Notes: the full sysbuild regenerated and the firmware rebuilt successfully after the `panel_http.c` changes, including the new static-resource callback path and access-log helper. Existing non-fatal MBEDTLS Kconfig warnings and the unrelated `network_supervisor.c` unused-variable warning remained.
 
 2. `rg -n "panel_http_log_access|duration_ms|/panel.css|/main.js|/login|/api/status|/api/actions|/api/update" app/src/panel/panel_http.c`
    Result: passed.
@@ -31,4 +31,3 @@ The implementation is code-complete and the app image rebuilds with the new pane
 ## Remaining gaps
 
 - Reproduce a real browser session against hardware and confirm the serial console prints the expected `route=... status=... bytes=... duration_ms=...` access logs for page loads and API requests.
-- `./scripts/build.sh` currently fails during the full sysbuild regeneration step because `build/nrf7002dk_nrf5340_cpuapp/app/Kconfig/Kconfig.dts` is regenerated into a missing directory. The narrower `cmake --build build/nrf7002dk_nrf5340_cpuapp/app` compile passed, so this blocked only the canonical top-level build command during verification.
