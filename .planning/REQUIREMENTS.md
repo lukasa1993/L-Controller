@@ -9,9 +9,9 @@ Requirements for milestone v1.1 Action Configuration Flow.
 
 ### Action Management
 
-- [ ] **ACT-03**: Authenticated operator can create a relay action with a unique operator-safe action ID and display name
-- [ ] **ACT-04**: Authenticated operator can view configured relay actions with name, enabled state, binding summary, and usability status
-- [ ] **ACT-05**: Authenticated operator can edit an existing relay action's name, output binding, and enabled state
+- [x] **ACT-03**: Authenticated operator can create a relay action with a unique operator-safe action ID and display name
+- [x] **ACT-04**: Authenticated operator can view configured relay actions with name, enabled state, binding summary, and usability status
+- [x] **ACT-05**: Authenticated operator can edit an existing relay action's name, output binding, and enabled state
 - [ ] **ACT-06**: Authenticated operator can delete a relay action only through a flow that preserves schedule integrity
 - [ ] **ACT-07**: Actions page manual control executes selected configured actions rather than fixed built-in relay commands
 - [ ] **ACT-08**: Device exposes one shared configured action catalog to both Actions and Schedules surfaces
@@ -67,9 +67,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ACT-03 | Phase 9 | Pending |
-| ACT-04 | Phase 9 | Pending |
-| ACT-05 | Phase 9 | Pending |
+| ACT-03 | Phase 9 | Complete |
+| ACT-04 | Phase 9 | Complete |
+| ACT-05 | Phase 9 | Complete |
 | ACT-06 | Phase 10 | Pending |
 | ACT-07 | Phase 10 | Pending |
 | ACT-08 | Phase 10 | Pending |

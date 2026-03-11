@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: action configuration flow
 current_phase: 09
 current_phase_name: configured action model and panel management
-current_plan: "09-02"
+current_plan: "09-03"
 status: executing
-stopped_at: Completed 09-01-PLAN.md
-last_updated: "2026-03-11T08:53:42.020Z"
+stopped_at: Completed 09-02-PLAN.md
+last_updated: "2026-03-11T09:12:03Z"
 last_activity: 2026-03-11
 progress:
   total_phases: 2
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
-  percent: 33
+  completed_plans: 2
+  percent: 67
 ---
 
 # Project State
@@ -24,24 +24,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** The device must reliably and safely execute configured local control actions—even through Wi-Fi disruption or subsystem faults—without unnecessary operator intervention.
-**Current focus:** phase 9 is executing, and 09-02 authenticated configured-action CRUD is next
+**Current focus:** phase 9 is executing, and 09-03 Actions management UI is next
 
 ## Current Position
 
 **Current Phase:** 09
 **Current Phase Name:** configured action model and panel management
-**Current Plan:** 09-02
+**Current Plan:** 09-03
 **Total Plans in Phase:** 3
 **Status:** Ready to execute
 **Last Activity:** 2026-03-11
-**Last Activity Description:** Completed 09-01 configured action schema, approved-output validation, and legacy schedule compatibility; next is 09-02 authenticated configured-action CRUD
+**Last Activity Description:** Completed 09-02 authenticated configured-action API and prepared 09-03 Actions management UI
 
 Phase: 1 of 2 (configured action model and panel management) - executing
-Plan: 09-02 of 3
+Plan: 09-03 of 3
 Status: Ready to execute
-Last activity: 2026-03-11 - Completed 09-01 configured action schema and prepared 09-02 authenticated action CRUD
+Last activity: 2026-03-11 - Completed 09-02 configured-action API and prepared 09-03 Actions management UI
 
-Progress: [███░░░░░░░] 33%
+Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
@@ -82,6 +82,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 08 P01 | 22 min | 3 tasks | 19 files |
 | Phase 08 P02 | 32 min | 3 tasks | 7 files |
 | Phase 09 P01 | 7 min | 3 tasks | 9 files |
+| Phase 09 P02 | 12 min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -167,6 +168,9 @@ Recent decisions affecting current work:
 - [Phase 09]: Configured actions are command-centric records — One persisted record now maps to one executable relay command instead of a hidden built-in boolean toggle.
 - [Phase 09]: Approved output truth belongs to the relay subsystem — Persistence and dispatcher validation now share one firmware-owned binding contract instead of trusting raw GPIO-like input.
 - [Phase 09]: Legacy relay built-ins are compatibility-only IDs — `relay0.on` and `relay0.off` remain valid only for migration-safe schedule/runtime compatibility and are no longer seeded into the operator-facing catalog.
+- [Phase 09]: Configured action IDs are generated on create and stay stable on edit so later schedule references and cross-surface links do not churn when the display name changes.
+- [Phase 09]: The `/api/actions` snapshot publishes approved output choices and relay command choices so the panel stays server-truth-first and does not invent hardware options locally.
+- [Phase 09]: Action snapshot JSON now escapes operator-authored display names and summaries before serialization so configured action names cannot corrupt the response body.
 
 ### Pending Todos
 
@@ -190,6 +194,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-11T08:53:42.018Z
-Stopped at: Completed 09-01-PLAN.md
+Last session: 2026-03-11T09:12:03Z
+Stopped at: Completed 09-02-PLAN.md
 Resume file: None
