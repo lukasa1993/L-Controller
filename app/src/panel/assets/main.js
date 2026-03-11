@@ -50,6 +50,7 @@ const state = {
 	schedulerForm: createSchedulerFormState(),
 	actionEditorSeed: '',
 	scheduleEditorSeed: '',
+	pageAbortController: new AbortController(),
 };
 
 const routes = {
@@ -72,6 +73,17 @@ const routes = {
 	scheduleDelete: '/api/schedules/delete',
 	scheduleSetEnabled: '/api/schedules/set-enabled',
 };
+
+const RETRYABLE_PANEL_GET_ROUTES = new Set([
+	routes.session,
+	routes.status,
+	routes.actions,
+	routes.updateStatus,
+	routes.schedules,
+]);
+const RETRYABLE_PANEL_STATUSES = new Set([409, 503]);
+const RETRYABLE_PANEL_ATTEMPTS = 3;
+const RETRYABLE_PANEL_BACKOFF_MS = 150;
 
 const pages = {
 	login: 'login',
@@ -518,7 +530,24 @@ function panelRequestTimeoutMs() {
 	return 10_000;
 }
 
-function createTimedRequestContext(externalSignal = null) {
+function delay(ms) {
+	return new Promise((resolve) => {
+		window.setTimeout(resolve, ms);
+	});
+}
+
+function requestMethod(options = {}) {
+	return String(options.method || 'GET').toUpperCase();
+}
+
+function shouldRetryPanelRequest(url, options, attempt, response) {
+	return requestMethod(options) === 'GET' &&
+		RETRYABLE_PANEL_GET_ROUTES.has(url) &&
+		RETRYABLE_PANEL_STATUSES.has(response.status) &&
+		attempt + 1 < RETRYABLE_PANEL_ATTEMPTS;
+}
+
+function createTimedRequestContext(externalSignals = []) {
 	const timeoutMs = panelRequestTimeoutMs();
 	const controller = new AbortController();
 	const cleanup = [];
@@ -528,7 +557,7 @@ function createTimedRequestContext(externalSignal = null) {
 
 	cleanup.push(() => window.clearTimeout(timeoutId));
 
-	if (externalSignal) {
+	for (const externalSignal of externalSignals.filter(Boolean)) {
 		const forwardAbort = () => {
 			controller.abort(externalSignal.reason || new DOMException('Request aborted.', 'AbortError'));
 		};
@@ -559,31 +588,53 @@ function normalizeTimedRequestError(error, timeoutMs) {
 }
 
 async function requestJson(url, options = {}) {
-	const requestContext = createTimedRequestContext(options.signal || null);
+	for (let attempt = 0; attempt < RETRYABLE_PANEL_ATTEMPTS; attempt += 1) {
+		const requestContext = createTimedRequestContext([
+			options.signal || null,
+			state.pageAbortController?.signal || null,
+		]);
 
-	try {
-		const response = await fetch(url, {
-			credentials: 'same-origin',
-			headers: {
-				'Content-Type': 'application/json',
-				...(options.headers || {}),
-			},
-			...options,
-			signal: requestContext.signal,
-		});
+		try {
+			const response = await fetch(url, {
+				credentials: 'same-origin',
+				headers: {
+					'Content-Type': 'application/json',
+					...(options.headers || {}),
+				},
+				...options,
+				signal: requestContext.signal,
+			});
 
-		let data = null;
-		const contentType = response.headers.get('content-type') || '';
-		if (contentType.includes('application/json')) {
-			data = await response.json();
+			if (shouldRetryPanelRequest(url, options, attempt, response)) {
+				await delay(RETRYABLE_PANEL_BACKOFF_MS * (attempt + 1));
+				continue;
+			}
+
+			if (requestMethod(options) === 'GET' &&
+				RETRYABLE_PANEL_GET_ROUTES.has(url) &&
+				RETRYABLE_PANEL_STATUSES.has(response.status)) {
+				throw new Error('Panel is still finishing another request. Retry in a moment.');
+			}
+
+			let data = null;
+			const contentType = response.headers.get('content-type') || '';
+			if (contentType.includes('application/json')) {
+				data = await response.json();
+			}
+
+			return { response, data };
+		} catch (error) {
+			if (attempt + 1 >= RETRYABLE_PANEL_ATTEMPTS) {
+				throw normalizeTimedRequestError(error, requestContext.timeoutMs);
+			}
+
+			throw error;
+		} finally {
+			requestContext.cleanup();
 		}
-
-		return { response, data };
-	} catch (error) {
-		throw normalizeTimedRequestError(error, requestContext.timeoutMs);
-	} finally {
-		requestContext.cleanup();
 	}
+
+	throw new Error('Panel request retries were exhausted.');
 }
 
 async function requestBinaryUpload(url, file) {
@@ -2324,7 +2375,7 @@ async function bootstrapSession() {
 		}
 		showLoginView(flash?.message || defaultLoginMessage, flash?.tone || 'info');
 	} catch (error) {
-		showLoginView(flash?.message || unavailableMessage, flash?.tone || 'warn');
+		showLoginView(error instanceof Error ? error.message : (flash?.message || unavailableMessage), flash?.tone || 'warn');
 	}
 }
 
@@ -2500,6 +2551,11 @@ function attachEvents() {
 		}
 	});
 	elements.cards.update?.addEventListener('click', (event) => { void handleUpdateCardClick(event); });
+	window.addEventListener('pagehide', () => {
+		if (!state.pageAbortController.signal.aborted) {
+			state.pageAbortController.abort(new DOMException('Page is unloading.', 'AbortError'));
+		}
+	}, { once: true });
 }
 
 function startPolling() {
