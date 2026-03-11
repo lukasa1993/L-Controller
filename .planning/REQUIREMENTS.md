@@ -67,27 +67,27 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ACT-03 | TBD | Pending |
-| ACT-04 | TBD | Pending |
-| ACT-05 | TBD | Pending |
-| ACT-06 | TBD | Pending |
-| ACT-07 | TBD | Pending |
-| ACT-08 | TBD | Pending |
-| BIND-01 | TBD | Pending |
-| BIND-02 | TBD | Pending |
-| BIND-03 | TBD | Pending |
-| BIND-04 | TBD | Pending |
-| SCHED-05 | TBD | Pending |
-| SCHED-06 | TBD | Pending |
-| SCHED-07 | TBD | Pending |
-| MIGR-01 | TBD | Pending |
-| MIGR-02 | TBD | Pending |
-| MIGR-03 | TBD | Pending |
+| ACT-03 | Phase 9 | Pending |
+| ACT-04 | Phase 9 | Pending |
+| ACT-05 | Phase 9 | Pending |
+| ACT-06 | Phase 10 | Pending |
+| ACT-07 | Phase 10 | Pending |
+| ACT-08 | Phase 10 | Pending |
+| BIND-01 | Phase 9 | Pending |
+| BIND-02 | Phase 9 | Pending |
+| BIND-03 | Phase 10 | Pending |
+| BIND-04 | Phase 10 | Pending |
+| SCHED-05 | Phase 10 | Pending |
+| SCHED-06 | Phase 10 | Pending |
+| SCHED-07 | Phase 10 | Pending |
+| MIGR-01 | Phase 9 | Pending |
+| MIGR-02 | Phase 10 | Pending |
+| MIGR-03 | Phase 9 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 16 total
-- Mapped to phases: 0
-- Unmapped: 16
+- Mapped to phases: 16
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-11*

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: action configuration flow
-current_phase: "-"
-current_phase_name: defining requirements
+current_phase: 09
+current_phase_name: configured action model and panel management
 current_plan: "-"
-status: defining requirements
-stopped_at: Starting milestone v1.1
-last_updated: "2026-03-10T21:45:15Z"
+status: roadmap ready
+stopped_at: Created roadmap for milestone v1.1
+last_updated: "2026-03-10T22:03:58Z"
 last_activity: 2026-03-11
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -24,22 +24,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** The device must reliably and safely execute configured local control actions—even through Wi-Fi disruption or subsystem faults—without unnecessary operator intervention.
-**Current focus:** milestone v1.1 definition
+**Current focus:** phase 9 ready for planning
 
 ## Current Position
 
-**Current Phase:** Not started
-**Current Phase Name:** defining requirements
+**Current Phase:** 09
+**Current Phase Name:** configured action model and panel management
 **Current Plan:** -
-**Total Plans in Phase:** -
-**Status:** Defining requirements
+**Total Plans in Phase:** Not planned yet
+**Status:** Roadmap ready
 **Last Activity:** 2026-03-11
-**Last Activity Description:** Started milestone v1.1 to replace built-in relay actions with configurable relay actions that are created, named, GPIO-bound, then exposed under Actions and Schedules only after successful configuration
+**Last Activity Description:** Created the milestone v1.1 roadmap with two phases: Phase 9 covers the configured action model, output-binding safety, migration, and panel management surface; Phase 10 covers shared execution, schedule integration, and end-to-end verification
 
-Phase: Not started (defining requirements)
+Phase: 1 of 2 (configured action model and panel management) - not started
 Plan: -
-Status: Defining requirements
-Last activity: 2026-03-11 — Started milestone v1.1 to deliver configurable relay actions that become visible under Actions and selectable from Schedules only after successful configuration and validation
+Status: Roadmap ready
+Last activity: 2026-03-11 - Created the v1.1 roadmap with two phases that replace built-in relay actions with configured relay actions shared by Actions and Schedules
 
 Progress: [----------] 0%
 
