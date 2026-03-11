@@ -37,6 +37,8 @@ HTTP_SERVER_REGISTER_HEADER_CAPTURE(panel_http_content_length_header, "Content-L
 
 struct panel_route_slot {
 	struct http_client_ctx *owner;
+	uint32_t started_at_ms;
+	bool request_active;
 };
 
 struct panel_auth_payload {
@@ -165,6 +167,16 @@ struct panel_update_upload_route_context {
 	struct http_header headers[1];
 };
 
+struct panel_static_route_context {
+	struct panel_route_slot slot;
+};
+
+struct panel_static_resource {
+	const char *route;
+	const uint8_t *body;
+	size_t body_len;
+};
+
 struct panel_schedule_payload {
 	char schedule_id[PERSISTED_SCHEDULE_ID_MAX_LEN];
 	char cron_expression[PERSISTED_SCHEDULE_CRON_EXPRESSION_MAX_LEN];
@@ -225,6 +237,30 @@ static const uint8_t main_js_gz[] = {
 #include "panel/main.js.gz.inc"
 };
 
+static int panel_static_resource_handler(struct http_client_ctx *client,
+					 enum http_data_status status,
+					 const struct http_request_ctx *request_ctx,
+					 struct http_response_ctx *response_ctx,
+					 void *user_data);
+
+#define PANEL_STATIC_ROUTE_DETAIL(_name, _route, _content_type, _body)                             \
+	static const struct panel_static_resource _name##_static_resource = {                      \
+		.route = _route,                                                                    \
+		.body = _body,                                                                      \
+		.body_len = sizeof(_body),                                                          \
+	};                                                                                         \
+	static struct http_resource_detail_dynamic _name##_resource_detail = {                     \
+		.common = {                                                                        \
+			.type = HTTP_RESOURCE_TYPE_DYNAMIC,                                        \
+			.bitmask_of_supported_http_methods = BIT(HTTP_GET),                        \
+			.content_encoding = "gzip",                                               \
+			.content_type = _content_type,                                             \
+		},                                                                                 \
+		.cb = panel_static_resource_handler,                                               \
+		.user_data = (void *)&_name##_static_resource,                                     \
+	}
+
+static struct panel_static_route_context panel_static_route_ctx[PANEL_ROUTE_POOL_SIZE];
 static struct panel_login_route_context panel_auth_login_route_ctx[PANEL_ROUTE_POOL_SIZE];
 static struct panel_auth_route_context panel_auth_logout_route_ctx[PANEL_ROUTE_POOL_SIZE];
 static struct panel_auth_route_context panel_auth_session_route_ctx[PANEL_ROUTE_POOL_SIZE];
@@ -325,9 +361,57 @@ static void *panel_http_acquire_route_context_logged(const char *route,
 
 	if (route_ctx == NULL) {
 		panel_http_log_route_capacity(route, client);
+		return NULL;
+	}
+
+	if (!((struct panel_route_slot *)route_ctx)->request_active) {
+		((struct panel_route_slot *)route_ctx)->request_active = true;
+		((struct panel_route_slot *)route_ctx)->started_at_ms = k_uptime_get_32();
 	}
 
 	return route_ctx;
+}
+
+static void panel_http_reset_route_slot(struct panel_route_slot *slot)
+{
+	if (slot == NULL) {
+		return;
+	}
+
+	slot->request_active = false;
+	slot->started_at_ms = 0U;
+}
+
+static void panel_http_log_access(const char *route,
+				  const struct panel_route_slot *slot,
+				  const struct http_response_ctx *response_ctx)
+{
+	uint32_t duration_ms;
+
+	if (route == NULL || slot == NULL || response_ctx == NULL || !slot->request_active ||
+	    !response_ctx->final_chunk) {
+		return;
+	}
+
+	duration_ms = k_uptime_get_32() - slot->started_at_ms;
+	LOG_INF("Panel access route=%s status=%u bytes=%zu duration_ms=%u",
+		route,
+		(unsigned int)response_ctx->status,
+		response_ctx->body_len,
+		(unsigned int)duration_ms);
+}
+
+static int panel_http_complete_route(const char *route,
+				     struct panel_route_slot *slot,
+				     const struct http_response_ctx *response_ctx,
+				     int ret)
+{
+	if (ret == 0) {
+		panel_http_log_access(route, slot, response_ctx);
+	}
+
+	panel_http_reset_route_slot(slot);
+	return ret;
 }
 
 static void panel_http_log_request_termination(const char *route,
@@ -392,104 +476,23 @@ static void panel_http_log_upload_termination(
 		route_ctx != NULL ? route_ctx->content_length : 0U);
 }
 
-static struct http_resource_detail_static panel_shell_index_resource_detail = {
-	.common = {
-		.type = HTTP_RESOURCE_TYPE_STATIC,
-		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
-		.content_encoding = "gzip",
-		.content_type = "text/html",
-	},
-	.static_data = index_html_gz,
-	.static_data_len = sizeof(index_html_gz),
-};
-
-static struct http_resource_detail_static panel_shell_login_resource_detail = {
-	.common = {
-		.type = HTTP_RESOURCE_TYPE_STATIC,
-		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
-		.content_encoding = "gzip",
-		.content_type = "text/html",
-	},
-	.static_data = login_html_gz,
-	.static_data_len = sizeof(login_html_gz),
-};
-
-static struct http_resource_detail_static panel_shell_overview_resource_detail = {
-	.common = {
-		.type = HTTP_RESOURCE_TYPE_STATIC,
-		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
-		.content_encoding = "gzip",
-		.content_type = "text/html",
-	},
-	.static_data = overview_html_gz,
-	.static_data_len = sizeof(overview_html_gz),
-};
-
-static struct http_resource_detail_static panel_shell_action_editor_resource_detail = {
-	.common = {
-		.type = HTTP_RESOURCE_TYPE_STATIC,
-		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
-		.content_encoding = "gzip",
-		.content_type = "text/html",
-	},
-	.static_data = action_editor_html_gz,
-	.static_data_len = sizeof(action_editor_html_gz),
-};
-
-static struct http_resource_detail_static panel_shell_schedules_resource_detail = {
-	.common = {
-		.type = HTTP_RESOURCE_TYPE_STATIC,
-		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
-		.content_encoding = "gzip",
-		.content_type = "text/html",
-	},
-	.static_data = schedules_html_gz,
-	.static_data_len = sizeof(schedules_html_gz),
-};
-
-static struct http_resource_detail_static panel_shell_schedule_editor_resource_detail = {
-	.common = {
-		.type = HTTP_RESOURCE_TYPE_STATIC,
-		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
-		.content_encoding = "gzip",
-		.content_type = "text/html",
-	},
-	.static_data = schedule_editor_html_gz,
-	.static_data_len = sizeof(schedule_editor_html_gz),
-};
-
-static struct http_resource_detail_static panel_shell_updates_resource_detail = {
-	.common = {
-		.type = HTTP_RESOURCE_TYPE_STATIC,
-		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
-		.content_encoding = "gzip",
-		.content_type = "text/html",
-	},
-	.static_data = updates_html_gz,
-	.static_data_len = sizeof(updates_html_gz),
-};
-
-static struct http_resource_detail_static panel_shell_panel_css_resource_detail = {
-	.common = {
-		.type = HTTP_RESOURCE_TYPE_STATIC,
-		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
-		.content_encoding = "gzip",
-		.content_type = "text/css",
-	},
-	.static_data = panel_css_gz,
-	.static_data_len = sizeof(panel_css_gz),
-};
-
-static struct http_resource_detail_static panel_shell_main_js_resource_detail = {
-	.common = {
-		.type = HTTP_RESOURCE_TYPE_STATIC,
-		.bitmask_of_supported_http_methods = BIT(HTTP_GET),
-		.content_encoding = "gzip",
-		.content_type = "text/javascript",
-	},
-	.static_data = main_js_gz,
-	.static_data_len = sizeof(main_js_gz),
-};
+PANEL_STATIC_ROUTE_DETAIL(panel_shell_index, "/", "text/html", index_html_gz);
+PANEL_STATIC_ROUTE_DETAIL(panel_shell_actions, "/actions", "text/html", index_html_gz);
+PANEL_STATIC_ROUTE_DETAIL(panel_shell_overview, "/overview", "text/html", overview_html_gz);
+PANEL_STATIC_ROUTE_DETAIL(panel_shell_action_new, "/actions/new", "text/html",
+			  action_editor_html_gz);
+PANEL_STATIC_ROUTE_DETAIL(panel_shell_action_edit, "/actions/edit", "text/html",
+			  action_editor_html_gz);
+PANEL_STATIC_ROUTE_DETAIL(panel_shell_schedules, "/schedules", "text/html",
+			  schedules_html_gz);
+PANEL_STATIC_ROUTE_DETAIL(panel_shell_schedule_new, "/schedules/new", "text/html",
+			  schedule_editor_html_gz);
+PANEL_STATIC_ROUTE_DETAIL(panel_shell_schedule_edit, "/schedules/edit", "text/html",
+			  schedule_editor_html_gz);
+PANEL_STATIC_ROUTE_DETAIL(panel_shell_updates, "/updates", "text/html", updates_html_gz);
+PANEL_STATIC_ROUTE_DETAIL(panel_shell_login, "/login", "text/html", login_html_gz);
+PANEL_STATIC_ROUTE_DETAIL(panel_shell_panel_css, "/panel.css", "text/css", panel_css_gz);
+PANEL_STATIC_ROUTE_DETAIL(panel_shell_main_js, "/main.js", "text/javascript", main_js_gz);
 
 static int panel_runtime_config_handler(struct http_client_ctx *client,
 					 enum http_data_status status,
@@ -586,6 +589,62 @@ static int panel_update_clear_handler(struct http_client_ctx *client,
 				      const struct http_request_ctx *request_ctx,
 				      struct http_response_ctx *response_ctx,
 				      void *user_data);
+
+static int panel_static_resource_handler(struct http_client_ctx *client,
+					 enum http_data_status status,
+					 const struct http_request_ctx *request_ctx,
+					 struct http_response_ctx *response_ctx,
+					 void *user_data)
+{
+	const struct panel_static_resource *resource = user_data;
+	struct panel_static_route_context *route_ctx;
+
+	if (resource == NULL) {
+		return -EINVAL;
+	}
+
+	route_ctx = panel_http_acquire_route_context_logged(resource->route,
+							 panel_static_route_ctx,
+							 PANEL_ROUTE_POOL_SIZE,
+							 sizeof(*route_ctx),
+							 client);
+	if (route_ctx == NULL) {
+		if (response_ctx == NULL) {
+			return -ENOMEM;
+		}
+
+		response_ctx->status = HTTP_503_SERVICE_UNAVAILABLE;
+		response_ctx->body = NULL;
+		response_ctx->body_len = 0U;
+		response_ctx->final_chunk = true;
+		return 0;
+	}
+
+	if (request_ctx == NULL || response_ctx == NULL) {
+		panel_http_reset_route_slot(&route_ctx->slot);
+		return -EINVAL;
+	}
+
+	if (status == HTTP_SERVER_DATA_ABORTED) {
+		panel_http_log_request_termination(resource->route,
+						 client,
+						 status,
+						 request_ctx->data_len,
+						 0U,
+						 0U);
+		return panel_http_complete_route(resource->route, &route_ctx->slot, NULL, 0);
+	}
+
+	if (status != HTTP_SERVER_DATA_FINAL) {
+		return 0;
+	}
+
+	response_ctx->status = HTTP_200_OK;
+	response_ctx->body = resource->body;
+	response_ctx->body_len = resource->body_len;
+	response_ctx->final_chunk = true;
+	return panel_http_complete_route(resource->route, &route_ctx->slot, response_ctx, 0);
+}
 
 static struct http_resource_detail_dynamic panel_auth_login_resource_detail = {
 	.common = {
@@ -785,19 +844,19 @@ HTTP_SERVICE_DEFINE(panel_http_service, NULL, &panel_http_service_port,
 HTTP_RESOURCE_DEFINE(panel_shell_index_resource, panel_http_service, "/",
 		     &panel_shell_index_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_actions_resource, panel_http_service, "/actions",
-		     &panel_shell_index_resource_detail);
+		     &panel_shell_actions_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_overview_resource, panel_http_service, "/overview",
 		     &panel_shell_overview_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_action_new_resource, panel_http_service, "/actions/new",
-		     &panel_shell_action_editor_resource_detail);
+		     &panel_shell_action_new_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_action_edit_resource, panel_http_service, "/actions/edit",
-		     &panel_shell_action_editor_resource_detail);
+		     &panel_shell_action_edit_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_schedules_resource, panel_http_service, "/schedules",
 		     &panel_shell_schedules_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_schedule_new_resource, panel_http_service, "/schedules/new",
-		     &panel_shell_schedule_editor_resource_detail);
+		     &panel_shell_schedule_new_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_schedule_edit_resource, panel_http_service, "/schedules/edit",
-		     &panel_shell_schedule_editor_resource_detail);
+		     &panel_shell_schedule_edit_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_updates_resource, panel_http_service, "/updates",
 		     &panel_shell_updates_resource_detail);
 HTTP_RESOURCE_DEFINE(panel_shell_login_resource, panel_http_service, "/login",
@@ -860,6 +919,7 @@ static void panel_login_route_reset(struct panel_login_route_context *route_ctx)
 		return;
 	}
 
+	panel_http_reset_route_slot(&route_ctx->slot);
 	route_ctx->request_body_len = 0;
 	route_ctx->request_too_large = false;
 }
@@ -871,6 +931,7 @@ static void panel_action_route_reset(
 		return;
 	}
 
+	panel_http_reset_route_slot(&route_ctx->slot);
 	route_ctx->request_body_len = 0U;
 	route_ctx->request_too_large = false;
 }
@@ -881,6 +942,7 @@ static void panel_relay_route_reset(struct panel_relay_route_context *route_ctx)
 		return;
 	}
 
+	panel_http_reset_route_slot(&route_ctx->slot);
 	route_ctx->request_body_len = 0;
 	route_ctx->request_too_large = false;
 }
@@ -892,6 +954,7 @@ static void panel_schedule_route_reset(
 		return;
 	}
 
+	panel_http_reset_route_slot(&route_ctx->slot);
 	route_ctx->request_body_len = 0;
 	route_ctx->request_too_large = false;
 }
@@ -903,6 +966,7 @@ static void panel_update_upload_route_reset(
 		return;
 	}
 
+	panel_http_reset_route_slot(&route_ctx->slot);
 	memset(route_ctx->rejected_error, 0, sizeof(route_ctx->rejected_error));
 	memset(route_ctx->rejected_detail, 0, sizeof(route_ctx->rejected_detail));
 	route_ctx->initialized = false;
@@ -2089,6 +2153,7 @@ static int panel_runtime_config_handler(struct http_client_ctx *client,
 	}
 
 	if (route_ctx->app_context == NULL || request_ctx == NULL || response_ctx == NULL) {
+		panel_http_reset_route_slot(&route_ctx->slot);
 		return -EINVAL;
 	}
 
@@ -2099,7 +2164,7 @@ static int panel_runtime_config_handler(struct http_client_ctx *client,
 						 request_ctx->data_len,
 						 0U,
 						 0U);
-		return 0;
+		return panel_http_complete_route("/panel-config.js", &route_ctx->slot, NULL, 0);
 	}
 
 	if (status != HTTP_SERVER_DATA_FINAL) {
@@ -2111,6 +2176,7 @@ static int panel_runtime_config_handler(struct http_client_ctx *client,
 			  "window.__PANEL_CONFIG__={requestTimeoutMs:%u};",
 			  route_ctx->app_context->config.panel.request_timeout_seconds * 1000U);
 	if (written < 0 || (size_t)written >= sizeof(route_ctx->response_body)) {
+		panel_http_reset_route_slot(&route_ctx->slot);
 		return -ENOMEM;
 	}
 
@@ -2118,7 +2184,7 @@ static int panel_runtime_config_handler(struct http_client_ctx *client,
 	response_ctx->body = (const uint8_t *)route_ctx->response_body;
 	response_ctx->body_len = (size_t)written;
 	response_ctx->final_chunk = true;
-	return 0;
+	return panel_http_complete_route("/panel-config.js", &route_ctx->slot, response_ctx, 0);
 }
 
 static int panel_auth_login_handler(struct http_client_ctx *client,
@@ -2147,6 +2213,7 @@ static int panel_auth_login_handler(struct http_client_ctx *client,
 
 	if (route_ctx->auth_service == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
+		panel_http_reset_route_slot(&route_ctx->slot);
 		return -EINVAL;
 	}
 
@@ -2180,6 +2247,7 @@ static int panel_auth_login_handler(struct http_client_ctx *client,
 					    route_ctx->response_body,
 					    sizeof(route_ctx->response_body),
 					    "{\"authenticated\":false,\"error\":\"payload-too-large\"}");
+		ret = panel_http_complete_route("/api/auth/login", &route_ctx->slot, response_ctx, ret);
 		panel_login_route_reset(route_ctx);
 		return ret;
 	}
@@ -2196,6 +2264,7 @@ static int panel_auth_login_handler(struct http_client_ctx *client,
 					    route_ctx->response_body,
 					    sizeof(route_ctx->response_body),
 					    "{\"authenticated\":false,\"error\":\"invalid-request\"}");
+		ret = panel_http_complete_route("/api/auth/login", &route_ctx->slot, response_ctx, ret);
 		panel_login_route_reset(route_ctx);
 		return ret;
 	}
@@ -2251,6 +2320,7 @@ static int panel_auth_login_handler(struct http_client_ctx *client,
 		break;
 	}
 
+	ret = panel_http_complete_route("/api/auth/login", &route_ctx->slot, response_ctx, ret);
 	panel_login_route_reset(route_ctx);
 	return ret;
 }
@@ -2277,6 +2347,7 @@ static int panel_auth_logout_handler(struct http_client_ctx *client,
 
 	if (route_ctx->auth_service == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
+		panel_http_reset_route_slot(&route_ctx->slot);
 		return -EINVAL;
 	}
 
@@ -2287,7 +2358,7 @@ static int panel_auth_logout_handler(struct http_client_ctx *client,
 						 request_ctx->data_len,
 						 0U,
 						 0U);
-		return 0;
+		return panel_http_complete_route("/api/auth/logout", &route_ctx->slot, NULL, 0);
 	}
 
 	if (status != HTTP_SERVER_DATA_FINAL) {
@@ -2304,8 +2375,10 @@ static int panel_auth_logout_handler(struct http_client_ctx *client,
 				      sizeof(route_ctx->set_cookie_header),
 				      "sid=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
 	response_ctx->status = HTTP_204_NO_CONTENT;
+	response_ctx->body = NULL;
+	response_ctx->body_len = 0U;
 	response_ctx->final_chunk = true;
-	return 0;
+	return panel_http_complete_route("/api/auth/logout", &route_ctx->slot, response_ctx, 0);
 }
 
 static int panel_auth_session_handler(struct http_client_ctx *client,
@@ -2333,6 +2406,7 @@ static int panel_auth_session_handler(struct http_client_ctx *client,
 
 	if (route_ctx->auth_service == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
+		panel_http_reset_route_slot(&route_ctx->slot);
 		return -EINVAL;
 	}
 
@@ -2343,7 +2417,7 @@ static int panel_auth_session_handler(struct http_client_ctx *client,
 						 request_ctx->data_len,
 						 0U,
 						 0U);
-		return 0;
+		return panel_http_complete_route("/api/auth/session", &route_ctx->slot, NULL, 0);
 	}
 
 	if (status != HTTP_SERVER_DATA_FINAL) {
@@ -2361,11 +2435,12 @@ static int panel_auth_session_handler(struct http_client_ctx *client,
 					      sizeof(route_ctx->set_cookie_header),
 					      "sid=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
 		}
-		return panel_http_write_json_response(response_ctx,
+		ret = panel_http_write_json_response(response_ctx,
 					 HTTP_401_UNAUTHORIZED,
 					 route_ctx->response_body,
 					 sizeof(route_ctx->response_body),
 					 "{\"authenticated\":false}");
+		return panel_http_complete_route("/api/auth/session", &route_ctx->slot, response_ctx, ret);
 	}
 
 	ret = panel_http_write_json_response(response_ctx,
@@ -2374,7 +2449,7 @@ static int panel_auth_session_handler(struct http_client_ctx *client,
 				    sizeof(route_ctx->response_body),
 				    "{\"authenticated\":true,\"username\":\"%s\"}",
 				    route_ctx->auth_service->app_context->persisted_config.auth.username);
-	return ret;
+	return panel_http_complete_route("/api/auth/session", &route_ctx->slot, response_ctx, ret);
 }
 
 static int panel_action_snapshot_handler(struct http_client_ctx *client,
@@ -2400,6 +2475,7 @@ static int panel_action_snapshot_handler(struct http_client_ctx *client,
 
 	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
+		panel_http_reset_route_slot(&route_ctx->slot);
 		return -EINVAL;
 	}
 
@@ -2410,7 +2486,7 @@ static int panel_action_snapshot_handler(struct http_client_ctx *client,
 						 request_ctx->data_len,
 						 0U,
 						 0U);
-		return 0;
+		return panel_http_complete_route("/api/actions", &route_ctx->slot, NULL, 0);
 	}
 
 	if (status != HTTP_SERVER_DATA_FINAL) {
@@ -2427,25 +2503,26 @@ static int panel_action_snapshot_handler(struct http_client_ctx *client,
 					 sizeof(route_ctx->response_body),
 					 &authenticated);
 	if (ret != 0 || !authenticated) {
-		return ret;
+		return panel_http_complete_route("/api/actions", &route_ctx->slot, response_ctx, ret);
 	}
 
 	ret = panel_status_render_action_snapshot_json(route_ctx->app_context,
 						 route_ctx->response_body,
 						 sizeof(route_ctx->response_body));
 	if (ret < 0) {
-		return panel_http_write_json_response(response_ctx,
+		ret = panel_http_write_json_response(response_ctx,
 					 HTTP_500_INTERNAL_SERVER_ERROR,
 					 route_ctx->response_body,
 					 sizeof(route_ctx->response_body),
 					 "{\"error\":\"action-render-failed\"}");
+		return panel_http_complete_route("/api/actions", &route_ctx->slot, response_ctx, ret);
 	}
 
 	response_ctx->status = HTTP_200_OK;
 	response_ctx->body = (const uint8_t *)route_ctx->response_body;
 	response_ctx->body_len = (size_t)ret;
 	response_ctx->final_chunk = true;
-	return 0;
+	return panel_http_complete_route("/api/actions", &route_ctx->slot, response_ctx, 0);
 }
 
 static int panel_action_create_handler(struct http_client_ctx *client,
@@ -2476,6 +2553,7 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 
 	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
+		panel_action_route_reset(route_ctx);
 		return -EINVAL;
 	}
 
@@ -2513,6 +2591,10 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 					 sizeof(route_ctx->response_body),
 					 &authenticated);
 	if (ret != 0 || !authenticated) {
+		ret = panel_http_complete_route("/api/actions/create",
+					       &route_ctx->slot,
+					       response_ctx,
+					       ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2525,6 +2607,7 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 					     "payload-too-large",
 					     "Reduce the action payload size and try again.",
 					     NULL);
+		ret = panel_http_complete_route("/api/actions/create", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2538,6 +2621,7 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 					     "invalid-request",
 					     "Provide displayName, outputKey, commandKey, and enabled in the action request body.",
 					     NULL);
+		ret = panel_http_complete_route("/api/actions/create", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2550,6 +2634,7 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 					     "invalid-display-name",
 					     "Enter a display name before saving this action.",
 					     "displayName");
+		ret = panel_http_complete_route("/api/actions/create", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2563,6 +2648,7 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 					     "invalid-binding",
 					     "Choose one of the approved output bindings before saving this action.",
 					     "outputKey");
+		ret = panel_http_complete_route("/api/actions/create", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2575,6 +2661,7 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 					     "invalid-command",
 					     "Choose a supported relay command before saving this action.",
 					     "commandKey");
+		ret = panel_http_complete_route("/api/actions/create", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2586,6 +2673,7 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 					   route_ctx->response_body,
 					   sizeof(route_ctx->response_body),
 					   -ENOSPC);
+		ret = panel_http_complete_route("/api/actions/create", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2603,6 +2691,7 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 					     "invalid-display-name",
 					     "Choose a shorter display name so the device can generate a stable action ID.",
 					     "displayName");
+		ret = panel_http_complete_route("/api/actions/create", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2612,6 +2701,7 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 					   route_ctx->response_body,
 					   sizeof(route_ctx->response_body),
 					   ret);
+		ret = panel_http_complete_route("/api/actions/create", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2632,6 +2722,7 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 					     "invalid-action",
 					     "The device rejected this configured action before save.",
 					     NULL);
+		ret = panel_http_complete_route("/api/actions/create", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2643,6 +2734,7 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 					   route_ctx->response_body,
 					   sizeof(route_ctx->response_body),
 					   ret);
+		ret = panel_http_complete_route("/api/actions/create", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2652,6 +2744,7 @@ static int panel_action_create_handler(struct http_client_ctx *client,
 				       sizeof(route_ctx->response_body),
 				       action_id,
 				       "Configured action created.");
+	ret = panel_http_complete_route("/api/actions/create", &route_ctx->slot, response_ctx, ret);
 	panel_action_route_reset(route_ctx);
 	return ret;
 }
@@ -2684,6 +2777,7 @@ static int panel_action_update_handler(struct http_client_ctx *client,
 
 	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
+		panel_action_route_reset(route_ctx);
 		return -EINVAL;
 	}
 
@@ -2721,6 +2815,10 @@ static int panel_action_update_handler(struct http_client_ctx *client,
 					 sizeof(route_ctx->response_body),
 					 &authenticated);
 	if (ret != 0 || !authenticated) {
+		ret = panel_http_complete_route("/api/actions/update",
+					       &route_ctx->slot,
+					       response_ctx,
+					       ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2733,6 +2831,7 @@ static int panel_action_update_handler(struct http_client_ctx *client,
 					     "payload-too-large",
 					     "Reduce the action payload size and try again.",
 					     NULL);
+		ret = panel_http_complete_route("/api/actions/update", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2746,6 +2845,7 @@ static int panel_action_update_handler(struct http_client_ctx *client,
 					     "invalid-request",
 					     "Provide actionId, displayName, outputKey, commandKey, and enabled in the action request body.",
 					     NULL);
+		ret = panel_http_complete_route("/api/actions/update", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2758,6 +2858,7 @@ static int panel_action_update_handler(struct http_client_ctx *client,
 					     "invalid-action-id",
 					     "The action ID is not valid for this update request.",
 					     "actionId");
+		ret = panel_http_complete_route("/api/actions/update", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2770,6 +2871,7 @@ static int panel_action_update_handler(struct http_client_ctx *client,
 					     "invalid-display-name",
 					     "Enter a display name before saving this action.",
 					     "displayName");
+		ret = panel_http_complete_route("/api/actions/update", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2783,6 +2885,7 @@ static int panel_action_update_handler(struct http_client_ctx *client,
 					     "invalid-binding",
 					     "Choose one of the approved output bindings before saving this action.",
 					     "outputKey");
+		ret = panel_http_complete_route("/api/actions/update", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2795,6 +2898,7 @@ static int panel_action_update_handler(struct http_client_ctx *client,
 					     "invalid-command",
 					     "Choose a supported relay command before saving this action.",
 					     "commandKey");
+		ret = panel_http_complete_route("/api/actions/update", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2807,6 +2911,7 @@ static int panel_action_update_handler(struct http_client_ctx *client,
 					   route_ctx->response_body,
 					   sizeof(route_ctx->response_body),
 					   -ENOENT);
+		ret = panel_http_complete_route("/api/actions/update", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2832,6 +2937,7 @@ static int panel_action_update_handler(struct http_client_ctx *client,
 					     "invalid-action",
 					     "The device rejected this configured action before save.",
 					     NULL);
+		ret = panel_http_complete_route("/api/actions/update", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2843,6 +2949,7 @@ static int panel_action_update_handler(struct http_client_ctx *client,
 					   route_ctx->response_body,
 					   sizeof(route_ctx->response_body),
 					   ret);
+		ret = panel_http_complete_route("/api/actions/update", &route_ctx->slot, response_ctx, ret);
 		panel_action_route_reset(route_ctx);
 		return ret;
 	}
@@ -2852,6 +2959,7 @@ static int panel_action_update_handler(struct http_client_ctx *client,
 				       sizeof(route_ctx->response_body),
 				       payload.action_id,
 				       "Configured action updated.");
+	ret = panel_http_complete_route("/api/actions/update", &route_ctx->slot, response_ctx, ret);
 	panel_action_route_reset(route_ctx);
 	return ret;
 }
@@ -2886,6 +2994,7 @@ static int panel_relay_command_handler(struct http_client_ctx *client,
 
 	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
+		panel_relay_route_reset(route_ctx);
 		return -EINVAL;
 	}
 
@@ -2930,6 +3039,7 @@ static int panel_relay_command_handler(struct http_client_ctx *client,
 					    route_ctx->response_body,
 					    sizeof(route_ctx->response_body),
 					    "{\"authenticated\":false}");
+		ret = panel_http_complete_route("/api/relay/desired-state", &route_ctx->slot, response_ctx, ret);
 		panel_relay_route_reset(route_ctx);
 		return ret;
 	}
@@ -2940,6 +3050,7 @@ static int panel_relay_command_handler(struct http_client_ctx *client,
 					    route_ctx->response_body,
 					    sizeof(route_ctx->response_body),
 					    "{\"accepted\":false,\"error\":\"not-configured\",\"detail\":\"Relay GPIO is not configured yet.\"}");
+		ret = panel_http_complete_route("/api/relay/desired-state", &route_ctx->slot, response_ctx, ret);
 		panel_relay_route_reset(route_ctx);
 		return ret;
 	}
@@ -2950,6 +3061,7 @@ static int panel_relay_command_handler(struct http_client_ctx *client,
 					    route_ctx->response_body,
 					    sizeof(route_ctx->response_body),
 					    "{\"accepted\":false,\"error\":\"payload-too-large\"}");
+		ret = panel_http_complete_route("/api/relay/desired-state", &route_ctx->slot, response_ctx, ret);
 		panel_relay_route_reset(route_ctx);
 		return ret;
 	}
@@ -2967,6 +3079,7 @@ static int panel_relay_command_handler(struct http_client_ctx *client,
 					    route_ctx->response_body,
 					    sizeof(route_ctx->response_body),
 					    "{\"accepted\":false,\"error\":\"invalid-request\"}");
+		ret = panel_http_complete_route("/api/relay/desired-state", &route_ctx->slot, response_ctx, ret);
 		panel_relay_route_reset(route_ctx);
 		return ret;
 	}
@@ -2989,6 +3102,7 @@ static int panel_relay_command_handler(struct http_client_ctx *client,
 				    action_dispatch_result_text(dispatch_result.code),
 				    action_dispatch_source_text(dispatch_result.source),
 				    dispatch_result.detail != NULL ? dispatch_result.detail : "none");
+	ret = panel_http_complete_route("/api/relay/desired-state", &route_ctx->slot, response_ctx, ret);
 	panel_relay_route_reset(route_ctx);
 	return ret;
 }
@@ -3016,6 +3130,7 @@ static int panel_schedule_snapshot_handler(struct http_client_ctx *client,
 
 	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
+		panel_http_reset_route_slot(&route_ctx->slot);
 		return -EINVAL;
 	}
 
@@ -3026,7 +3141,7 @@ static int panel_schedule_snapshot_handler(struct http_client_ctx *client,
 						 request_ctx->data_len,
 						 0U,
 						 0U);
-		return 0;
+		return panel_http_complete_route("/api/schedules", &route_ctx->slot, NULL, 0);
 	}
 
 	if (status != HTTP_SERVER_DATA_FINAL) {
@@ -3043,25 +3158,26 @@ static int panel_schedule_snapshot_handler(struct http_client_ctx *client,
 					 sizeof(route_ctx->response_body),
 					 &authenticated);
 	if (ret != 0 || !authenticated) {
-		return ret;
+		return panel_http_complete_route("/api/schedules", &route_ctx->slot, response_ctx, ret);
 	}
 
 	ret = panel_status_render_schedule_snapshot_json(route_ctx->app_context,
 						 route_ctx->response_body,
 						 sizeof(route_ctx->response_body));
 	if (ret < 0) {
-		return panel_http_write_json_response(response_ctx,
+		ret = panel_http_write_json_response(response_ctx,
 					 HTTP_500_INTERNAL_SERVER_ERROR,
 					 route_ctx->response_body,
 					 sizeof(route_ctx->response_body),
 					 "{\"error\":\"schedule-render-failed\"}");
+		return panel_http_complete_route("/api/schedules", &route_ctx->slot, response_ctx, ret);
 	}
 
 	response_ctx->status = HTTP_200_OK;
 	response_ctx->body = (const uint8_t *)route_ctx->response_body;
 	response_ctx->body_len = (size_t)ret;
 	response_ctx->final_chunk = true;
-	return 0;
+	return panel_http_complete_route("/api/schedules", &route_ctx->slot, response_ctx, 0);
 }
 
 static int panel_schedule_create_handler(struct http_client_ctx *client,
@@ -3092,6 +3208,7 @@ static int panel_schedule_create_handler(struct http_client_ctx *client,
 
 	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
+		panel_http_reset_route_slot(&route_ctx->slot);
 		return -EINVAL;
 	}
 
@@ -3103,7 +3220,7 @@ static int panel_schedule_create_handler(struct http_client_ctx *client,
 						 route_ctx->request_body_len,
 						 0U);
 		panel_schedule_route_reset(route_ctx);
-		return 0;
+		return panel_http_complete_route("/api/schedules/create", &route_ctx->slot, NULL, 0);
 	}
 
 	if (request_ctx->data_len + route_ctx->request_body_len >= sizeof(route_ctx->request_body)) {
@@ -3129,6 +3246,10 @@ static int panel_schedule_create_handler(struct http_client_ctx *client,
 					 sizeof(route_ctx->response_body),
 					 &authenticated);
 	if (ret != 0 || !authenticated) {
+		ret = panel_http_complete_route("/api/schedules/create",
+					       &route_ctx->slot,
+					       response_ctx,
+					       ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3141,6 +3262,7 @@ static int panel_schedule_create_handler(struct http_client_ctx *client,
 					      "payload-too-large",
 					      "Reduce the schedule payload size and try again.",
 					      NULL);
+		ret = panel_http_complete_route("/api/schedules/create", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3154,6 +3276,7 @@ static int panel_schedule_create_handler(struct http_client_ctx *client,
 					      "invalid-request",
 					      "Provide scheduleId, cronExpression, actionKey, and enabled in the request body.",
 					      NULL);
+		ret = panel_http_complete_route("/api/schedules/create", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3166,6 +3289,7 @@ static int panel_schedule_create_handler(struct http_client_ctx *client,
 					      "invalid-schedule-id",
 					      "Schedule IDs must start with a letter or number and use only letters, numbers, dashes, underscores, or dots.",
 					      "scheduleId");
+		ret = panel_http_complete_route("/api/schedules/create", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3179,6 +3303,7 @@ static int panel_schedule_create_handler(struct http_client_ctx *client,
 					      "invalid-action-choice",
 					      "Choose one of the supported relay actions before saving the schedule.",
 					      "actionKey");
+		ret = panel_http_complete_route("/api/schedules/create", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3192,6 +3317,7 @@ static int panel_schedule_create_handler(struct http_client_ctx *client,
 					      "invalid-cron-expression",
 					      "Use a five-field UTC cron expression with supported numeric ranges, lists, or step values.",
 					      "cronExpression");
+		ret = panel_http_complete_route("/api/schedules/create", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3204,6 +3330,7 @@ static int panel_schedule_create_handler(struct http_client_ctx *client,
 					 route_ctx->response_body,
 					 sizeof(route_ctx->response_body),
 					 -EEXIST);
+		ret = panel_http_complete_route("/api/schedules/create", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3213,6 +3340,7 @@ static int panel_schedule_create_handler(struct http_client_ctx *client,
 					 route_ctx->response_body,
 					 sizeof(route_ctx->response_body),
 					 -ENOSPC);
+		ret = panel_http_complete_route("/api/schedules/create", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3232,6 +3360,7 @@ static int panel_schedule_create_handler(struct http_client_ctx *client,
 					 route_ctx->response_body,
 					 sizeof(route_ctx->response_body),
 					 ret);
+		ret = panel_http_complete_route("/api/schedules/create", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3241,6 +3370,7 @@ static int panel_schedule_create_handler(struct http_client_ctx *client,
 					 sizeof(route_ctx->response_body),
 					 payload.schedule_id,
 					 "Schedule created.");
+	ret = panel_http_complete_route("/api/schedules/create", &route_ctx->slot, response_ctx, ret);
 	panel_schedule_route_reset(route_ctx);
 	return ret;
 }
@@ -3309,6 +3439,10 @@ static int panel_schedule_update_handler(struct http_client_ctx *client,
 					 sizeof(route_ctx->response_body),
 					 &authenticated);
 	if (ret != 0 || !authenticated) {
+		ret = panel_http_complete_route("/api/schedules/update",
+					       &route_ctx->slot,
+					       response_ctx,
+					       ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3321,6 +3455,7 @@ static int panel_schedule_update_handler(struct http_client_ctx *client,
 					      "payload-too-large",
 					      "Reduce the schedule payload size and try again.",
 					      NULL);
+		ret = panel_http_complete_route("/api/schedules/update", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3334,6 +3469,7 @@ static int panel_schedule_update_handler(struct http_client_ctx *client,
 					      "invalid-request",
 					      "Provide scheduleId, cronExpression, actionKey, and enabled in the request body.",
 					      NULL);
+		ret = panel_http_complete_route("/api/schedules/update", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3346,6 +3482,7 @@ static int panel_schedule_update_handler(struct http_client_ctx *client,
 					      "invalid-schedule-id",
 					      "Schedule IDs must start with a letter or number and use only letters, numbers, dashes, underscores, or dots.",
 					      "scheduleId");
+		ret = panel_http_complete_route("/api/schedules/update", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3359,6 +3496,7 @@ static int panel_schedule_update_handler(struct http_client_ctx *client,
 					      "invalid-action-choice",
 					      "Choose one of the supported relay actions before saving the schedule.",
 					      "actionKey");
+		ret = panel_http_complete_route("/api/schedules/update", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3372,6 +3510,7 @@ static int panel_schedule_update_handler(struct http_client_ctx *client,
 					      "invalid-cron-expression",
 					      "Use a five-field UTC cron expression with supported numeric ranges, lists, or step values.",
 					      "cronExpression");
+		ret = panel_http_complete_route("/api/schedules/update", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3384,6 +3523,7 @@ static int panel_schedule_update_handler(struct http_client_ctx *client,
 					 route_ctx->response_body,
 					 sizeof(route_ctx->response_body),
 					 -ENOENT);
+		ret = panel_http_complete_route("/api/schedules/update", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3406,6 +3546,7 @@ static int panel_schedule_update_handler(struct http_client_ctx *client,
 					 route_ctx->response_body,
 					 sizeof(route_ctx->response_body),
 					 ret);
+		ret = panel_http_complete_route("/api/schedules/update", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3415,6 +3556,7 @@ static int panel_schedule_update_handler(struct http_client_ctx *client,
 					 sizeof(route_ctx->response_body),
 					 payload.schedule_id,
 					 "Schedule updated.");
+	ret = panel_http_complete_route("/api/schedules/update", &route_ctx->slot, response_ctx, ret);
 	panel_schedule_route_reset(route_ctx);
 	return ret;
 }
@@ -3482,6 +3624,10 @@ static int panel_schedule_delete_handler(struct http_client_ctx *client,
 					 sizeof(route_ctx->response_body),
 					 &authenticated);
 	if (ret != 0 || !authenticated) {
+		ret = panel_http_complete_route("/api/schedules/delete",
+					       &route_ctx->slot,
+					       response_ctx,
+					       ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3494,6 +3640,7 @@ static int panel_schedule_delete_handler(struct http_client_ctx *client,
 					      "payload-too-large",
 					      "Reduce the schedule payload size and try again.",
 					      NULL);
+		ret = panel_http_complete_route("/api/schedules/delete", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3507,6 +3654,7 @@ static int panel_schedule_delete_handler(struct http_client_ctx *client,
 					      "invalid-request",
 					      "Provide scheduleId in the delete request body.",
 					      NULL);
+		ret = panel_http_complete_route("/api/schedules/delete", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3519,6 +3667,7 @@ static int panel_schedule_delete_handler(struct http_client_ctx *client,
 					      "invalid-schedule-id",
 					      "Schedule IDs must start with a letter or number and use only letters, numbers, dashes, underscores, or dots.",
 					      "scheduleId");
+		ret = panel_http_complete_route("/api/schedules/delete", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3531,6 +3680,7 @@ static int panel_schedule_delete_handler(struct http_client_ctx *client,
 					 route_ctx->response_body,
 					 sizeof(route_ctx->response_body),
 					 -ENOENT);
+		ret = panel_http_complete_route("/api/schedules/delete", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3550,6 +3700,7 @@ static int panel_schedule_delete_handler(struct http_client_ctx *client,
 					 route_ctx->response_body,
 					 sizeof(route_ctx->response_body),
 					 ret);
+		ret = panel_http_complete_route("/api/schedules/delete", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3559,6 +3710,7 @@ static int panel_schedule_delete_handler(struct http_client_ctx *client,
 					 sizeof(route_ctx->response_body),
 					 payload.schedule_id,
 					 "Schedule deleted.");
+	ret = panel_http_complete_route("/api/schedules/delete", &route_ctx->slot, response_ctx, ret);
 	panel_schedule_route_reset(route_ctx);
 	return ret;
 }
@@ -3627,6 +3779,10 @@ static int panel_schedule_enabled_handler(struct http_client_ctx *client,
 					 sizeof(route_ctx->response_body),
 					 &authenticated);
 	if (ret != 0 || !authenticated) {
+		ret = panel_http_complete_route("/api/schedules/set-enabled",
+					       &route_ctx->slot,
+					       response_ctx,
+					       ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3639,6 +3795,7 @@ static int panel_schedule_enabled_handler(struct http_client_ctx *client,
 					      "payload-too-large",
 					      "Reduce the schedule payload size and try again.",
 					      NULL);
+		ret = panel_http_complete_route("/api/schedules/set-enabled", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3653,6 +3810,7 @@ static int panel_schedule_enabled_handler(struct http_client_ctx *client,
 					      "invalid-request",
 					      "Provide scheduleId and enabled in the enable or disable request body.",
 					      NULL);
+		ret = panel_http_complete_route("/api/schedules/set-enabled", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3665,6 +3823,7 @@ static int panel_schedule_enabled_handler(struct http_client_ctx *client,
 					      "invalid-schedule-id",
 					      "Schedule IDs must start with a letter or number and use only letters, numbers, dashes, underscores, or dots.",
 					      "scheduleId");
+		ret = panel_http_complete_route("/api/schedules/set-enabled", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3677,6 +3836,7 @@ static int panel_schedule_enabled_handler(struct http_client_ctx *client,
 					 route_ctx->response_body,
 					 sizeof(route_ctx->response_body),
 					 -ENOENT);
+		ret = panel_http_complete_route("/api/schedules/set-enabled", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3688,6 +3848,7 @@ static int panel_schedule_enabled_handler(struct http_client_ctx *client,
 					 route_ctx->response_body,
 					 sizeof(route_ctx->response_body),
 					 ret);
+		ret = panel_http_complete_route("/api/schedules/set-enabled", &route_ctx->slot, response_ctx, ret);
 		panel_schedule_route_reset(route_ctx);
 		return ret;
 	}
@@ -3698,6 +3859,7 @@ static int panel_schedule_enabled_handler(struct http_client_ctx *client,
 					 sizeof(route_ctx->response_body),
 					 payload.schedule_id,
 					 detail);
+	ret = panel_http_complete_route("/api/schedules/set-enabled", &route_ctx->slot, response_ctx, ret);
 	panel_schedule_route_reset(route_ctx);
 	return ret;
 }
@@ -3752,25 +3914,26 @@ static int panel_update_snapshot_handler(struct http_client_ctx *client,
 					 sizeof(route_ctx->response_body),
 					 &authenticated);
 	if (ret != 0 || !authenticated) {
-		return ret;
+		return panel_http_complete_route("/api/update", &route_ctx->slot, response_ctx, ret);
 	}
 
 	ret = panel_http_render_update_snapshot_json(route_ctx->app_context,
 						 route_ctx->response_body,
 						 sizeof(route_ctx->response_body));
 	if (ret < 0) {
-		return panel_http_write_json_response(response_ctx,
+		ret = panel_http_write_json_response(response_ctx,
 					 HTTP_500_INTERNAL_SERVER_ERROR,
 					 route_ctx->response_body,
 					 sizeof(route_ctx->response_body),
 					 "{\"error\":\"update-render-failed\"}");
+		return panel_http_complete_route("/api/update", &route_ctx->slot, response_ctx, ret);
 	}
 
 	response_ctx->status = HTTP_200_OK;
 	response_ctx->body = (const uint8_t *)route_ctx->response_body;
 	response_ctx->body_len = (size_t)ret;
 	response_ctx->final_chunk = true;
-	return 0;
+	return panel_http_complete_route("/api/update", &route_ctx->slot, response_ctx, 0);
 }
 
 static int panel_update_upload_handler(struct http_client_ctx *client,
@@ -3803,6 +3966,7 @@ static int panel_update_upload_handler(struct http_client_ctx *client,
 
 	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
+		panel_update_upload_route_reset(route_ctx);
 		return -EINVAL;
 	}
 
@@ -3959,6 +4123,10 @@ static int panel_update_upload_handler(struct http_client_ctx *client,
 							       sizeof(route_ctx->response_body),
 							       route_ctx->rejected_error,
 							       route_ctx->rejected_detail);
+		response_ret = panel_http_complete_route("/api/update/upload",
+							 &route_ctx->slot,
+							 response_ctx,
+							 response_ret);
 		panel_update_upload_route_reset(route_ctx);
 		return response_ret;
 	}
@@ -3982,6 +4150,10 @@ static int panel_update_upload_handler(struct http_client_ctx *client,
 							       sizeof(route_ctx->response_body),
 							       route_ctx->rejected_error,
 							       route_ctx->rejected_detail);
+		response_ret = panel_http_complete_route("/api/update/upload",
+							 &route_ctx->slot,
+							 response_ctx,
+							 response_ret);
 		panel_update_upload_route_reset(route_ctx);
 		return response_ret;
 	}
@@ -3995,6 +4167,10 @@ static int panel_update_upload_handler(struct http_client_ctx *client,
 			sizeof(route_ctx->response_body),
 			"snapshot-failed",
 			"The firmware image staged successfully, but the device could not render the follow-up OTA snapshot.");
+		response_ret = panel_http_complete_route("/api/update/upload",
+							 &route_ctx->slot,
+							 response_ctx,
+							 response_ret);
 		panel_update_upload_route_reset(route_ctx);
 		return response_ret;
 	}
@@ -4011,6 +4187,10 @@ static int panel_update_upload_handler(struct http_client_ctx *client,
 							route_ctx->response_body,
 							sizeof(route_ctx->response_body),
 							detail);
+	response_ret = panel_http_complete_route("/api/update/upload",
+							 &route_ctx->slot,
+							 response_ctx,
+							 response_ret);
 	panel_update_upload_route_reset(route_ctx);
 	return response_ret;
 }
@@ -4038,6 +4218,7 @@ static int panel_update_remote_handler(struct http_client_ctx *client,
 
 	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
+		panel_http_reset_route_slot(&route_ctx->slot);
 		return -EINVAL;
 	}
 
@@ -4048,7 +4229,7 @@ static int panel_update_remote_handler(struct http_client_ctx *client,
 						 request_ctx->data_len,
 						 0U,
 						 0U);
-		return 0;
+		return panel_http_complete_route("/api/update/remote-check", &route_ctx->slot, NULL, 0);
 	}
 
 	if (status != HTTP_SERVER_DATA_FINAL) {
@@ -4065,46 +4246,50 @@ static int panel_update_remote_handler(struct http_client_ctx *client,
 					 sizeof(route_ctx->response_body),
 					 &authenticated);
 	if (ret != 0 || !authenticated) {
-		return ret;
+		return panel_http_complete_route("/api/update/remote-check", &route_ctx->slot, response_ctx, ret);
 	}
 
 	ret = ota_service_request_remote_update(&route_ctx->app_context->ota);
 	if (ret == -EALREADY) {
-		return panel_http_write_update_error_response(
+		ret = panel_http_write_update_error_response(
 			response_ctx,
 			HTTP_409_CONFLICT,
 			route_ctx->response_body,
 			sizeof(route_ctx->response_body),
 			"remote-update-busy",
 			"A GitHub Release check is already running through the OTA service.");
+		return panel_http_complete_route("/api/update/remote-check", &route_ctx->slot, response_ctx, ret);
 	}
 
 	if (ret == -EBUSY) {
-		return panel_http_write_update_error_response(
+		ret = panel_http_write_update_error_response(
 			response_ctx,
 			HTTP_409_CONFLICT,
 			route_ctx->response_body,
 			sizeof(route_ctx->response_body),
 			"ota-pipeline-busy",
 			"Clear or apply the current staged image before starting Update now.");
+		return panel_http_complete_route("/api/update/remote-check", &route_ctx->slot, response_ctx, ret);
 	}
 
 	if (ret != 0) {
-		return panel_http_write_update_error_response(
+		ret = panel_http_write_update_error_response(
 			response_ctx,
 			HTTP_500_INTERNAL_SERVER_ERROR,
 			route_ctx->response_body,
 			sizeof(route_ctx->response_body),
 			"remote-update-start-failed",
 			"The device could not start the GitHub Release check.");
+		return panel_http_complete_route("/api/update/remote-check", &route_ctx->slot, response_ctx, ret);
 	}
 
-	return panel_http_write_update_success_response(
+	ret = panel_http_write_update_success_response(
 		response_ctx,
 		HTTP_202_ACCEPTED,
 		route_ctx->response_body,
 		sizeof(route_ctx->response_body),
 		"Update now accepted. The device will check GitHub Releases, stage the latest stable eligible artifact, and reboot only if a newer image is applied.");
+	return panel_http_complete_route("/api/update/remote-check", &route_ctx->slot, response_ctx, ret);
 }
 
 static int panel_update_apply_handler(struct http_client_ctx *client,
@@ -4130,6 +4315,7 @@ static int panel_update_apply_handler(struct http_client_ctx *client,
 
 	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
+		panel_http_reset_route_slot(&route_ctx->slot);
 		return -EINVAL;
 	}
 
@@ -4140,7 +4326,7 @@ static int panel_update_apply_handler(struct http_client_ctx *client,
 						 request_ctx->data_len,
 						 0U,
 						 0U);
-		return 0;
+		return panel_http_complete_route("/api/update/apply", &route_ctx->slot, NULL, 0);
 	}
 
 	if (status != HTTP_SERVER_DATA_FINAL) {
@@ -4157,57 +4343,62 @@ static int panel_update_apply_handler(struct http_client_ctx *client,
 					 sizeof(route_ctx->response_body),
 					 &authenticated);
 	if (ret != 0 || !authenticated) {
-		return ret;
+		return panel_http_complete_route("/api/update/apply", &route_ctx->slot, response_ctx, ret);
 	}
 
 	ret = ota_service_request_apply(&route_ctx->app_context->ota);
 	if (ret == -EAGAIN) {
-		return panel_http_write_update_error_response(
+		ret = panel_http_write_update_error_response(
 			response_ctx,
 			HTTP_409_CONFLICT,
 			route_ctx->response_body,
 			sizeof(route_ctx->response_body),
 			"no-staged-update",
 			"Stage a newer firmware image before requesting apply.");
+		return panel_http_complete_route("/api/update/apply", &route_ctx->slot, response_ctx, ret);
 	}
 
 	if (ret == -EALREADY) {
-		return panel_http_write_update_error_response(
+		ret = panel_http_write_update_error_response(
 			response_ctx,
 			HTTP_409_CONFLICT,
 			route_ctx->response_body,
 			sizeof(route_ctx->response_body),
 			"apply-already-requested",
 			"The staged firmware image is already queued for reboot.");
+		return panel_http_complete_route("/api/update/apply", &route_ctx->slot, response_ctx, ret);
 	}
 
 	if (ret == -EBUSY) {
-		return panel_http_write_update_error_response(
+		ret = panel_http_write_update_error_response(
 			response_ctx,
 			HTTP_409_CONFLICT,
 			route_ctx->response_body,
 			sizeof(route_ctx->response_body),
 			"upload-in-progress",
 			"Finish the current firmware upload before applying an update.");
+		return panel_http_complete_route("/api/update/apply", &route_ctx->slot, response_ctx, ret);
 	}
 
 	if (ret != 0) {
-		return panel_http_write_update_error_response(
+		ret = panel_http_write_update_error_response(
 			response_ctx,
 			HTTP_500_INTERNAL_SERVER_ERROR,
 			route_ctx->response_body,
 			sizeof(route_ctx->response_body),
 			"apply-request-failed",
 			"The device could not queue the staged firmware image for reboot.");
+		return panel_http_complete_route("/api/update/apply", &route_ctx->slot, response_ctx, ret);
 	}
 
 	(void)k_work_reschedule(&panel_update_reboot_work, K_MSEC(1200));
-	return panel_http_write_update_success_response(
+	ret = panel_http_write_update_success_response(
 		response_ctx,
 		HTTP_200_OK,
 		route_ctx->response_body,
 		sizeof(route_ctx->response_body),
 		"Staged firmware apply requested. The device will reboot, drop this browser session, and require a fresh login after it returns.");
+	return panel_http_complete_route("/api/update/apply", &route_ctx->slot, response_ctx, ret);
 }
 
 static int panel_update_clear_handler(struct http_client_ctx *client,
@@ -4233,6 +4424,7 @@ static int panel_update_clear_handler(struct http_client_ctx *client,
 
 	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
+		panel_http_reset_route_slot(&route_ctx->slot);
 		return -EINVAL;
 	}
 
@@ -4243,7 +4435,7 @@ static int panel_update_clear_handler(struct http_client_ctx *client,
 						 request_ctx->data_len,
 						 0U,
 						 0U);
-		return 0;
+		return panel_http_complete_route("/api/update/clear", &route_ctx->slot, NULL, 0);
 	}
 
 	if (status != HTTP_SERVER_DATA_FINAL) {
@@ -4260,46 +4452,50 @@ static int panel_update_clear_handler(struct http_client_ctx *client,
 					 sizeof(route_ctx->response_body),
 					 &authenticated);
 	if (ret != 0 || !authenticated) {
-		return ret;
+		return panel_http_complete_route("/api/update/clear", &route_ctx->slot, response_ctx, ret);
 	}
 
 	ret = ota_service_clear_staged_image(&route_ctx->app_context->ota);
 	if (ret == -EALREADY) {
-		return panel_http_write_update_error_response(
+		ret = panel_http_write_update_error_response(
 			response_ctx,
 			HTTP_409_CONFLICT,
 			route_ctx->response_body,
 			sizeof(route_ctx->response_body),
 			"nothing-to-clear",
 			"No staged firmware image is waiting to be cleared.");
+		return panel_http_complete_route("/api/update/clear", &route_ctx->slot, response_ctx, ret);
 	}
 
 	if (ret == -EBUSY) {
-		return panel_http_write_update_error_response(
+		ret = panel_http_write_update_error_response(
 			response_ctx,
 			HTTP_409_CONFLICT,
 			route_ctx->response_body,
 			sizeof(route_ctx->response_body),
 			"apply-in-progress",
 			"The device is already rebooting or waiting to confirm a test image and cannot clear OTA state now.");
+		return panel_http_complete_route("/api/update/clear", &route_ctx->slot, response_ctx, ret);
 	}
 
 	if (ret != 0) {
-		return panel_http_write_update_error_response(
+		ret = panel_http_write_update_error_response(
 			response_ctx,
 			HTTP_500_INTERNAL_SERVER_ERROR,
 			route_ctx->response_body,
 			sizeof(route_ctx->response_body),
 			"clear-failed",
 			"The device could not clear the staged firmware image.");
+		return panel_http_complete_route("/api/update/clear", &route_ctx->slot, response_ctx, ret);
 	}
 
-	return panel_http_write_update_success_response(
+	ret = panel_http_write_update_success_response(
 		response_ctx,
 		HTTP_200_OK,
 		route_ctx->response_body,
 		sizeof(route_ctx->response_body),
 		"Staged firmware eligibility cleared. Upload a newer image when ready.");
+	return panel_http_complete_route("/api/update/clear", &route_ctx->slot, response_ctx, ret);
 }
 
 static int panel_status_handler(struct http_client_ctx *client,
@@ -4327,6 +4523,7 @@ static int panel_status_handler(struct http_client_ctx *client,
 
 	if (route_ctx->app_context == NULL || request_ctx == NULL ||
 	    response_ctx == NULL) {
+		panel_http_reset_route_slot(&route_ctx->slot);
 		return -EINVAL;
 	}
 
@@ -4337,7 +4534,7 @@ static int panel_status_handler(struct http_client_ctx *client,
 						 request_ctx->data_len,
 						 0U,
 						 0U);
-		return 0;
+		return panel_http_complete_route("/api/status", &route_ctx->slot, NULL, 0);
 	}
 
 	if (status != HTTP_SERVER_DATA_FINAL) {
@@ -4355,29 +4552,31 @@ static int panel_status_handler(struct http_client_ctx *client,
 					      sizeof(route_ctx->set_cookie_header),
 					      "sid=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
 		}
-		return panel_http_write_json_response(response_ctx,
+		ret = panel_http_write_json_response(response_ctx,
 					 HTTP_401_UNAUTHORIZED,
 					 route_ctx->response_body,
 					 sizeof(route_ctx->response_body),
 					 "{\"authenticated\":false}");
+		return panel_http_complete_route("/api/status", &route_ctx->slot, response_ctx, ret);
 	}
 
 	ret = panel_status_render_json(route_ctx->app_context,
 			       route_ctx->response_body,
 			       sizeof(route_ctx->response_body));
 	if (ret < 0) {
-		return panel_http_write_json_response(response_ctx,
+		ret = panel_http_write_json_response(response_ctx,
 					 HTTP_500_INTERNAL_SERVER_ERROR,
 					 route_ctx->response_body,
 					 sizeof(route_ctx->response_body),
 					 "{\"error\":\"status-render-failed\"}");
+		return panel_http_complete_route("/api/status", &route_ctx->slot, response_ctx, ret);
 	}
 
 	response_ctx->status = HTTP_200_OK;
 	response_ctx->body = (const uint8_t *)route_ctx->response_body;
 	response_ctx->body_len = (size_t)ret;
 	response_ctx->final_chunk = true;
-	return 0;
+	return panel_http_complete_route("/api/status", &route_ctx->slot, response_ctx, 0);
 }
 
 int panel_http_server_init(struct panel_http_server *server,
@@ -4399,20 +4598,27 @@ int panel_http_server_init(struct panel_http_server *server,
 	server->started = false;
 	panel_http_service_port = server->port;
 	for (size_t index = 0; index < PANEL_ROUTE_POOL_SIZE; index++) {
+		panel_static_route_ctx[index].slot.owner = NULL;
+		panel_http_reset_route_slot(&panel_static_route_ctx[index].slot);
+
 		panel_auth_login_route_ctx[index].slot.owner = NULL;
 		panel_auth_login_route_ctx[index].auth_service = &app_context->panel_auth;
 		panel_login_route_reset(&panel_auth_login_route_ctx[index]);
 
 		panel_auth_logout_route_ctx[index].slot.owner = NULL;
+		panel_http_reset_route_slot(&panel_auth_logout_route_ctx[index].slot);
 		panel_auth_logout_route_ctx[index].auth_service = &app_context->panel_auth;
 
 		panel_auth_session_route_ctx[index].slot.owner = NULL;
+		panel_http_reset_route_slot(&panel_auth_session_route_ctx[index].slot);
 		panel_auth_session_route_ctx[index].auth_service = &app_context->panel_auth;
 
 		panel_status_route_ctx[index].slot.owner = NULL;
+		panel_http_reset_route_slot(&panel_status_route_ctx[index].slot);
 		panel_status_route_ctx[index].app_context = app_context;
 
 		panel_action_snapshot_route_ctx[index].slot.owner = NULL;
+		panel_http_reset_route_slot(&panel_action_snapshot_route_ctx[index].slot);
 		panel_action_snapshot_route_ctx[index].app_context = app_context;
 
 		panel_action_create_route_ctx[index].slot.owner = NULL;
@@ -4428,6 +4634,7 @@ int panel_http_server_init(struct panel_http_server *server,
 		panel_relay_route_reset(&panel_relay_route_ctx[index]);
 
 		panel_schedule_snapshot_route_ctx[index].slot.owner = NULL;
+		panel_http_reset_route_slot(&panel_schedule_snapshot_route_ctx[index].slot);
 		panel_schedule_snapshot_route_ctx[index].app_context = app_context;
 
 		panel_schedule_create_route_ctx[index].slot.owner = NULL;
@@ -4447,18 +4654,23 @@ int panel_http_server_init(struct panel_http_server *server,
 		panel_schedule_route_reset(&panel_schedule_enabled_route_ctx[index]);
 
 		panel_update_snapshot_route_ctx[index].slot.owner = NULL;
+		panel_http_reset_route_slot(&panel_update_snapshot_route_ctx[index].slot);
 		panel_update_snapshot_route_ctx[index].app_context = app_context;
 
 		panel_runtime_config_route_ctx[index].slot.owner = NULL;
+		panel_http_reset_route_slot(&panel_runtime_config_route_ctx[index].slot);
 		panel_runtime_config_route_ctx[index].app_context = app_context;
 
 		panel_update_remote_route_ctx[index].slot.owner = NULL;
+		panel_http_reset_route_slot(&panel_update_remote_route_ctx[index].slot);
 		panel_update_remote_route_ctx[index].app_context = app_context;
 
 		panel_update_apply_route_ctx[index].slot.owner = NULL;
+		panel_http_reset_route_slot(&panel_update_apply_route_ctx[index].slot);
 		panel_update_apply_route_ctx[index].app_context = app_context;
 
 		panel_update_clear_route_ctx[index].slot.owner = NULL;
+		panel_http_reset_route_slot(&panel_update_clear_route_ctx[index].slot);
 		panel_update_clear_route_ctx[index].app_context = app_context;
 
 		panel_update_upload_route_ctx[index].slot.owner = NULL;
